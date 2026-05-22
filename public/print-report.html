@@ -530,6 +530,7 @@
   let systemInitialBalance = 0; 
   let beginningAccounts = {};
   let reportZoom = 1;
+  let workflowSignatures = {};
   const FINANCIAL_ACCOUNTS = [
     { id:'cash-hand',  name:'Cash on Hand' },
     { id:'cash-bank',  name:'Cash in Bank' },
@@ -830,9 +831,54 @@
     btn.textContent = 'Save Settings';
   }
 
-  function render() {
+  async function render() {
+    await loadWorkflowSignaturesForCurrentPeriod();
     if (reportType === 'monthly') renderMonthly();
     else if (reportType === 'annual') renderAnnual();
+  }
+
+  function currentWorkflowId() {
+    const year = document.getElementById('sel-year').value || new Date().getFullYear();
+    if (reportType === 'annual') return `annual-${year}`;
+    const month = String(Number(document.getElementById('sel-month').value || 0) + 1).padStart(2, '0');
+    return `monthly-${year}-${month}`;
+  }
+
+  async function loadWorkflowSignaturesForCurrentPeriod() {
+    try {
+      const doc = await db.collection('reportReviews').doc(currentWorkflowId()).get();
+      workflowSignatures = doc.exists ? (doc.data().signatures || {}) : {};
+    } catch (error) {
+      console.warn('Unable to load report workflow signatures.', error);
+      workflowSignatures = {};
+    }
+  }
+
+  function workflowSignatureHtml(key, fallbackName, fallbackTitle) {
+    const sig = workflowSignatures[key] || {};
+    const name = sig.signedAt ? (sig.name || fallbackName || '') : '';
+    const image = sig.signedAt && sig.mode === 'electronic' && sig.signatureUrl
+      ? `<img src="${escapeAttr(sig.signatureUrl)}" alt="Signature" style="max-width:135px;height:34px;object-fit:contain;display:block;margin:0 auto -3px;">`
+      : '';
+    const manual = sig.signedAt && sig.mode === 'manual'
+      ? '<div style="height:31px;font-size:9px;color:#777;display:flex;align-items:end;justify-content:center;">Manual signature</div>'
+      : '<div style="height:31px;"></div>';
+    return `
+      ${image || manual}
+      <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+      <div style="font-weight:700; font-size:12px;">${escapeHtml(name)}</div>
+      <div style="font-size:11px; color:var(--gray);">${escapeHtml(fallbackTitle || '')}</div>
+    `;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, '&#96;');
   }
 
   function updateReportZoom() {
@@ -1420,37 +1466,27 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
 
           <div class="sig-box">
             <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.chairpersonLabel}</div>
-            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
-            <div style="font-weight:700; font-size:12px;">${signatories.chairpersonName}</div>
-            <div style="font-size:11px; color:var(--gray);">${signatories.chairpersonTitle}</div>
+            ${workflowSignatureHtml('chairperson', signatories.chairpersonName, signatories.chairpersonTitle)}
           </div>
 
           <div class="sig-box">
             <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.financeChairLabel}</div>
-            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
-            <div style="font-weight:700; font-size:12px;">${signatories.financeChairName}</div>
-            <div style="font-size:11px; color:var(--gray);">${signatories.financeChairTitle}</div>
+            ${workflowSignatureHtml('financeChair', signatories.financeChairName, signatories.financeChairTitle)}
           </div>
 
           <div class="sig-box">
             <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.treasurerLabel}</div>
-            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
-            <div style="font-weight:700; font-size:12px;">${signatories.treasurerName}</div>
-            <div style="font-size:11px; color:var(--gray);">${signatories.treasurerTitle}</div>
+            ${workflowSignatureHtml('treasurer', signatories.treasurerName, signatories.treasurerTitle)}
           </div>
           
           <div class="sig-box">
             <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.auditorLabel}</div>
-            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
-            <div style="font-weight:700; font-size:12px;">${signatories.auditorName}</div>
-            <div style="font-size:11px; color:var(--gray);">${signatories.auditorTitle}</div>
+            ${workflowSignatureHtml('auditor', signatories.auditorName, signatories.auditorTitle)}
           </div>
           
           <div class="sig-box">
             <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.pastorLabel}</div>
-            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
-            <div style="font-weight:700; font-size:12px;">${signatories.pastorName}</div>
-            <div style="font-size:11px; color:var(--gray);">${signatories.pastorTitle}</div>
+            ${workflowSignatureHtml('pastor', signatories.pastorName, signatories.pastorTitle)}
           </div>
 
         </div>

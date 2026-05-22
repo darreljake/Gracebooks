@@ -37,6 +37,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /userSignatures/{uid} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
     match /income/{docId} {
       allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
       allow create: if hasRole(['Treasurer', 'Money Counter']);
@@ -65,7 +71,7 @@ service cloud.firestore {
     }
 
     match /reportReviews/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
       allow create: if hasRole(['Treasurer']);
       allow update: if hasRole(['Treasurer', 'Auditor', 'Finance Chair', 'Chairperson', 'Pastor']);
       allow delete: if hasRole(['Treasurer']);

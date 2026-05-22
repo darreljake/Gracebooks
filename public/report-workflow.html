@@ -9,6 +9,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
   <style>
@@ -23,7 +24,7 @@
     .brand img { width: 42px; height: 42px; object-fit: contain; }
     .brand h1 { font-size: 20px; font-weight: 700; }
     .brand div div { font-size: 11px; opacity: 0.78; }
-    .top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .top-actions, .action-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .btn {
       border: none; border-radius: 7px; padding: 9px 13px; cursor: pointer;
       font-family: inherit; font-weight: 700; font-size: 12px;
@@ -33,24 +34,26 @@
     .btn-primary { background: #8B0000; color: white; }
     .btn-secondary { background: #1a5276; color: white; }
     .btn-good { background: #1e8449; color: white; }
+    .btn-warn { background: #b54708; color: white; }
     .btn-muted { background: #eef1f4; color: #334; }
     .btn:disabled { background: #d8dde3; color: #7b8490; cursor: not-allowed; }
-    .container { max-width: 1080px; margin: 0 auto; padding: 24px 18px 48px; }
-    .controls {
+    .container { max-width: 1160px; margin: 0 auto; padding: 24px 18px 48px; }
+    .controls, .status-card, .card {
       background: white; border: 1px solid #e6e8eb; border-radius: 8px;
+    }
+    .controls {
       padding: 18px; display: flex; gap: 14px; flex-wrap: wrap; align-items: end;
       margin-bottom: 18px;
     }
     label { display: block; font-size: 11px; font-weight: 700; color: #667085; text-transform: uppercase; margin-bottom: 5px; }
-    select, textarea {
+    select, textarea, input[type="file"] {
       width: 100%; border: 1px solid #d8dde3; border-radius: 7px; padding: 9px 10px;
       font-family: inherit; font-size: 13px; background: white;
     }
     textarea { min-height: 82px; resize: vertical; }
     .field { min-width: 150px; }
     .status-card {
-      background: white; border: 1px solid #e6e8eb; border-left: 5px solid #8B0000;
-      border-radius: 8px; padding: 18px; margin-bottom: 18px;
+      border-left: 5px solid #8B0000; padding: 18px; margin-bottom: 18px;
       display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px;
     }
     .status-title { font-size: 20px; font-weight: 700; color: #8B0000; }
@@ -61,21 +64,32 @@
       background: #f2f4f7; color: #344054; margin-top: 8px;
     }
     .pill.ready, .pill.final { background: #d5f5e3; color: #196f3d; }
+    .pill.returned { background: #fdecea; color: #a93226; }
     .pill.pending { background: #fef5e7; color: #9a5b00; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-    .card { background: white; border: 1px solid #e6e8eb; border-radius: 8px; padding: 18px; }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
+    .card { padding: 18px; margin-bottom: 18px; }
     .card h2 { font-size: 16px; color: #8B0000; margin-bottom: 12px; }
     .step { border-top: 1px solid #eef1f4; padding: 13px 0; display: grid; gap: 8px; }
     .step:first-of-type { border-top: none; padding-top: 0; }
     .step-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
     .step-title { font-weight: 700; font-size: 14px; }
     .step-meta { font-size: 12px; color: #667085; }
-    .notes-grid { display: grid; gap: 12px; }
     .message { padding: 12px; border-radius: 7px; margin-bottom: 16px; display: none; font-size: 13px; }
     .message.show { display: block; }
     .message.ok { background: #eafaf1; color: #1e8449; border: 1px solid #c8ead7; }
     .message.err { background: #fdecea; color: #a93226; border: 1px solid #f5c6c0; }
-    @media (max-width: 760px) {
+    .sig-preview {
+      max-width: 220px; height: 70px; object-fit: contain; display: block;
+      border: 1px dashed #cbd5df; border-radius: 7px; background: #fff; margin-top: 8px;
+    }
+    .pad {
+      width: 100%; height: 145px; border: 1px solid #cbd5df; border-radius: 7px;
+      background: white; touch-action: none;
+    }
+    .history { max-height: 360px; overflow: auto; }
+    .history-item { border-top: 1px solid #eef1f4; padding: 10px 0; }
+    .history-item:first-child { border-top: none; }
+    @media (max-width: 820px) {
       .status-card, .grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
       .top-actions, .btn { width: 100%; }
@@ -90,7 +104,7 @@
       <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
       <div>
         <h1>Report Workflow</h1>
-        <div>Review, approval, and signature routing</div>
+        <div>Review, approval, routing, and signatures</div>
       </div>
     </div>
     <div class="top-actions">
@@ -134,55 +148,51 @@
     </div>
 
     <div class="grid">
-      <div class="card">
-        <h2>Approval Chain</h2>
-        <div class="step">
-          <div class="step-head">
-            <div>
-              <div class="step-title">Treasurer review and submit</div>
-              <div class="step-meta" id="treasurer-meta">Pending</div>
-            </div>
-            <button class="btn btn-primary" id="btn-submit" onclick="submitReport()">Submit</button>
+      <div>
+        <div class="card">
+          <h2>Current Action</h2>
+          <div class="step-meta" id="action-help"></div>
+          <div style="margin:12px 0;">
+            <label>Return Notes / Routing Notes</label>
+            <textarea id="route-notes" placeholder="Required when returning to Treasurer. Optional for approvals and routing."></textarea>
           </div>
+          <div class="action-row" id="action-buttons"></div>
         </div>
-        <div class="step">
-          <div class="step-head">
-            <div>
-              <div class="step-title">Auditor audit approval</div>
-              <div class="step-meta" id="auditor-meta">Pending</div>
-            </div>
-            <button class="btn btn-good" id="btn-auditor" onclick="approveAudit()">Approve</button>
-          </div>
+
+        <div class="card">
+          <h2>Approval Chain</h2>
+          <div id="chain-list"></div>
         </div>
-        <div class="step">
-          <div class="step-head">
-            <div>
-              <div class="step-title">Finance Chair approval</div>
-              <div class="step-meta" id="finance-meta">Pending</div>
-            </div>
-            <button class="btn btn-good" id="btn-finance" onclick="approveFinance()">Approve</button>
-          </div>
+
+        <div class="card">
+          <h2>Routing History</h2>
+          <div class="history" id="history-list"></div>
         </div>
       </div>
 
-      <div class="card">
-        <h2>Final Signatures</h2>
-        <div id="signature-list"></div>
-      </div>
-
-      <div class="card">
-        <h2>Chairperson Notes</h2>
-        <div class="notes-grid">
-          <textarea id="chair-notes" placeholder="Chairperson notes"></textarea>
-          <button class="btn btn-primary" id="btn-save-chair-notes" onclick="saveNotes('chairpersonNotes')">Save Notes</button>
+      <div>
+        <div class="card">
+          <h2>My Electronic Signature</h2>
+          <div class="muted">Upload a transparent PNG/JPG or draw in the pad. You can also choose manual signature when routing.</div>
+          <img id="stored-signature-preview" class="sig-preview" alt="Stored signature preview" style="display:none;">
+          <div style="margin-top:12px;">
+            <label>Upload Signature Image</label>
+            <input type="file" id="signature-file" accept="image/png,image/jpeg,image/webp">
+          </div>
+          <div style="margin-top:12px;">
+            <label>Signature Pad</label>
+            <canvas id="signature-pad" class="pad"></canvas>
+          </div>
+          <div class="action-row" style="margin-top:10px;">
+            <button class="btn btn-muted" onclick="clearPad()">Clear Pad</button>
+            <button class="btn btn-primary" onclick="saveUploadedSignature()">Save Upload</button>
+            <button class="btn btn-secondary" onclick="savePadSignature()">Save Pad</button>
+          </div>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Pastor Notes</h2>
-        <div class="notes-grid">
-          <textarea id="pastor-notes" placeholder="Pastor notes"></textarea>
-          <button class="btn btn-primary" id="btn-save-pastor-notes" onclick="saveNotes('pastorNotes')">Save Notes</button>
+        <div class="card">
+          <h2>Signature Status</h2>
+          <div id="signature-list"></div>
         </div>
       </div>
     </div>
@@ -190,23 +200,44 @@
 
   <script>
     const db = firebase.firestore();
+    const storage = firebase.storage();
     const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const SIGNERS = [
-      { key: 'chairperson', role: 'Chairperson', label: 'Chairperson' },
-      { key: 'financeChair', role: 'Finance Chair', label: 'Finance Chair' },
       { key: 'treasurer', role: 'Treasurer', label: 'Treasurer' },
       { key: 'auditor', role: 'Auditor', label: 'Auditor' },
+      { key: 'financeChair', role: 'Finance Chair', label: 'Finance Chair' },
+      { key: 'chairperson', role: 'Chairperson', label: 'Chairperson' },
       { key: 'pastor', role: 'Pastor', label: 'Pastor' }
     ];
+    const STATUS_LABELS = {
+      draft: 'Draft - Treasurer',
+      submitted_to_auditor: 'Submitted to Auditor',
+      returned_by_auditor: 'Returned by Auditor',
+      submitted_to_finance: 'Submitted to Finance Chair',
+      returned_by_finance: 'Returned by Finance Chair',
+      routed_to_chairperson: 'Routed to Chairperson',
+      routed_to_pastor: 'Routed to Pastor',
+      finalized: 'Finalized'
+    };
+
     let profile = null;
     let workflow = null;
+    let signatureProfile = null;
+    let drawing = false;
+    let padReady = false;
 
     setupPeriodControls();
-    window.graceBooksAuthReady.then(userProfile => {
+    window.addEventListener('unhandledrejection', event => {
+      const message = event.reason && event.reason.message ? event.reason.message : 'Unable to complete workflow action.';
+      showMessage(message, 'err');
+    });
+    window.graceBooksAuthReady.then(async userProfile => {
       profile = userProfile;
       document.getElementById('role-label').textContent = profile.role;
       document.getElementById('profile-summary').textContent = `${profile.name} (${profile.role})`;
-      loadWorkflow();
+      initSignaturePad();
+      await loadSignatureProfile();
+      await loadWorkflow();
     });
 
     function setupPeriodControls() {
@@ -251,122 +282,287 @@
       renderWorkflow();
     }
 
+    async function loadSignatureProfile() {
+      const doc = await db.collection('userSignatures').doc(profile.uid).get();
+      signatureProfile = doc.exists ? doc.data() : null;
+      const img = document.getElementById('stored-signature-preview');
+      if (signatureProfile && signatureProfile.imageUrl) {
+        img.src = signatureProfile.imageUrl;
+        img.style.display = 'block';
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+    }
+
+    function currentStatus() {
+      return workflow && workflow.status ? workflow.status : 'draft';
+    }
+
     function renderWorkflow() {
+      const status = currentStatus();
       const data = workflow || {};
       const signatures = data.signatures || {};
-      const hasAudit = !!data.auditorApprovedAt;
-      const hasFinance = !!data.financeChairApprovedAt;
-      const readyForSignatures = hasAudit && hasFinance;
-      const allSigned = SIGNERS.every(signer => signatures[signer.key] && signatures[signer.key].signedAt);
-      const status = allSigned ? 'Final' : readyForSignatures ? 'Ready for signatures' : data.treasurerSubmittedAt ? 'Submitted' : 'Draft';
-
       document.getElementById('period-title').textContent = periodLabel();
-      document.getElementById('status-summary').textContent =
-        allSigned ? 'All required signatures are complete.' :
-        readyForSignatures ? 'Auditor and Finance Chair approvals are complete. Final signatures may now be added.' :
-        data.treasurerSubmittedAt ? 'Waiting for Auditor and Finance Chair approvals.' :
-        'Treasurer has not submitted this report yet.';
+      document.getElementById('status-summary').textContent = statusSummary(status);
+
       const pill = document.getElementById('status-pill');
-      pill.className = `pill ${allSigned ? 'final' : readyForSignatures ? 'ready' : 'pending'}`;
-      pill.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${status}`;
+      pill.className = `pill ${status.includes('returned') ? 'returned' : status === 'finalized' ? 'final' : status === 'draft' ? 'pending' : 'ready'}`;
+      pill.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${STATUS_LABELS[status] || status}`;
 
-      document.getElementById('treasurer-meta').textContent = stampText(data.treasurerSubmittedBy, data.treasurerSubmittedAt);
-      document.getElementById('auditor-meta').textContent = stampText(data.auditorApprovedBy, data.auditorApprovedAt);
-      document.getElementById('finance-meta').textContent = stampText(data.financeChairApprovedBy, data.financeChairApprovedAt);
-      document.getElementById('chair-notes').value = data.chairpersonNotes || '';
-      document.getElementById('pastor-notes').value = data.pastorNotes || '';
-
-      document.getElementById('btn-submit').disabled = profile.role !== 'Treasurer' || !!data.treasurerSubmittedAt;
-      document.getElementById('btn-auditor').disabled = profile.role !== 'Auditor' || !data.treasurerSubmittedAt || !!data.auditorApprovedAt;
-      document.getElementById('btn-finance').disabled = profile.role !== 'Finance Chair' || !data.treasurerSubmittedAt || !!data.financeChairApprovedAt;
-      document.getElementById('btn-save-chair-notes').disabled = !['Finance Chair', 'Chairperson'].includes(profile.role);
-      document.getElementById('btn-save-pastor-notes').disabled = profile.role !== 'Pastor';
-
-      document.getElementById('signature-list').innerHTML = SIGNERS.map(signer => {
+      document.getElementById('chain-list').innerHTML = SIGNERS.map(signer => {
         const sig = signatures[signer.key] || {};
-        const canSign = readyForSignatures && profile.role === signer.role && !sig.signedAt;
         return `
           <div class="step">
             <div class="step-head">
               <div>
                 <div class="step-title">${signer.label}</div>
-                <div class="step-meta">${stampText(sig.name, sig.signedAt)}</div>
+                <div class="step-meta">${signatureText(sig)}</div>
               </div>
-              <button class="btn btn-good" ${canSign ? '' : 'disabled'} onclick="signReport('${signer.key}', '${signer.role}')">Sign</button>
             </div>
           </div>`;
       }).join('');
+
+      document.getElementById('signature-list').innerHTML = SIGNERS.map(signer => {
+        const sig = signatures[signer.key] || {};
+        const image = sig.signatureUrl ? `<img class="sig-preview" src="${escapeAttr(sig.signatureUrl)}" alt="${signer.label} signature">` : '';
+        return `
+          <div class="step">
+            <div class="step-title">${signer.label}</div>
+            <div class="step-meta">${signatureText(sig)}</div>
+            ${image}
+          </div>`;
+      }).join('');
+
+      renderHistory(data.history || []);
+      renderActions(status);
     }
 
-    function stampText(name, iso) {
-      if (!iso) return 'Pending';
-      const date = new Date(iso);
-      return `${name || 'Recorded'} - ${date.toLocaleString('en-PH')}`;
+    function statusSummary(status) {
+      const messages = {
+        draft: 'Treasurer signs and submits the report to the Auditor.',
+        submitted_to_auditor: 'Auditor reviews the full report. Auditor may approve/sign or return it to Treasurer.',
+        returned_by_auditor: 'Treasurer must fix the issue and resubmit to Auditor.',
+        submitted_to_finance: 'Finance Chair reviews the report. Finance Chair may approve/sign or return it to Treasurer.',
+        returned_by_finance: 'Treasurer fixes the issue, then routes either back to Finance Chair or back to Auditor for major changes.',
+        routed_to_chairperson: 'Chairperson views the report, affixes signature, and routes to Pastor.',
+        routed_to_pastor: 'Pastor affixes signature to finalize the report.',
+        finalized: 'The report workflow is complete.'
+      };
+      return messages[status] || 'Workflow status is being reviewed.';
     }
 
-    function basePayload(extra) {
+    function renderActions(status) {
+      const actions = [];
+      const role = profile.role;
+      const add = (label, className, handler) => actions.push(`<button class="btn ${className}" onclick="${handler}">${label}</button>`);
+
+      document.getElementById('action-help').textContent = actionHelp(status);
+
+      if (role === 'Treasurer' && ['draft', 'returned_by_auditor'].includes(status)) {
+        add('Electronic Sign & Submit to Auditor', 'btn-primary', "treasurerSubmit('electronic')");
+        add('Manual Sign & Submit to Auditor', 'btn-warn', "treasurerSubmit('manual')");
+      }
+      if (role === 'Treasurer' && status === 'returned_by_finance') {
+        add('Major Change: Route to Auditor', 'btn-primary', "treasurerRouteAfterFinanceReturn('auditor', 'electronic')");
+        add('No Major Change: Route to Finance Chair', 'btn-secondary', "treasurerRouteAfterFinanceReturn('finance', 'electronic')");
+        add('Manual Sign: Route to Auditor', 'btn-warn', "treasurerRouteAfterFinanceReturn('auditor', 'manual')");
+        add('Manual Sign: Route to Finance Chair', 'btn-warn', "treasurerRouteAfterFinanceReturn('finance', 'manual')");
+      }
+      if (role === 'Auditor' && status === 'submitted_to_auditor') {
+        add('Approve, Sign & Route to Finance Chair', 'btn-good', "auditorApprove('electronic')");
+        add('Approve Manually & Route to Finance Chair', 'btn-warn', "auditorApprove('manual')");
+        add('Return to Treasurer', 'btn-secondary', 'returnToTreasurer("returned_by_auditor")');
+      }
+      if (role === 'Finance Chair' && status === 'submitted_to_finance') {
+        add('Approve, Sign & Route to Chairperson', 'btn-good', "financeApprove('electronic')");
+        add('Approve Manually & Route to Chairperson', 'btn-warn', "financeApprove('manual')");
+        add('Return to Treasurer', 'btn-secondary', 'returnToTreasurer("returned_by_finance")');
+      }
+      if (role === 'Chairperson' && status === 'routed_to_chairperson') {
+        add('Affix Signature & Route to Pastor', 'btn-good', "chairpersonSign('electronic')");
+        add('Manual Signature & Route to Pastor', 'btn-warn', "chairpersonSign('manual')");
+      }
+      if (role === 'Pastor' && status === 'routed_to_pastor') {
+        add('Affix Signature & Finalize', 'btn-good', "pastorSign('electronic')");
+        add('Manual Signature & Finalize', 'btn-warn', "pastorSign('manual')");
+      }
+
+      document.getElementById('action-buttons').innerHTML =
+        actions.join('') || '<div class="muted">No action is currently available for your role at this step.</div>';
+    }
+
+    function actionHelp(status) {
+      if (status.includes('returned')) return 'Use the notes below to describe the fix or routing decision.';
+      if (['submitted_to_auditor', 'submitted_to_finance'].includes(status)) return 'Use return notes when sending back to Treasurer.';
+      return 'Choose electronic signature if your saved signature should be affixed. Choose manual if the paper copy will be signed outside the system.';
+    }
+
+    function renderHistory(history) {
+      const newest = [...history].reverse();
+      document.getElementById('history-list').innerHTML = newest.map(item => `
+        <div class="history-item">
+          <div class="step-title">${escapeHtml(item.summary || item.action || 'Workflow update')}</div>
+          <div class="step-meta">${escapeHtml(item.actorName || '')} (${escapeHtml(item.actorRole || '')}) - ${formatDateTime(item.createdAt)}</div>
+          ${item.notes ? `<div class="muted">${escapeHtml(item.notes)}</div>` : ''}
+        </div>
+      `).join('') || '<div class="muted">No routing history yet.</div>';
+    }
+
+    function signatureText(sig) {
+      if (!sig || !sig.signedAt) return 'Pending';
+      const mode = sig.mode === 'manual' ? 'Manual signature selected' : 'Electronic signature affixed';
+      return `${mode} by ${sig.name || 'Recorded'} - ${formatDateTime(sig.signedAt)}`;
+    }
+
+    function baseWorkflow() {
+      const type = document.getElementById('report-type').value;
       return {
         reportId: workflowId(),
-        reportType: document.getElementById('report-type').value,
+        reportType: type,
         year: Number(document.getElementById('period-year').value),
-        month: document.getElementById('report-type').value === 'monthly' ? Number(document.getElementById('period-month').value) + 1 : null,
+        month: type === 'monthly' ? Number(document.getElementById('period-month').value) + 1 : null,
         periodLabel: periodLabel(),
-        updatedAt: new Date().toISOString(),
-        ...extra
+        updatedAt: new Date().toISOString()
       };
     }
 
-    async function submitReport() {
-      await saveWorkflow(basePayload({
-        status: 'submitted',
-        treasurerSubmittedAt: new Date().toISOString(),
-        treasurerSubmittedBy: profile.name,
-        treasurerUid: profile.uid
-      }), 'Report submitted for approval.');
+    async function treasurerSubmit(mode) {
+      const signatures = removeSignaturesAfter('treasurer');
+      signatures.treasurer = await makeSignature('treasurer', mode);
+      await saveTransition({
+        status: 'submitted_to_auditor',
+        routeTo: 'Auditor',
+        signatures
+      }, 'Treasurer signed and submitted report to Auditor.');
     }
 
-    async function approveAudit() {
-      await saveWorkflow(basePayload({
-        auditorApprovedAt: new Date().toISOString(),
-        auditorApprovedBy: profile.name,
-        auditorUid: profile.uid
-      }), 'Auditor approval recorded.');
+    async function treasurerRouteAfterFinanceReturn(target, mode) {
+      const signatures = target === 'auditor' ? removeSignaturesAfter('treasurer') : removeSignaturesAfter('financeChair');
+      signatures.treasurer = await makeSignature('treasurer', mode);
+      await saveTransition({
+        status: target === 'auditor' ? 'submitted_to_auditor' : 'submitted_to_finance',
+        routeTo: target === 'auditor' ? 'Auditor' : 'Finance Chair',
+        signatures
+      }, target === 'auditor'
+        ? 'Treasurer marked major changes and routed report back to Auditor.'
+        : 'Treasurer marked no major changes and routed report back to Finance Chair.');
     }
 
-    async function approveFinance() {
-      await saveWorkflow(basePayload({
-        financeChairApprovedAt: new Date().toISOString(),
-        financeChairApprovedBy: profile.name,
-        financeChairUid: profile.uid
-      }), 'Finance Chair approval recorded.');
+    async function auditorApprove(mode) {
+      const signatures = removeSignaturesAfter('auditor');
+      signatures.auditor = await makeSignature('auditor', mode);
+      await saveTransition({
+        status: 'submitted_to_finance',
+        routeTo: 'Finance Chair',
+        signatures
+      }, 'Auditor approved, signed, and routed report to Finance Chair.');
     }
 
-    async function signReport(key, expectedRole) {
-      if (profile.role !== expectedRole) return;
-      await saveWorkflow(basePayload({
-        signatures: {
-          [key]: {
-            name: profile.name,
-            role: profile.role,
-            uid: profile.uid,
-            signedAt: new Date().toISOString()
-          }
-        }
-      }), `${expectedRole} signature recorded.`);
+    async function financeApprove(mode) {
+      const signatures = removeSignaturesAfter('financeChair');
+      signatures.financeChair = await makeSignature('financeChair', mode);
+      await saveTransition({
+        status: 'routed_to_chairperson',
+        routeTo: 'Chairperson',
+        signatures
+      }, 'Finance Chair approved, signed, and routed report to Chairperson.');
     }
 
-    async function saveNotes(field) {
-      const value = field === 'pastorNotes'
-        ? document.getElementById('pastor-notes').value.trim()
-        : document.getElementById('chair-notes').value.trim();
-      await saveWorkflow(basePayload({ [field]: value }), 'Notes saved.');
+    async function chairpersonSign(mode) {
+      const signatures = removeSignaturesAfter('chairperson');
+      signatures.chairperson = await makeSignature('chairperson', mode);
+      await saveTransition({
+        status: 'routed_to_pastor',
+        routeTo: 'Pastor',
+        signatures
+      }, 'Chairperson signed and routed report to Pastor.');
     }
 
-    async function saveWorkflow(payload, successText) {
+    async function pastorSign(mode) {
+      const signatures = { ...((workflow && workflow.signatures) || {}) };
+      signatures.pastor = await makeSignature('pastor', mode);
+      await saveTransition({
+        status: 'finalized',
+        routeTo: 'Completed',
+        signatures,
+        finalizedAt: new Date().toISOString(),
+        finalizedBy: profile.name
+      }, 'Pastor signed and finalized the report.');
+    }
+
+    async function returnToTreasurer(status) {
+      const notes = document.getElementById('route-notes').value.trim();
+      if (!notes) {
+        showMessage('Return notes are required when sending the report back to Treasurer.', 'err');
+        return;
+      }
+      const signatures = status === 'returned_by_auditor'
+        ? removeSignaturesAfter('treasurer')
+        : removeSignaturesAfter('auditor');
+      await saveTransition({
+        status,
+        routeTo: 'Treasurer',
+        returnNotes: notes,
+        signatures
+      }, status === 'returned_by_auditor'
+        ? 'Auditor returned report to Treasurer.'
+        : 'Finance Chair returned report to Treasurer.');
+    }
+
+    function removeSignaturesAfter(key) {
+      const order = ['treasurer', 'auditor', 'financeChair', 'chairperson', 'pastor'];
+      const keepThrough = order.indexOf(key);
+      const current = (workflow && workflow.signatures) || {};
+      return order.slice(0, keepThrough + 1).reduce((next, item) => {
+        if (current[item]) next[item] = current[item];
+        return next;
+      }, {});
+    }
+
+    async function makeSignature(key, mode) {
+      if (mode === 'electronic' && (!signatureProfile || !signatureProfile.imageUrl)) {
+        throw new Error('Save your electronic signature first, or choose the manual signature option.');
+      }
+      return {
+        key,
+        name: profile.name || profile.role,
+        role: profile.role,
+        uid: profile.uid,
+        mode,
+        signatureUrl: mode === 'electronic' ? signatureProfile.imageUrl : '',
+        signedAt: new Date().toISOString()
+      };
+    }
+
+    async function saveTransition(extra, summary) {
       try {
+        const now = new Date().toISOString();
+        const notes = document.getElementById('route-notes').value.trim();
+        const history = [
+          ...((workflow && workflow.history) || []),
+          {
+            summary,
+            notes,
+            actorUid: profile.uid,
+            actorName: profile.name,
+            actorRole: profile.role,
+            createdAt: now
+          }
+        ];
+        const payload = {
+          ...baseWorkflow(),
+          ...extra,
+          lastAction: summary,
+          lastActionBy: profile.name,
+          lastActionRole: profile.role,
+          history,
+          updatedAt: now
+        };
         await db.collection('reportReviews').doc(workflowId()).set(payload, { merge: true });
-        await writeAuditLog(successText);
-        showMessage(successText, 'ok');
+        await writeAuditLog(summary, notes);
+        document.getElementById('route-notes').value = '';
+        showMessage(summary, 'ok');
         await loadWorkflow();
       } catch (error) {
         console.error(error);
@@ -374,13 +570,14 @@
       }
     }
 
-    async function writeAuditLog(summary) {
+    async function writeAuditLog(summary, notes) {
       const user = firebase.auth().currentUser;
       await db.collection('auditLogs').add({
         action: 'reportWorkflow',
         collection: 'reportReviews',
         docId: workflowId(),
         summary,
+        notes: notes || '',
         actorUid: user ? user.uid : '',
         actorEmail: user ? user.email : '',
         actorName: profile ? profile.name : '',
@@ -389,11 +586,120 @@
       });
     }
 
+    async function saveUploadedSignature() {
+      const file = document.getElementById('signature-file').files[0];
+      if (!file) return showMessage('Choose a signature image first.', 'err');
+      if (!file.type.startsWith('image/')) return showMessage('Signature must be an image file.', 'err');
+      await uploadSignatureBlob(file, file.type);
+    }
+
+    async function savePadSignature() {
+      const canvas = document.getElementById('signature-pad');
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        return showMessage('Draw your signature before saving the pad.', 'err');
+      }
+      canvas.toBlob(async blob => {
+        await uploadSignatureBlob(blob, 'image/png');
+      }, 'image/png');
+    }
+
+    async function uploadSignatureBlob(blob, contentType) {
+      try {
+        const path = `signatures/${profile.uid}/signature-${Date.now()}.png`;
+        const ref = storage.ref(path);
+        await ref.put(blob, { contentType });
+        const imageUrl = await ref.getDownloadURL();
+        await db.collection('userSignatures').doc(profile.uid).set({
+          uid: profile.uid,
+          name: profile.name,
+          role: profile.role,
+          imageUrl,
+          storagePath: path,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        await loadSignatureProfile();
+        showMessage('Electronic signature saved.', 'ok');
+      } catch (error) {
+        console.error(error);
+        showMessage(error.message || 'Unable to save signature.', 'err');
+      }
+    }
+
+    function initSignaturePad() {
+      if (padReady) return;
+      const canvas = document.getElementById('signature-pad');
+      const ctx = canvas.getContext('2d');
+      const resize = () => {
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * ratio;
+        canvas.height = rect.height * ratio;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#111';
+      };
+      resize();
+      window.addEventListener('resize', resize);
+      const point = event => {
+        const rect = canvas.getBoundingClientRect();
+        const touch = event.touches && event.touches[0];
+        const source = touch || event;
+        return { x: source.clientX - rect.left, y: source.clientY - rect.top };
+      };
+      const start = event => {
+        event.preventDefault();
+        drawing = true;
+        const p = point(event);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+      };
+      const move = event => {
+        if (!drawing) return;
+        event.preventDefault();
+        const p = point(event);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      };
+      const stop = () => { drawing = false; };
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      canvas.addEventListener('mouseup', stop);
+      canvas.addEventListener('mouseleave', stop);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', stop);
+      padReady = true;
+    }
+
+    function clearPad() {
+      const canvas = document.getElementById('signature-pad');
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    }
+
     function showMessage(text, type) {
       const el = document.getElementById('message');
       el.textContent = text;
       el.className = `message ${type} show`;
-      setTimeout(() => el.classList.remove('show'), 3500);
+      setTimeout(() => el.classList.remove('show'), 4500);
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '';
+      return new Date(value).toLocaleString('en-PH');
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replace(/`/g, '&#96;');
     }
 
     function openPrintReport() {
