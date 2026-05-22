@@ -325,16 +325,22 @@
           </div>`;
       }).join('');
 
-      document.getElementById('signature-list').innerHTML = SIGNERS.map(signer => {
-        const sig = signatures[signer.key] || {};
-        const image = sig.signatureUrl ? `<img class="sig-preview" src="${escapeAttr(sig.signatureUrl)}" alt="${signer.label} signature">` : '';
-        return `
-          <div class="step">
-            <div class="step-title">${signer.label}</div>
-            <div class="step-meta">${signatureText(sig)}</div>
-            ${image}
-          </div>`;
-      }).join('');
+      const mySigner = SIGNERS.find(signer => signer.role === profile.role);
+      const myWorkflowSig = mySigner ? signatures[mySigner.key] || {} : {};
+      const mySavedImage = signatureProfile && signatureProfile.imageUrl
+        ? `<img class="sig-preview" src="${escapeAttr(signatureProfile.imageUrl)}" alt="My saved signature">`
+        : '';
+      document.getElementById('signature-list').innerHTML = mySigner ? `
+        <div class="step">
+          <div class="step-title">My Saved Electronic Signature</div>
+          <div class="step-meta">${signatureProfile && signatureProfile.imageUrl ? 'Saved and ready to affix.' : 'No electronic signature saved yet.'}</div>
+          ${mySavedImage}
+        </div>
+        <div class="step">
+          <div class="step-title">My Signature On This Report</div>
+          <div class="step-meta">${signatureText(myWorkflowSig)}</div>
+        </div>
+      ` : '<div class="muted">Your role is not a signer in this workflow.</div>';
 
       renderHistory(data.history || []);
       renderActions(status);
