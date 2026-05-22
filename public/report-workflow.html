@@ -178,6 +178,7 @@
           <div style="margin-top:12px;">
             <label>Upload Signature Image</label>
             <input type="file" id="signature-file" accept="image/png,image/jpeg,image/webp">
+            <div class="step-meta">Choose an image file, then save it as your electronic signature.</div>
           </div>
           <div style="margin-top:12px;">
             <label>Signature Pad</label>
@@ -185,7 +186,7 @@
           </div>
           <div class="action-row" style="margin-top:10px;">
             <button class="btn btn-muted" onclick="clearPad()">Clear Pad</button>
-            <button class="btn btn-primary" onclick="saveUploadedSignature()">Save Upload</button>
+            <button class="btn btn-primary" onclick="saveUploadedSignature()">Save Selected Image</button>
             <button class="btn btn-secondary" onclick="savePadSignature()">Save Pad</button>
           </div>
         </div>
@@ -225,6 +226,7 @@
     let signatureProfile = null;
     let drawing = false;
     let padReady = false;
+    let actionBusy = false;
 
     setupPeriodControls();
     window.addEventListener('unhandledrejection', event => {
@@ -355,7 +357,7 @@
     function renderActions(status) {
       const actions = [];
       const role = profile.role;
-      const add = (label, className, handler) => actions.push(`<button class="btn ${className}" onclick="${handler}">${label}</button>`);
+      const add = (label, className, handler) => actions.push(`<button class="btn ${className}" ${actionBusy ? 'disabled' : ''} onclick="${handler}">${actionBusy ? 'Working...' : label}</button>`);
 
       document.getElementById('action-help').textContent = actionHelp(status);
 
@@ -494,6 +496,9 @@
     async function returnToTreasurer(status) {
       const notes = document.getElementById('route-notes').value.trim();
       if (!notes) {
+        const notesEl = document.getElementById('route-notes');
+        notesEl.focus();
+        notesEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         showMessage('Return notes are required when sending the report back to Treasurer.', 'err');
         return;
       }
@@ -536,6 +541,9 @@
     }
 
     async function saveTransition(extra, summary) {
+      if (actionBusy) return;
+      actionBusy = true;
+      renderActions(currentStatus());
       try {
         const now = new Date().toISOString();
         const notes = document.getElementById('route-notes').value.trim();
@@ -559,7 +567,12 @@
           history,
           updatedAt: now
         };
-        await db.collection('reportReviews').doc(workflowId()).set(payload, { merge: true });
+        const ref = db.collection('reportReviews').doc(workflowId());
+        if (workflow) {
+          await ref.update(payload);
+        } else {
+          await ref.set(payload, { merge: true });
+        }
         await writeAuditLog(summary, notes);
         document.getElementById('route-notes').value = '';
         showMessage(summary, 'ok');
@@ -567,6 +580,9 @@
       } catch (error) {
         console.error(error);
         showMessage(error.message || 'Unable to update workflow.', 'err');
+      } finally {
+        actionBusy = false;
+        renderActions(currentStatus());
       }
     }
 
@@ -720,6 +736,7 @@
       const el = document.getElementById('message');
       el.textContent = text;
       el.className = `message ${type} show`;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => el.classList.remove('show'), 4500);
     }
 
