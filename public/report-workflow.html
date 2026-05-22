@@ -374,12 +374,12 @@
       if (role === 'Auditor' && status === 'submitted_to_auditor') {
         add('Approve, Sign & Route to Finance Chair', 'btn-good', "auditorApprove('electronic')");
         add('Approve Manually & Route to Finance Chair', 'btn-warn', "auditorApprove('manual')");
-        add('Return to Treasurer', 'btn-secondary', 'returnToTreasurer("returned_by_auditor")');
+        add('Return to Treasurer', 'btn-secondary', "returnToTreasurer('returned_by_auditor')");
       }
       if (role === 'Finance Chair' && status === 'submitted_to_finance') {
         add('Approve, Sign & Route to Chairperson', 'btn-good', "financeApprove('electronic')");
         add('Approve Manually & Route to Chairperson', 'btn-warn', "financeApprove('manual')");
-        add('Return to Treasurer', 'btn-secondary', 'returnToTreasurer("returned_by_finance")');
+        add('Return to Treasurer', 'btn-secondary', "returnToTreasurer('returned_by_finance')");
       }
       if (role === 'Chairperson' && status === 'routed_to_chairperson') {
         add('Affix Signature & Route to Pastor', 'btn-good', "chairpersonSign('electronic')");
