@@ -666,6 +666,7 @@
   // Populate UI dates
   const now = new Date();
   const yrSel = document.getElementById('sel-year');
+  const initialReportParams = new URLSearchParams(window.location.search);
   document.getElementById('sel-month').value = now.getMonth();
 
   // ── KUNIN ANG AVAILABLE YEARS SA CLOUD (SYNCED SA BVA) ──
@@ -684,6 +685,7 @@
     
     // Panatilihin ang napiling taon, o gamitin ang current year
     yrSel.value = currentVal || now.getFullYear();
+    applyInitialReportParams();
     render(); 
   });
 
@@ -793,10 +795,35 @@
 
   function setReportType(type, btn) {
     reportType = type;
-    document.querySelectorAll('.rtype-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    const reportButtons = document.querySelectorAll('.report-type-tabs .rtype-btn');
+    reportButtons.forEach(b => b.classList.remove('active'));
+    const activeBtn = btn || (type === 'annual' ? reportButtons[1] : reportButtons[0]);
+    if (activeBtn) activeBtn.classList.add('active');
     document.getElementById('month-control').style.display = type === 'monthly' ? 'block' : 'none'; 
     render();
+  }
+
+  function applyInitialReportParams() {
+    const type = initialReportParams.get('type');
+    if (type === 'annual' || type === 'monthly') {
+      setReportType(type);
+    }
+
+    const year = initialReportParams.get('year');
+    if (year && /^\d{4}$/.test(year)) {
+      if (![...yrSel.options].some(option => option.value === year)) {
+        yrSel.add(new Option(year, year));
+      }
+      yrSel.value = year;
+    }
+
+    const month = initialReportParams.get('month');
+    if (month !== null) {
+      const monthIndex = Number(month);
+      if (Number.isInteger(monthIndex) && monthIndex >= 0 && monthIndex <= 11) {
+        document.getElementById('sel-month').value = String(monthIndex);
+      }
+    }
   }
 
   // Function pang-save ng Signatories sa Firebase (Tatlong fields per person)
