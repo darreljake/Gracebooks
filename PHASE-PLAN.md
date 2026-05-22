@@ -151,6 +151,18 @@ Status: Started.
   - Attach signatures only after each party signs. Started as workflow records in Firestore.
   - Final print report carries only completed/approved signatures.
 
+### Next Enhancements
+
+- Notifications:
+  - Add in-app and/or email notifications when a report is routed, returned, or finalized.
+  - Notify the next responsible role immediately after each workflow transition.
+- Finalized report locking:
+  - Lock a report after Pastor finalization.
+  - Require Treasurer/admin reopen action before any finalized workflow can be edited again.
+- Better return notes:
+  - Show the latest return note prominently to the Treasurer.
+  - Keep return-note history visible in the workflow timeline for Auditor and Finance Chair returns.
+
 ## Phase 6 - Role and Access Enhancements
 
 Status: Not started.

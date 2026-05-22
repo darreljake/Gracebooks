@@ -255,6 +255,37 @@
       border-radius: 8px; padding: 12px;
       font-size: 12px; color: #7d6608; margin: 12px 0;
     }
+    .cash-count-card {
+      background: white; border: 1px solid #e7edf0; border-radius: 12px;
+      padding: 16px; margin: 14px 0;
+    }
+    .cash-count-card h5 {
+      font-size: 13px; font-weight: 700; color: #333; margin-bottom: 6px;
+    }
+    .cash-count-help { font-size: 12px; color: #667085; margin-bottom: 12px; }
+    .denom-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 8px; margin-bottom: 12px;
+    }
+    .denom-cell {
+      border: 1px solid #edf0f2; border-radius: 8px; padding: 8px; background: #fbfcfd;
+    }
+    .denom-cell label {
+      display: flex; justify-content: space-between; gap: 8px;
+      font-size: 11px; color: #555; margin-bottom: 5px; font-weight: 700;
+    }
+    .denom-cell input {
+      width: 100%; padding: 8px; border: 1px solid #d9e0e5; border-radius: 7px;
+      font-family: 'Poppins', sans-serif; font-size: 13px;
+    }
+    .cash-check-status {
+      border-radius: 9px; padding: 10px 12px; font-size: 12px; font-weight: 700;
+      display: grid; gap: 4px; background: #fdecea; color: #a93226;
+    }
+    .cash-check-status.match { background: #eafaf1; color: #1e8449; }
+    .btn-confirm-income:disabled {
+      background: #b8c2c9; cursor: not-allowed;
+    }
     .btn-confirm-income {
       width: 100%; padding: 14px; background: #1e8449;
       color: white; border: none; border-radius: 10px;
@@ -792,6 +823,20 @@
   let draftRecords   = [];
   let selectedType   = 'Source of Funds';
   let reviewEditingId  = null;
+  const DENOMINATIONS = [
+    { key: 'bill1000', label: '₱1,000 bill', value: 1000 },
+    { key: 'bill500', label: '₱500 bill', value: 500 },
+    { key: 'bill200', label: '₱200 bill', value: 200 },
+    { key: 'bill100', label: '₱100 bill', value: 100 },
+    { key: 'bill50', label: '₱50 bill', value: 50 },
+    { key: 'bill20', label: '₱20 bill', value: 20 },
+    { key: 'coin20', label: '₱20 coin', value: 20 },
+    { key: 'coin10', label: '₱10 coin', value: 10 },
+    { key: 'coin5', label: '₱5 coin', value: 5 },
+    { key: 'coin1', label: '₱1 coin', value: 1 },
+    { key: 'coin025', label: '₱0.25 coin', value: 0.25 }
+  ];
+  let cashDenominationCounts = {};
 
   async function requireAuth() {
     return new Promise((resolve) => {
@@ -1223,6 +1268,7 @@
       alert('No entries to review yet.'); return;
     }
     reviewEditingId = null;
+    cashDenominationCounts = {};
     renderReviewBody();
     document.getElementById('review-overlay').classList.add('active');
   };
@@ -1242,6 +1288,7 @@
     const total     = filteredRecords.reduce((s,r) => s + r.amount, 0);
     const cashTotal = filteredRecords.filter(r=>r.payment==='Cash').reduce((s,r)=>s+r.amount,0);
     const bankTotal = filteredRecords.filter(r=>r.payment==='Bank Transfer').reduce((s,r)=>s+r.amount,0);
+    const cashCountHTML = cashTotal > 0 ? buildCashCountHtml(cashTotal) : '';
 
     const categoryIcons = {
       'Source of Funds'    : '🏦',
@@ -1400,17 +1447,79 @@
 
       ${groupsHTML}
 
+      ${cashCountHTML}
+
       <div class="review-confirm-section" style="margin-top:14px;">
         <h5>✅ Summary</h5>
         <div class="rc-row"><span>Total Entries:</span> <span>${filteredRecords.length}</span></div>
         <div class="rc-row total"><span>Total Amount:</span> <span>₱${fmt(total)}</span></div>
         <div class="rc-note">By confirming, all entries will be saved directly to the main ledger and member records.</div>
-        <button class="btn-confirm-income" onclick="submitAllEntries()">🚀 Confirm & Save All</button>
+        <button class="btn-confirm-income" id="confirm-income-btn" onclick="submitAllEntries()" ${cashTotal > 0 ? 'disabled' : ''}>🚀 Confirm & Save All</button>
         <button class="btn-cancel-review" onclick="closeReview()">Cancel</button>
       </div>`;
+    updateCashCountStatus(cashTotal);
   };
 
   // ── 8b. TOGGLE COLLAPSIBLE GROUP (works for both levels) ─────────────────
+  function buildCashCountHtml(expectedCashTotal) {
+    const inputs = DENOMINATIONS.map(denom => {
+      const savedCount = cashDenominationCounts[denom.key] || 0;
+      return `
+        <div class="denom-cell">
+          <label><span>${denom.label}</span><span>₱${fmt(denom.value)}</span></label>
+          <input type="number" min="0" step="1" value="${savedCount || ''}"
+            inputmode="numeric" data-denom="${denom.value}" data-denom-key="${denom.key}"
+            oninput="updateCashCountStatus(${expectedCashTotal})"
+            placeholder="0">
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="cash-count-card">
+        <h5>Cash Denomination Check</h5>
+        <div class="cash-count-help">
+          Count all cash bills and coins. The counted cash must match the Cash total before saving.
+        </div>
+        <div class="denom-grid">${inputs}</div>
+        <div class="cash-check-status" id="cash-check-status"></div>
+      </div>`;
+  }
+
+  window.updateCashCountStatus = function(expectedCashTotal) {
+    const status = document.getElementById('cash-check-status');
+    const confirmBtn = document.getElementById('confirm-income-btn');
+    if (!status) return true;
+
+    let countedTotal = 0;
+    document.querySelectorAll('#review-body [data-denom]').forEach(input => {
+      const denom = Number(input.dataset.denom);
+      const count = Math.max(0, parseInt(input.value, 10) || 0);
+      cashDenominationCounts[input.dataset.denomKey] = count;
+      countedTotal += denom * count;
+    });
+
+    const expected = Number(expectedCashTotal || 0);
+    const diff = Number((countedTotal - expected).toFixed(2));
+    const matched = Math.abs(diff) < 0.01;
+    status.classList.toggle('match', matched);
+    status.innerHTML = `
+      <div>Cash entries total: ₱${fmt(expected)} | Counted cash: ₱${fmt(countedTotal)}</div>
+      <div>${matched ? 'Matched. You may confirm and save.' : `Difference: ₱${fmt(Math.abs(diff))} ${diff > 0 ? 'over' : 'short'}`}</div>
+    `;
+    if (confirmBtn) confirmBtn.disabled = !matched;
+    return matched;
+  };
+
+  function currentReviewCashTotal() {
+    const yearFilter = (document.getElementById('budget-year') || {}).value;
+    const filteredRecords = yearFilter
+      ? draftRecords.filter(r => r.date && r.date.startsWith(yearFilter))
+      : draftRecords;
+    return filteredRecords
+      .filter(r => r.payment === 'Cash')
+      .reduce((sum, record) => sum + record.amount, 0);
+  }
+
   window.toggleReviewGroup = function(safeId) {
     const body = document.getElementById(safeId + '-body');
     const icon = document.getElementById(safeId + '-icon');
@@ -1487,6 +1596,11 @@
 
   window.submitAllEntries = async function() {
     if (draftRecords.length === 0) return;
+    const cashTotal = currentReviewCashTotal();
+    if (cashTotal > 0 && !updateCashCountStatus(cashTotal)) {
+      alert('Cash denomination count must match the Cash total before saving.');
+      return;
+    }
     
     const btn = document.querySelector('.btn-confirm-income');
     btn.innerHTML = '⏳ Saving to Cloud...';
