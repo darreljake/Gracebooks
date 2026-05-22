@@ -260,7 +260,6 @@
     .workflow-sig-space { height: 48px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 3px; }
     .workflow-sig-img { max-width: 155px; max-height: 46px; object-fit: contain; display: block; filter: brightness(0); }
     .workflow-sig-line { border-top: 1px solid var(--dark); margin-bottom: 2px; }
-    .workflow-sig-manual { font-size: 9px; color: #777; padding-bottom: 5px; }
     .workflow-sig-unavailable { font-size: 9px; color: #777; padding-bottom: 5px; }
     
     /* ── FOOTER ──────────────────────────────────────────────── */
@@ -892,9 +891,7 @@
     const image = sig.signedAt && sig.mode === 'electronic' && sig.signatureUrl
       ? `<div class="workflow-sig-space"><img class="workflow-sig-img" src="${escapeAttr(sig.signatureUrl)}" alt="Signature" onerror="this.parentElement.innerHTML='<span class=&quot;workflow-sig-unavailable&quot;>Signature image unavailable</span>';"></div>`
       : '';
-    const manual = sig.signedAt && sig.mode === 'manual'
-      ? '<div class="workflow-sig-space"><span class="workflow-sig-manual">Manual signature</span></div>'
-      : '<div class="workflow-sig-space"></div>';
+    const manual = '<div class="workflow-sig-space"></div>';
     return `
       ${image || manual}
       <div class="workflow-sig-line"></div>
