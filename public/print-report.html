@@ -861,7 +861,7 @@
 
   function workflowSignatureHtml(key, fallbackName, fallbackTitle) {
     const sig = workflowSignatures[key] || {};
-    const name = sig.signedAt ? (sig.name || fallbackName || '') : '';
+    const name = fallbackName || sig.name || '';
     const image = sig.signedAt && sig.mode === 'electronic' && sig.signatureUrl
       ? `<div class="workflow-sig-space"><img class="workflow-sig-img" src="${escapeAttr(sig.signatureUrl)}" alt="Signature" onerror="this.parentElement.innerHTML='<span class=&quot;workflow-sig-unavailable&quot;>Signature image unavailable</span>';"></div>`
       : '';
