@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Contribution Entry — GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(rgba(245,245,245,0.9), rgba(245,245,245,0.9)), url('church.jpg');
+      background-size: cover;
+      background-attachment: fixed;
+      min-height: 100vh;
+      color: #333;
+    }
+    /* STICKY TOPBAR */
+    .topbar {
+      background: #8B0000; color: white;
+      padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white;
+      border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px; transition: 0.3s;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 700px; margin: 30px auto; padding: 0 20px; }
+    .entry-layout { max-width: 1120px; }
+    .entry-card { align-self: start; }
+    .draft-card { align-self: start; }
+    .card {
+      background: white; border-radius: 15px;
+      padding: 30px; box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+      margin-bottom: 24px;
+    }
+    .card h3 {
+      color: #8B0000; font-size: 18px;
+      margin-bottom: 20px; padding-bottom: 10px;
+      border-bottom: 2px solid #f8d7da;
+    }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600; }
+    select, input {
+      width: 100%; padding: 12px;
+      border: 1px solid #ddd; border-radius: 10px;
+      font-size: 14px; font-family: 'Poppins', sans-serif;
+      background: #fff;
+    }
+    select:focus, input:focus {
+      outline: none; border-color: #8B0000;
+      box-shadow: 0 0 5px rgba(139,0,0,0.1);
+    }
+    .type-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .type-btn {
+      padding: 10px 16px; border-radius: 25px;
+      border: 1px solid #eee; background: #f9f9f9;
+      font-size: 13px; font-family: 'Poppins', sans-serif;
+      cursor: pointer; transition: all 0.2s; color: #555;
+    }
+    .type-btn:hover { background: #f0f0f0; border-color: #ccc; }
+    .type-btn.active { color: white; border-color: transparent; font-weight: 600; }
+    
+    .type-btn.source.active     { background: #8B0000; box-shadow: 0 4px 10px rgba(139,0,0,0.2); }
+    .type-btn.occasional.active { background: #1e8449; }
+    .type-btn.special.active    { background: #d35400; }
+    .type-btn.building.active   { background: #7d3c98; }
+    .type-btn.mission.active    { background: #1a6b8a; }
+    .type-btn.investment.active { background: #b7950b; }
+
+    .btn-save {
+      width: 100%; padding: 16px; background: #8B0000;
+      color: white; border: none; border-radius: 10px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      transition: 0.3s; margin-top: 10px;
+    }
+    .btn-save:hover { background: #a30000; transform: translateY(-1px); }
+    .total-bar {
+      background: #8B0000; color: white;
+      padding: 14px 20px; border-radius: 10px;
+      display: flex; justify-content: space-between;
+      font-size: 15px; font-weight: 600; margin-bottom: 16px;
+    }
+    .summary-card {
+      background: #fff; border-radius: 10px;
+      padding: 12px; text-align: center;
+      border-bottom: 4px solid #8B0000;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+    }
+    .summary-card .s-amount { color: #8B0000; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { color: #8B0000; padding: 12px; text-align: left; border-bottom: 2px solid #f8d7da; }
+    td { padding: 12px; border-bottom: 1px solid #eee; }
+    .badge { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-SourceofFunds { background: #f8d7da; color: #8B0000; }
+    .badge-OccasionalOffering { background: #d4edda; color: #155724; }
+    .badge-SpecialOffering { background: #fdebd0; color: #d35400; }
+    .badge-BuildingFund { background: #f4ecf7; color: #7d3c98; }
+    .badge-MissionFund { background: #eaf2ff; color: #1a6b8a; }
+    .badge-InvestmentIncome { background: #fcf3cf; color: #b7950b; }
+
+    .pledge-section {
+      background: #fdf2f2; border: 1px dashed #8B0000;
+      border-radius: 10px; padding: 20px;
+      margin-bottom: 16px; display: none;
+    }
+
+    .review-overlay {
+      display: none; position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      z-index: 10000; justify-content: center; align-items: center;
+    }
+    .review-overlay.active { display: flex; }
+    .review-modal {
+      background: #f4f4f4; width: 90%; max-width: 600px;
+      max-height: 85vh; border-radius: 20px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .review-header {
+      background: #8B0000; color: white;
+      padding: 16px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
+    }
+    .review-header h3 { font-size: 18px; font-weight: 600; margin: 0; }
+    .review-close {
+      background: rgba(255,255,255,0.2); border: none;
+      color: white; width: 32px; height: 32px;
+      border-radius: 50%; cursor: pointer; font-size: 16px;
+    }
+    .review-body {
+      flex: 1; overflow-y: auto; padding: 20px;
+    }
+    .review-hero {
+      background: linear-gradient(135deg, #1e8449, #27ae60);
+      border-radius: 14px; padding: 20px; color: white; margin-bottom: 16px;
+    }
+    .rh-label  { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+    .rh-amount { font-size: 32px; font-weight: 700; margin-bottom: 12px; }
+    .rh-stats  { display: flex; gap: 16px; flex-wrap: wrap; }
+    .rh-stat .rs-label { font-size: 11px; opacity: 0.75; }
+    .rh-stat .rs-value { font-size: 14px; font-weight: 600; }
+    .review-breakdown {
+      background: white; border-radius: 12px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    .review-breakdown h5 { font-size: 13px; font-weight: 600; color: #333; margin-bottom: 10px; }
+    .rb-row {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px;
+    }
+    .rb-row:last-child { border-bottom: none; }
+    .rb-type   { color: #555; }
+    .rb-amount { font-weight: 700; color: #8B0000; }
+    .review-entries {
+      background: white; border-radius: 12px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    .review-entries-header {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 12px;
+    }
+    .review-entries h5 { font-size: 13px; font-weight: 600; color: #333; }
+    .re-count {
+      background: #fdf2f2; color: #8B0000;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .re-item {
+      border: 1px solid #f0f0f0; border-radius: 10px;
+      padding: 12px; margin-bottom: 8px; transition: 0.2s;
+    }
+    .re-item.editing { border-color: #8B0000; background: #fdf8f8; }
+    .re-top {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 6px;
+    }
+    .re-name   { font-size: 13px; font-weight: 600; color: #333; }
+    .re-amount { font-size: 14px; font-weight: 700; color: #8B0000; }
+    .re-meta   { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .re-badge  { padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+    .re-badge.type    { background: #fdf2f2; color: #8B0000; }
+    .re-badge.payment { background: #eaf2ff; color: #1a5276; }
+    .re-badge.budget  { background: #e8f8f5; color: #0e6251; }
+    .re-actions { display: flex; gap: 6px; }
+    .re-edit {
+      flex: 1; padding: 6px; background: #eaf2ff;
+      color: #1a5276; border: none; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .re-delete {
+      flex: 1; padding: 6px; background: #fdf2f2;
+      color: #c0392b; border: none; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .re-edit:hover   { background: #d6eaf8; }
+    .re-delete:hover { background: #fadbd8; }
+    .re-edit-form {
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;
+    }
+    .re-edit-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .re-edit-row .fg { flex: 1; min-width: 120px; }
+    .re-edit-row .fg label {
+      display: block; font-size: 10px; color: #888;
+      margin-bottom: 3px; font-weight: 600; text-transform: uppercase;
+    }
+    .re-edit-row .fg input,
+    .re-edit-row .fg select {
+      width: 100%; padding: 8px 10px;
+      border: 1px solid #ddd; border-radius: 7px;
+      font-size: 12px; font-family: 'Poppins', sans-serif;
+    }
+    .re-edit-btns { display: flex; gap: 6px; }
+    .re-save-btn {
+      flex: 1; padding: 8px; background: #8B0000;
+      color: white; border: none; border-radius: 7px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .re-cancel-btn {
+      flex: 1; padding: 8px; background: #f5f5f5;
+      color: #555; border: none; border-radius: 7px;
+      font-size: 12px; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .review-confirm-section {
+      background: white; border-radius: 12px;
+      padding: 16px; margin-bottom: 16px;
+    }
+    .review-confirm-section h5 {
+      font-size: 13px; font-weight: 600; color: #333; margin-bottom: 12px;
+    }
+    .rc-row {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px;
+    }
+    .rc-row.total {
+      font-weight: 700; font-size: 15px; color: #8B0000;
+      border-top: 2px solid #8B0000; margin-top: 6px;
+      padding-top: 10px; border-bottom: none;
+    }
+    .rc-note {
+      background: #fef9e7; border: 1px solid #f9e79f;
+      border-radius: 8px; padding: 12px;
+      font-size: 12px; color: #7d6608; margin: 12px 0;
+    }
+    .btn-confirm-income {
+      width: 100%; padding: 14px; background: #1e8449;
+      color: white; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      font-family: 'Poppins', sans-serif; margin-bottom: 8px;
+    }
+    .btn-confirm-income:hover { background: #196f3d; }
+    .btn-cancel-review {
+      width: 100%; padding: 11px; background: #f5f5f5;
+      color: #555; border: none; border-radius: 10px;
+      font-size: 13px; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .confirm-toast {
+      position: fixed; bottom: 30px; left: 50%;
+      transform: translateX(-50%);
+      background: #1e8449; color: white;
+      padding: 12px 24px; border-radius: 20px;
+      font-size: 13px; font-weight: 600;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      display: none; z-index: 99999; white-space: nowrap;
+    }
+    .confirm-toast.show { display: block; }
+
+    /* ── COLLAPSIBLE REVIEW GROUPS ─────────────────────────────────────────── */
+    .rg-container {
+      background: white;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      border: 1px solid #f0f0f0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .rg-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 16px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      background: #fdf2f2;
+      transition: background 0.2s;
+      min-height: 48px; /* touch-friendly */
+    }
+    .rg-header:hover { background: #fbe8e8; }
+    .rg-header:active { background: #f7d6d6; }
+    .rg-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0; /* allow text truncation */
+    }
+    .rg-icon {
+      font-size: 13px;
+      width: 20px;
+      flex-shrink: 0;
+      text-align: center;
+      transition: transform 0.25s ease;
+    }
+    .rg-icon.open { transform: rotate(90deg); }
+    .rg-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #8B0000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rg-count {
+      background: #8B0000;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .rg-total {
+      font-size: 13px;
+      font-weight: 700;
+      color: #8B0000;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .rg-body {
+      padding: 10px 12px;
+      display: none;
+      border-top: 1px solid #f5e0e0;
+      background: #fff;
+    }
+    .rg-body.open { display: block; }
+    .rg-body .re-item:last-child { margin-bottom: 0; }
+
+    /* ── NESTED SUBCATEGORY (budgetCategory inside Source of Funds) ──────── */
+    .rg-sub-container {
+      border: 1px solid #f5e0e0;
+      border-radius: 9px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      background: #fffafa;
+    }
+    .rg-sub-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 12px;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      background: #fdf5f5;
+      transition: background 0.2s;
+      min-height: 44px;
+    }
+    .rg-sub-header:hover  { background: #fbeaea; }
+    .rg-sub-header:active { background: #f7d6d6; }
+    .rg-sub-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
+    .rg-sub-icon {
+      font-size: 11px;
+      width: 14px;
+      flex-shrink: 0;
+      text-align: center;
+      transition: transform 0.22s ease;
+      color: #8B0000;
+    }
+    .rg-sub-icon.open { transform: rotate(90deg); }
+    .rg-sub-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #5a0000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rg-sub-count {
+      background: #f8d7da;
+      color: #8B0000;
+      padding: 1px 7px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .rg-sub-total {
+      font-size: 12px;
+      font-weight: 700;
+      color: #8B0000;
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .rg-sub-body {
+      padding: 8px 10px;
+      display: none;
+      border-top: 1px solid #f5e0e0;
+    }
+    .rg-sub-body.open { display: block; }
+    .rg-sub-body .re-item:last-child { margin-bottom: 0; }
+
+    /* ── EXPAND/COLLAPSE ALL TOOLBAR (STICKY) ────────────────────────────────────────── */
+    .rg-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-bottom: 10px;
+      position: sticky;
+      top: 0;
+      background: white;
+      padding: 10px 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .rg-toolbar-btn {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid #ddd;
+      background: white;
+      font-size: 11px;
+      font-weight: 600;
+      color: #8B0000;
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      min-height: 32px;
+    }
+    .rg-toolbar-btn:hover  { background: #fdf2f2; border-color: #8B0000; }
+    .rg-toolbar-btn:active { background: #f8d7da; }
+
+    /* ── MOBILE RESPONSIVE ───────────────────────────────────────────────────── */
+    .row-year-date {
+      display: flex; gap: 15px; margin-bottom: 16px;
+    }
+
+    @media (min-width: 900px) {
+      .entry-layout {
+        display: grid;
+        grid-template-columns: minmax(520px, 1fr) minmax(330px, 400px);
+        gap: 20px;
+        align-items: start;
+      }
+      .entry-card {
+        position: sticky;
+        top: 92px;
+        max-height: calc(100vh - 112px);
+        overflow-y: auto;
+      }
+      .entry-card::-webkit-scrollbar,
+      .draft-card .draft-table-wrap::-webkit-scrollbar {
+        width: 8px;
+      }
+      .entry-card::-webkit-scrollbar-thumb,
+      .draft-card .draft-table-wrap::-webkit-scrollbar-thumb {
+        background: #d8b3b3;
+        border-radius: 20px;
+      }
+      .draft-card {
+        position: sticky;
+        top: 92px;
+      }
+      .draft-table-wrap {
+        max-height: calc(100vh - 320px);
+        overflow-y: auto;
+      }
+    }
+
+    @media (max-width: 480px) {
+      /* Page layout */
+      .topbar { padding: 12px 16px; }
+      .topbar h2 { font-size: 16px; }
+      .container { margin: 16px auto; padding: 0 12px; }
+      .card { padding: 18px 14px; border-radius: 12px; margin-bottom: 16px; }
+      .card h3 { font-size: 15px; margin-bottom: 14px; }
+
+      /* Year + Date row: stack on tiny screens */
+      .row-year-date { flex-direction: column; gap: 10px; }
+
+      /* Type buttons: smaller, tighter */
+      .type-btn { padding: 8px 12px; font-size: 12px; }
+
+      /* Member code + search row */
+      #existing-member-fields {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+      }
+
+      /* Pledge row */
+      .pledge-section > div[style*="display:flex"] {
+        flex-direction: column !important;
+        gap: 10px !important;
+      }
+
+      /* Draft table: hide Type & Payment columns, keep Member+Amount */
+      table thead tr th:nth-child(2),
+      table thead tr th:nth-child(3),
+      table tbody tr td:nth-child(2),
+      table tbody tr td:nth-child(3) {
+        display: none;
+      }
+      th, td { padding: 10px 8px; font-size: 12px; }
+
+      /* Summary grid: 1 column */
+      .summary-grid { grid-template-columns: 1fr !important; }
+
+      /* Review modal: near full-screen */
+      .review-modal {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 95vh !important;
+        border-radius: 16px 16px 0 0 !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+      }
+      .review-overlay { align-items: flex-end !important; }
+      .review-header h3 { font-size: 15px; }
+      .review-body { padding: 14px 12px; }
+      .rh-amount { font-size: 26px; }
+      .rh-stats { gap: 12px; }
+
+      /* Re-item edit form: stack fields */
+      .re-edit-row { flex-direction: column; }
+      .re-edit-row .fg { min-width: 0; }
+
+      /* Confirm section buttons */
+      .btn-confirm-income { font-size: 14px; padding: 13px; }
+    }
+
+    @media (max-width: 360px) {
+      .rg-title    { font-size: 11px; }
+      .rg-sub-title { font-size: 11px; }
+      .rg-total, .rg-sub-total { font-size: 11px; }
+      .re-name   { font-size: 12px; }
+      .re-amount { font-size: 13px; }
+    }
+    /* ─────────────────────────────────────────────────────────────────────── */
+
+  </style>
+</head>
+<body>
+<div class="topbar">
+    <h2>💰 Contribution Entry</h2>
+    <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+  
+  </div>
+
+  <div class="container entry-layout">
+    <div class="card entry-card">
+      <h3>📝 Record Contribution</h3>
+
+      <div class="row-year-date">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Budget Year</label>
+          <select id="budget-year" onchange="handleYearChange()" style="font-weight: 600; color: #8B0000; background: #fdf2f2;">
+             </select>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Date of Entry</label>
+          <input type="date" id="entry-date" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Main Category</label>
+        <div class="type-buttons">
+          <button type="button" class="type-btn source active"
+            onclick="handleTypeChange('Source of Funds', this)">🏦 Source of Funds</button>
+          <button type="button" class="type-btn occasional"
+            onclick="handleTypeChange('Occasional Offering', this)">🕊️ Occasional Offering</button>
+          <button type="button" class="type-btn special"
+            onclick="handleTypeChange('Special Offering', this)">⭐ Special Offering</button>
+          <button type="button" class="type-btn building"
+            onclick="handleTypeChange('Building Fund', this)">🏗️ Building Fund</button>
+          <button type="button" class="type-btn mission"
+            onclick="handleTypeChange('Mission Fund', this)">✈️ Mission Fund</button>
+          <button type="button" class="type-btn investment"
+            onclick="handleTypeChange('Investment Income', this)">📈 Investment Income</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Budget Category (Income Account)</label>
+        <select id="budget-category" onchange="toggleBudgetDetails()">
+          <option value="Not in the budget">Not in the budget / Miscellaneous</option>
+          </select>
+      </div>
+
+      <div id="member-section">
+        <div class="form-group">
+          <label>Member Option</label>
+          <select id="member-option" onchange="toggleMemberFields()">
+            <option value="existing">Existing Member</option>
+            <option value="new">✨ New Member (Auto-Generate ID)</option>
+          </select>
+        </div>
+
+        <div id="existing-member-fields"
+          style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:16px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Member Code</label>
+            <div style="display:flex; gap:5px;">
+              <input type="text" id="member-code-search" placeholder="Enter Code" inputmode="numeric" pattern="[0-9]*" />
+              <button type="button" onclick="searchMember()"
+                style="background:#8B0000; color:white; border:none;
+                border-radius:8px; padding:0 14px; cursor:pointer; font-size:16px;">
+                🔍
+              </button>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Member Name</label>
+            <input type="text" id="member-name-display" readonly
+              style="background:#f9f9f9;" placeholder="Auto-fills on search..." />
+          </div>
+        </div>
+
+        <div id="new-member-fields"
+          style="display:none; background:#fff5f5; padding:15px;
+          border-radius:10px; border:1px dashed #8B0000; margin-bottom:16px;">
+          <p style="font-size:11px; color:#8B0000; font-weight:600; margin-bottom:10px;">
+            NEW MEMBER REGISTRATION
+          </p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="form-group">
+              <label>First Name</label>
+              <input type="text" id="new-first-name" placeholder="Juan" />
+            </div>
+            <div class="form-group">
+              <label>Last Name</label>
+              <input type="text" id="new-last-name" placeholder="Dela Cruz" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pledge-section" id="pledge-section">
+        <label style="color:#8B0000;">📜 Pledge Details</label>
+        <div style="display:flex; gap:15px; margin-top:10px;">
+          <div class="form-group" style="flex:1;">
+            <label>Target (₱)</label>
+            <input type="number" id="pledge-target" placeholder="0.00" />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Payment No.</label>
+            <input type="number" id="pledge-payment-no" placeholder="1" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" id="budget-details-group" style="display:block;">
+        <label>Budget Details / Remarks</label>
+        <input type="text" id="budget-details" placeholder="Where will this go? (Optional)" />
+      </div>
+
+      <div class="form-group">
+        <label>Payment Method</label>
+        <select id="entry-payment">
+          <option value="Cash">💵 Cash</option>
+          <option value="Bank Transfer">🏦 Bank Transfer</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Amount (₱)</label>
+        <input type="number" id="entry-amount" placeholder="0.00" step="0.01" />
+      </div>
+
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <input type="text" id="entry-notes" placeholder="e.g. Sunday Service" />
+      </div>
+
+      <button class="btn-save" onclick="saveToDraft()">💾 Add to List</button>
+      <div id="bulk-entry" class="card" style="margin-top:20px;">
+    <h2 style="color:#8B0000; margin-bottom:15px;">📁 Bulk Import from Excel</h2>
+    
+    <div style="background: #fff5f5; padding: 15px; border-radius: 10px; border: 1px solid #ffcccc;">
+        <div style="margin-bottom: 15px;">
+            <label style="display:block; font-weight:bold; margin-bottom:5px; color:#8B0000;">1. Piliin ang Buwan at Taon:</label>
+            <input type="month" id="bulk-month-picker" style="padding:10px; width:100%; border-radius:5px; border:1px solid #ccc;">
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label style="display:block; font-weight:bold; margin-bottom:5px; color:#8B0000;">2. I-upload ang CSV File:</label>
+            <input type="file" id="csv-upload" accept=".csv" style="width:100%; padding:5px;">
+        </div>
+        
+        <p style="font-size: 11px; color: #666;">*Paalala: Siguraduhing tugma ang piniling buwan sa laman ng CSV file.</p>
+    </div>
+
+    <button onclick="generateBulkGrid()" style="margin-top:15px; background:#666; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer; width:100%;">
+        Manual Generate Grid (Alternative)
+    </button>
+</div>
+    </div>
+
+    <div class="card draft-card">
+      <div class="total-bar">
+        <span>📊 Today's Draft</span>
+        <span id="total-amount">₱0.00</span>
+      </div>
+      <div class="summary-grid" id="summary-grid"
+        style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
+      </div>
+      <div class="draft-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member / Entity</th>
+              <th>Type</th>
+              <th>Payment</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody id="records-body">
+            <tr>
+              <td colspan="4"
+                style="text-align:center; padding:20px; color:#999;">
+                No records yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:700px; margin:0 auto; padding:0 20px 30px;">
+    <button onclick="openReview()"
+      style="width:100%; padding:16px; background:#1a5276; color:white;
+      border:none; border-radius:10px; font-size:15px; font-weight:700;
+      cursor:pointer; font-family:'Poppins',sans-serif;">
+      📋 Review & Submit All Entries
+    </button>
+  </div>
+
+  <div class="review-overlay" id="review-overlay">
+    <div class="review-modal">
+      <div class="review-header">
+        <h3>📋 Review & Confirm Entries</h3>
+        <button class="review-close" onclick="closeReview()">✕</button>
+      </div>
+      <div class="review-body" id="review-body"></div>
+    </div>
+  </div>
+
+  <div class="confirm-toast" id="confirm-toast"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, setDoc, doc, getDoc,
+    query, orderBy, where, getDocs, limit
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const auth = getAuth(app);
+
+  let draftRecords   = [];
+  let selectedType   = 'Source of Funds';
+  let reviewEditingId  = null;
+
+  async function requireAuth() {
+    return new Promise((resolve) => {
+      onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+          sessionStorage.clear();
+          window.location.href = 'index.html';
+          return;
+        }
+        try {
+          const profileSnap = await getDoc(doc(db, 'userProfiles', user.uid));
+          if (!profileSnap.exists()) throw new Error('Missing role profile');
+          const profile = profileSnap.data();
+          const sessionUser = {
+            uid: user.uid,
+            email: user.email || '',
+            role: profile.role || '',
+            name: profile.name || user.email || 'GraceBooks User'
+          };
+          if (!sessionUser.role) throw new Error('Incomplete role profile');
+          sessionStorage.setItem('graceBooksUser', JSON.stringify(sessionUser));
+          sessionStorage.setItem('role', sessionUser.role);
+          sessionStorage.setItem('name', sessionUser.name);
+          resolve(sessionUser);
+        } catch (error) {
+          console.error(error);
+          await signOut(auth);
+          sessionStorage.clear();
+          window.location.href = 'index.html';
+        }
+      });
+    });
+  }
+
+  const activeUserProfile = await requireAuth();
+
+  async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
+    const user = auth.currentUser;
+    await addDoc(collection(db, 'auditLogs'), {
+      action,
+      collection: collectionName,
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '',
+      actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  document.getElementById('entry-date').value = new Date().toISOString().split('T')[0];
+
+  // ── 0. LOAD YEARS AND FETCH INCOME CATEGORIES (UPDATED LOGIC) ─────────────
+  window.initYears = async function() {
+      try {
+          const yrSel = document.getElementById('budget-year');
+          let currentYear = new Date().getFullYear();
+          let availableYears = [currentYear - 1, currentYear, currentYear + 1];
+
+          // Kunin ang available years mula sa database para same sa budget-vs-actual
+          const ySnap = await getDoc(doc(db, 'settings', 'yearsConfig'));
+          if(ySnap.exists() && ySnap.data().list) {
+              availableYears = ySnap.data().list;
+          }
+
+          yrSel.innerHTML = "";
+          availableYears.sort((a,b)=>b-a).forEach(y => {
+              yrSel.innerHTML += `<option value="${y}">${y}</option>`;
+          });
+          yrSel.value = currentYear; // Default to current year
+
+          fetchBudgetCategories();
+      } catch (e) {
+          console.error("Error loading years:", e);
+      }
+  };
+
+  // Sync date when Year Dropdown is changed to avoid mismatches
+  window.handleYearChange = function() {
+      const yr = document.getElementById('budget-year').value;
+      const dateInput = document.getElementById('entry-date');
+      const currentVal = dateInput.value;
+      if (currentVal) {
+          // Update the YYYY part of the YYYY-MM-DD input
+          const parts = currentVal.split('-');
+          parts[0] = yr;
+          dateInput.value = parts.join('-');
+      }
+      fetchBudgetCategories();
+  };
+
+  // Fetch categories based on selected budget year
+  window.fetchBudgetCategories = async function() {
+    try {
+      const select = document.getElementById('budget-category');
+      let optionsHtml = '';
+
+      const yrSel = document.getElementById('budget-year');
+      if(!yrSel) return;
+      const selectedYear = yrSel.value;
+
+      // KUMUHA NG DATA MULA SA SPECIFIC YEAR BUDGET DOC
+      const bSnap = await getDoc(doc(db, 'budgets', selectedYear.toString()));
+
+      if (bSnap.exists() && bSnap.data().income) {
+        const incomeObj = bSnap.data().income;
+        const incomeKeys = Object.keys(incomeObj);
+        const pinnedOrder = key => {
+          const label = key.toLowerCase();
+          if (label.includes('tithe')) return 0;
+          if (label.includes('loose offering')) return 1;
+          return 2;
+        };
+
+        incomeKeys.sort((a, b) => pinnedOrder(a) - pinnedOrder(b)).forEach(key => {
+          optionsHtml += `<option value="${key}">${key}</option>`;
+        });
+      }
+
+      optionsHtml += '<option value="Not in the budget">Not in the budget / Miscellaneous</option>';
+      select.innerHTML = optionsHtml;
+      evaluateMemberSection(); 
+    } catch (e) {
+      console.error("Error fetching income categories:", e);
+    }
+  };
+  
+  // Call initYears pagka-load ng page
+  initYears();
+
+  // ── 1. EVALUATE MEMBER SECTION ───────────────────────────
+  window.evaluateMemberSection = function() {
+    const type = selectedType;
+    const budgetCat = document.getElementById('budget-category').value.toLowerCase();
+    
+    // Listahan ng mga keywords na magti-trigger ng General Collection
+    const generalKeywords = [
+        'loose offering', 'sunday school', 'building fund', 
+        'special offering', 'mission fund', 'investment income', 
+        'other categories', 'not in the budget', 'miscellaneous'
+    ];
+
+    // Listahan ng mga Main Categories (Type Buttons) na matik na General Collection
+    const generalTypes = ['Special Offering', 'Building Fund', 'Mission Fund', 'Investment Income'];
+
+    const isGeneralKeyword = generalKeywords.some(kw => budgetCat.includes(kw));
+    const isGeneralType = generalTypes.includes(type);
+
+    let needsMember = true;
+
+    // Kung nasa listahan ng general, hindi kailangan ng member
+    if (isGeneralKeyword || isGeneralType) {
+        needsMember = false;
+    } else {
+        // Specific checks para sa Tithe at Pledges
+        if (type === 'Source of Funds') {
+            needsMember = budgetCat.includes('tithe');
+        } else if (type === 'Occasional Offering') {
+            needsMember = (budgetCat.includes('pledge') || budgetCat.includes('donation') || budgetCat.includes('love gift'));
+        }
+    }
+
+    // Hide/Show Member Section
+    document.getElementById('member-section').style.display = needsMember ? 'block' : 'none';
+    
+    // Auto-fill sa "General Collection" kung hindi kailangan ng member
+    if (!needsMember) {
+      document.getElementById('member-name-display').value = 'General Collection';
+      document.getElementById('member-name-display').dataset.memberId = 'GENERAL';
+    } else {
+        // Ibalik sa dati kung tithers/pledges ang pinili
+        if(document.getElementById('member-name-display').value === 'General Collection'){
+            document.getElementById('member-name-display').value = 'Auto-fills on search...';
+            document.getElementById('member-name-display').dataset.memberId = '';
+        }
+    }
+    
+    // Pledge section logic (walang pagbabago)
+    document.getElementById('pledge-section').style.display = budgetCat.includes('pledge') ? 'block' : 'none';
+};
+
+  // ── 2. HANDLE TYPE (BUTTON) CHANGE ───────────────────────────────────────
+  window.handleTypeChange = function(type, btn) {
+    selectedType = type;
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const budgetDropdown = document.getElementById('budget-category');
+
+    if (type === 'Special Offering' || type === 'Investment Income') {
+      let options = Array.from(budgetDropdown.options);
+      let notInBudgetOpt = options.find(opt => opt.value.toLowerCase().includes('not in the budget') || opt.value.toLowerCase().includes('miscellaneous'));
+      if(notInBudgetOpt) {
+          budgetDropdown.value = notInBudgetOpt.value;
+      } else {
+          budgetDropdown.value = "Not in the budget"; 
+      }
+    }
+
+    evaluateMemberSection();
+  };
+
+  window.toggleBudgetDetails = function() {
+    const val = document.getElementById('budget-category').value.toLowerCase();
+    if(val.includes('not in the budget')) {
+      document.getElementById('budget-details').placeholder = 'Please specify where this goes...';
+    } else {
+      document.getElementById('budget-details').placeholder = 'Additional notes for this account (Optional)';
+    }
+    evaluateMemberSection();
+  };
+
+  // ── 3. TOGGLE MEMBER FIELDS ──────────────────────────────────────────────
+  window.toggleMemberFields = function() {
+    const option = document.getElementById('member-option').value;
+    document.getElementById('existing-member-fields').style.display =
+      option === 'existing' ? 'grid' : 'none';
+    document.getElementById('new-member-fields').style.display =
+      option === 'new' ? 'block' : 'none';
+  };
+
+  // ── 4. SEARCH MEMBER BY CODE ─────────────────────────────────────────────
+  window.searchMember = async function() {
+    const code        = document.getElementById('member-code-search').value.trim();
+    const nameDisplay = document.getElementById('member-name-display');
+    if (!code) { alert('Please enter a Member Code.'); return; }
+    try {
+      const q   = query(collection(db,'members'), where('memberId','==',code), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        alert('Member not found: ' + code);
+        nameDisplay.value = '';
+        nameDisplay.dataset.memberId = '';
+      } else {
+        snap.forEach(d => {
+          const data    = d.data();
+          nameDisplay.value = `${data.last}, ${data.first}`;
+          nameDisplay.dataset.memberId = data.memberId || code;
+        });
+      }
+    } catch(e) {
+      console.error(e);
+      alert('Search error: ' + e.message);
+    }
+  };
+
+  document.getElementById('member-code-search').addEventListener('input', async (e) => {
+    const val         = e.target.value.trim();
+    const nameDisplay = document.getElementById('member-name-display');
+    if (!val) { nameDisplay.value = ''; return; }
+    try {
+      const q    = query(collection(db,'members'), where('memberId','==',val), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        nameDisplay.value = '';
+        nameDisplay.dataset.memberId = '';
+      } else {
+        let n = '';
+        let memberId = '';
+        snap.forEach(d => {
+          n = `${d.data().last}, ${d.data().first}`;
+          memberId = d.data().memberId || val;
+        });
+        nameDisplay.value = n;
+        nameDisplay.dataset.memberId = memberId;
+      }
+    } catch(e) { console.error(e); }
+  });
+
+  // ── 5. SAVE TO DRAFT ────────────────────────────────────────────────────
+  window.saveToDraft = async function() {
+    try {
+      const memberSection = document.getElementById('member-section');
+      const memberOption  = document.getElementById('member-option').value;
+
+      let finalMemberName = 'General Collection';
+      let finalMemberId   = 'GENERAL';
+      let isNew           = false;
+      let newMemberData   = null;
+
+      if (memberSection.style.display !== 'none') {
+        if (memberOption === 'new') {
+          const first = document.getElementById('new-first-name').value.trim();
+          const last  = document.getElementById('new-last-name').value.trim();
+          if (!first || !last) { alert('Please enter the new member name.'); return; }
+
+          const snap = await getDocs(
+            query(collection(db,'members'), orderBy('memberId','desc'), limit(1))
+          );
+          let nextId = '001';
+          if (!snap.empty) {
+            const lastId = parseInt(snap.docs[0].data().memberId);
+            nextId = (lastId + 1).toString().padStart(3,'0');
+          }
+          finalMemberName = `${last}, ${first}`;
+          finalMemberId   = nextId;
+          isNew           = true;
+          newMemberData   = {
+            memberId: nextId, first, last,
+            type: 'Professing', status: 'Active',
+            contact: '', email: '', address: '',
+            joinedDate: new Date().toISOString()
+          };
+        } else {
+          finalMemberName = document.getElementById('member-name-display').value.trim();
+          if (!finalMemberName || finalMemberName === 'Auto-fills on search...') {
+            alert('Please search for a member first.'); return;
+          }
+          finalMemberId = document.getElementById('member-name-display').dataset.memberId || document.getElementById('member-code-search').value.trim();
+        }
+      }
+
+      const amount = parseFloat(document.getElementById('entry-amount').value);
+      if (!amount || amount <= 0) { alert('Please enter a valid amount.'); return; }
+
+      const budgetCategory = document.getElementById('budget-category').value;
+      const budgetDetails = document.getElementById('budget-details').value.trim();
+
+      const entry = {
+        id          : Date.now(),
+        date        : document.getElementById('entry-date').value,
+        memberId    : finalMemberId,
+        member      : finalMemberName,
+        type        : selectedType, 
+        amount,
+        payment     : document.getElementById('entry-payment').value,
+        budgetCategory: budgetCategory,     
+        budgetDetails: budgetDetails,       
+        notes       : document.getElementById('entry-notes').value.trim(),
+        isNewMember : isNew,
+        newMemberData
+      };
+
+      draftRecords.push(entry);
+      updateUI();
+      clearForm();
+      prepareNextEntry();
+      showToast(`✅ ${finalMemberName} — ₱${amount.toFixed(2)} added to draft`);
+
+    } catch(e) {
+      console.error(e);
+      alert('Error: ' + e.message);
+    }
+  };
+
+  function clearForm() {
+      document.getElementById('entry-amount').value = '';
+      document.getElementById('entry-notes').value = '';
+      document.getElementById('budget-details').value = '';
+      if(document.getElementById('member-option').value === 'new') {
+          document.getElementById('new-first-name').value = '';
+          document.getElementById('new-last-name').value = '';
+      } else {
+          document.getElementById('member-code-search').value = '';
+          if(document.getElementById('member-section').style.display !== 'none') {
+             document.getElementById('member-name-display').value = 'Auto-fills on search...';
+          }
+      }
+  }
+
+  function prepareNextEntry() {
+      const entryCard = document.querySelector('.entry-card');
+      const memberSection = document.getElementById('member-section');
+      const memberOption = document.getElementById('member-option').value;
+
+      if (entryCard) entryCard.scrollTo({ top: 0, behavior: 'smooth' });
+
+      const target = memberSection.style.display === 'none'
+        ? document.getElementById('entry-amount')
+        : memberOption === 'new'
+          ? document.getElementById('new-first-name')
+          : document.getElementById('member-code-search');
+
+      setTimeout(() => {
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.focus();
+      }, 120);
+  }
+
+  function fmt(num) {
+      return Number(num).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
+  function groupBy(arr, key) {
+      return arr.reduce((rv, x) => {
+        (rv[x[key]] = rv[x[key]] || []).push(x);
+        return rv;
+      }, {});
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('confirm-toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  // ── 6. UPDATE UI TABLE ───────────────────────────────────────────────────
+  function updateUI() {
+    const tbody     = document.getElementById('records-body');
+    const totalDisp = document.getElementById('total-amount');
+    const total     = draftRecords.reduce((s,r) => s + r.amount, 0);
+    totalDisp.textContent = '₱' + fmt(total);
+
+    if (draftRecords.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="4" style="text-align:center;padding:20px;color:#999;">No records yet.</td></tr>';
+      return;
+    }
+
+    const sorted = [...draftRecords].sort((a,b) => a.member.localeCompare(b.member));
+    tbody.innerHTML = sorted.map(r => `
+      <tr>
+        <td>${r.member}${r.isNewMember
+          ? ' <b style="color:green;font-size:10px;">(NEW)</b>' : ''}</td>
+        <td><span class="badge badge-${r.type.replace(/\s+/g, '')}">${r.type}</span></td>
+        <td>${r.payment}</td>
+        <td>₱${r.amount.toFixed(2)}</td>
+      </tr>`).join('');
+  }
+
+  // ── 7. OPEN/CLOSE REVIEW MODAL ───────────────────────────────────────────
+  window.openReview = function() {
+    if (draftRecords.length === 0) {
+      alert('No entries to review yet.'); return;
+    }
+    reviewEditingId = null;
+    renderReviewBody();
+    document.getElementById('review-overlay').classList.add('active');
+  };
+
+  window.closeReview = function() {
+    document.getElementById('review-overlay').classList.remove('active');
+  };
+
+  // ── 8. RENDER REVIEW MODAL BODY ──────────────────────────────────────────
+  window.renderReviewBody = function() {
+    // Preserve: budget-year filter
+    const yearFilter = (document.getElementById('budget-year') || {}).value;
+    const filteredRecords = yearFilter
+      ? draftRecords.filter(r => r.date && r.date.startsWith(yearFilter))
+      : draftRecords;
+
+    const total     = filteredRecords.reduce((s,r) => s + r.amount, 0);
+    const cashTotal = filteredRecords.filter(r=>r.payment==='Cash').reduce((s,r)=>s+r.amount,0);
+    const bankTotal = filteredRecords.filter(r=>r.payment==='Bank Transfer').reduce((s,r)=>s+r.amount,0);
+
+    const categoryIcons = {
+      'Source of Funds'    : '🏦',
+      'Occasional Offering': '🕊️',
+      'Special Offering'   : '⭐',
+      'Building Fund'      : '🏗️',
+      'Mission Fund'       : '✈️',
+      'Investment Income'  : '📈'
+    };
+
+    // ── Helper: build a single re-item card ─────────────────────────────────
+    function buildItemCard(r) {
+      return `
+        <div class="re-item ${reviewEditingId === r.id ? 'editing' : ''}" id="re-item-${r.id}">
+          <div class="re-top">
+            <div class="re-name">${r.member}${r.isNewMember
+              ? ' <b style="color:green;font-size:10px;">(NEW)</b>' : ''}</div>
+            <div class="re-amount">₱${fmt(r.amount)}</div>
+          </div>
+          <div class="re-meta">
+            <span class="re-badge type">${r.type}</span>
+            <span class="re-badge payment">${r.payment}</span>
+            <span class="re-badge budget">📁 ${r.budgetCategory === 'Not in the budget' ? 'Unbudgeted' : r.budgetCategory}</span>
+          </div>
+          ${r.budgetDetails
+            ? `<div style="font-size:11px;color:#0e6251;margin-bottom:2px;">↳ Details: ${r.budgetDetails}</div>`
+            : ''}
+          ${r.notes
+            ? `<div style="font-size:11px;color:#999;margin-bottom:6px;">📝 ${r.notes}</div>`
+            : ''}
+          <div class="re-actions" style="margin-top:8px;">
+            <button class="re-edit"   onclick="toggleReviewEdit(${r.id})">✏️ Edit</button>
+            <button class="re-delete" onclick="deleteReviewEntry(${r.id})">🗑️ Delete</button>
+          </div>
+          ${reviewEditingId === r.id ? `
+            <div class="re-edit-form">
+              <div class="re-edit-row">
+                <div class="fg">
+                  <label>New Amount (₱)</label>
+                  <input type="number" id="re-amt-${r.id}" value="${r.amount}" step="0.01" />
+                </div>
+                <div class="fg">
+                  <label>Type</label>
+                  <select id="re-type-${r.id}">
+                    ${['Source of Funds','Occasional Offering','Special Offering','Building Fund','Mission Fund','Investment Income']
+                      .map(t => `<option ${t===r.type?'selected':''}>${t}</option>`)
+                      .join('')}
+                  </select>
+                </div>
+              </div>
+              <div class="re-edit-row">
+                <div class="fg">
+                  <label>Notes</label>
+                  <input type="text" id="re-notes-${r.id}" value="${r.notes||''}" placeholder="Optional" />
+                </div>
+              </div>
+              <div class="re-edit-btns">
+                <button class="re-save-btn"   onclick="saveReviewEdit(${r.id})">💾 Save</button>
+                <button class="re-cancel-btn" onclick="cancelReviewEdit()">Cancel</button>
+              </div>
+            </div>` : ''}
+        </div>`;
+    }
+
+    // ── Group by Main Category (type) ────────────────────────────────────────
+    const byType = groupBy(filteredRecords, 'type');
+
+    const groupsHTML = Object.entries(byType).map(([type, typeItems]) => {
+      const safeId     = 'rg-' + type.replace(/[^a-zA-Z0-9]/g, '_');
+      const groupTotal = typeItems.reduce((s,r) => s + r.amount, 0);
+      const icon       = categoryIcons[type] || '📌';
+      const isEditingInGroup = typeItems.some(r => r.id === reviewEditingId);
+
+      let innerHTML = '';
+
+      if (type === 'Source of Funds') {
+        // ── TWO-LEVEL: group Source of Funds by budgetCategory ───────────────
+        const byBudget = groupBy(typeItems, 'budgetCategory');
+
+        innerHTML = Object.entries(byBudget).map(([budgetCat, subItems]) => {
+          const subSafeId    = 'rg-' + (type + '_' + budgetCat).replace(/[^a-zA-Z0-9]/g, '_');
+          const subTotal     = subItems.reduce((s,r) => s + r.amount, 0);
+          const subLabel     = budgetCat === 'Not in the budget' ? 'Unbudgeted' : budgetCat;
+          const isEditingHere = subItems.some(r => r.id === reviewEditingId);
+
+          // Sort A–Z within subcategory
+          const sortedSub = [...subItems].sort((a,b) => a.member.localeCompare(b.member));
+
+          return `
+            <div class="rg-sub-container">
+              <div class="rg-sub-header" onclick="toggleReviewGroup('${subSafeId}')">
+                <div class="rg-sub-header-left">
+                  <span class="rg-sub-icon ${isEditingHere ? 'open' : ''}" id="${subSafeId}-icon">▶</span>
+                  <span class="rg-sub-title">📁 ${subLabel}</span>
+                  <span class="rg-sub-count">${subItems.length}</span>
+                </div>
+                <span class="rg-sub-total">₱${fmt(subTotal)}</span>
+              </div>
+              <div class="rg-sub-body ${isEditingHere ? 'open' : ''}" id="${subSafeId}-body">
+                ${sortedSub.map(r => buildItemCard(r)).join('')}
+              </div>
+            </div>`;
+        }).join('');
+
+      } else {
+        // ── ONE-LEVEL: flat list sorted A–Z ──────────────────────────────────
+        const sortedItems = [...typeItems].sort((a,b) => a.member.localeCompare(b.member));
+        innerHTML = sortedItems.map(r => buildItemCard(r)).join('');
+      }
+
+      return `
+        <div class="rg-container">
+          <div class="rg-header" onclick="toggleReviewGroup('${safeId}')">
+            <div class="rg-header-left">
+              <span class="rg-icon ${isEditingInGroup ? 'open' : ''}" id="${safeId}-icon">▶</span>
+              <span class="rg-title">${icon} ${type}</span>
+              <span class="rg-count">${typeItems.length}</span>
+            </div>
+            <span class="rg-total">₱${fmt(groupTotal)}</span>
+          </div>
+          <div class="rg-body ${isEditingInGroup ? 'open' : ''}" id="${safeId}-body">
+            ${innerHTML}
+          </div>
+        </div>`;
+    }).join('');
+
+    // ── Assemble full modal body ─────────────────────────────────────────────
+    document.getElementById('review-body').innerHTML = `
+      <div class="review-hero">
+        <div class="rh-label">Total for Confirmation${yearFilter ? ' · ' + yearFilter : ''}</div>
+        <div class="rh-amount">₱${fmt(total)}</div>
+        <div class="rh-stats">
+          <div class="rh-stat">
+            <div class="rs-label">Entries</div>
+            <div class="rs-value">${filteredRecords.length}</div>
+          </div>
+          <div class="rh-stat">
+            <div class="rs-label">Cash</div>
+            <div class="rs-value">₱${fmt(cashTotal)}</div>
+          </div>
+          <div class="rh-stat">
+            <div class="rs-label">Bank Transfer</div>
+            <div class="rs-value">₱${fmt(bankTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:#8B0000;font-weight:600;margin-bottom:8px;padding-left:2px;">
+        👥 Entries by Category — tap a row to expand
+      </div>
+
+      <div class="rg-toolbar">
+        <button class="rg-toolbar-btn" onclick="expandAllGroups()">⊞ Expand All</button>
+        <button class="rg-toolbar-btn" onclick="collapseAllGroups()">⊟ Collapse All</button>
+      </div>
+
+      ${groupsHTML}
+
+      <div class="review-confirm-section" style="margin-top:14px;">
+        <h5>✅ Summary</h5>
+        <div class="rc-row"><span>Total Entries:</span> <span>${filteredRecords.length}</span></div>
+        <div class="rc-row total"><span>Total Amount:</span> <span>₱${fmt(total)}</span></div>
+        <div class="rc-note">By confirming, all entries will be saved directly to the main ledger and member records.</div>
+        <button class="btn-confirm-income" onclick="submitAllEntries()">🚀 Confirm & Save All</button>
+        <button class="btn-cancel-review" onclick="closeReview()">Cancel</button>
+      </div>`;
+  };
+
+  // ── 8b. TOGGLE COLLAPSIBLE GROUP (works for both levels) ─────────────────
+  window.toggleReviewGroup = function(safeId) {
+    const body = document.getElementById(safeId + '-body');
+    const icon = document.getElementById(safeId + '-icon');
+    if (!body || !icon) return;
+    const isOpen = body.classList.contains('open');
+    body.classList.toggle('open', !isOpen);
+    icon.classList.toggle('open', !isOpen);
+  };
+
+  // ── 8c. EXPAND / COLLAPSE ALL GROUPS ─────────────────────────────────────
+  window.expandAllGroups = function() {
+    document.querySelectorAll('#review-body .rg-body, #review-body .rg-sub-body').forEach(el => {
+      el.classList.add('open');
+    });
+    document.querySelectorAll('#review-body .rg-icon, #review-body .rg-sub-icon').forEach(el => {
+      el.classList.add('open');
+    });
+  };
+
+  window.collapseAllGroups = function() {
+    document.querySelectorAll('#review-body .rg-body, #review-body .rg-sub-body').forEach(el => {
+      el.classList.remove('open');
+    });
+    document.querySelectorAll('#review-body .rg-icon, #review-body .rg-sub-icon').forEach(el => {
+      el.classList.remove('open');
+    });
+  };
+
+  // ── 9. REVIEW ACTIONS (EDIT/DELETE/SUBMIT) ───────────────────────────────
+  window.toggleReviewEdit = function(id) {
+    reviewEditingId = reviewEditingId === id ? null : id;
+    renderReviewBody();
+  };
+
+  window.saveReviewEdit = function(id) {
+    const amt = parseFloat(document.getElementById(`re-amt-${id}`).value);
+    const type = document.getElementById(`re-type-${id}`).value;
+    const notes = document.getElementById(`re-notes-${id}`).value;
+    
+    const idx = draftRecords.findIndex(r => r.id === id);
+    if(idx > -1) {
+       draftRecords[idx].amount = amt;
+       draftRecords[idx].type = type;
+       draftRecords[idx].notes = notes;
+    }
+    reviewEditingId = null;
+    renderReviewBody();
+    updateUI();
+  };
+
+  window.cancelReviewEdit = function() { 
+    reviewEditingId = null; 
+    renderReviewBody(); 
+  };
+
+  window.deleteReviewEntry = function(id) {
+    draftRecords = draftRecords.filter(r => r.id !== id);
+    renderReviewBody();
+    updateUI();
+    if(draftRecords.length === 0) closeReview();
+  };
+  // ── ACCOUNT ROUTING MAPPER ──────────────────────────────────────────────
+  function mapTypeToAccount(type) {
+    const mapping = {
+      'Source of Funds': 'cash-hand',
+      'Building Fund': 'building',
+      'Mission Fund': 'mission',
+      'Special Offering': 'cash-hand',
+      'Investment Income': 'investment',
+      'Occasional Offering': 'cash-hand'
+    };
+    return mapping[type] || 'cash-hand';
+  }
+
+  window.submitAllEntries = async function() {
+    if (draftRecords.length === 0) return;
+    
+    const btn = document.querySelector('.btn-confirm-income');
+    btn.innerHTML = '⏳ Saving to Cloud...';
+    btn.disabled = true;
+
+    try {
+        for (const entry of draftRecords) {
+            if (entry.isNewMember && entry.newMemberData) {
+                await setDoc(doc(db, 'members', entry.newMemberData.memberId), entry.newMemberData);
+            }
+            
+            const incomePayload = {
+                date: entry.date,
+                memberId: entry.memberId || "",
+                member: entry.member,
+                type: entry.type, 
+                amount: entry.amount,
+                payment: entry.payment, 
+                budgetCategory: entry.budgetCategory,
+                budgetDetails: entry.budgetDetails || "",
+                notes: entry.notes || "",
+                targetAccount: mapTypeToAccount(entry.type),
+                timestamp: new Date().toISOString()
+            };
+            const incomeRef = await addDoc(collection(db, 'income'), incomePayload);
+            await writeAuditLog(
+                'income_created',
+                'income',
+                incomeRef.id,
+                null,
+                incomePayload,
+                `Created ${entry.type || 'income'} for ${entry.member || 'member'}`
+            );
+        }
+
+        closeReview();
+        alert('🎉 All entries successfully saved to GraceBooks!');
+        
+        draftRecords = [];
+        updateUI();
+        
+        window.location.href = 'income-log.html'; 
+        
+    } catch (error) {
+        console.error("Firebase Error:", error);
+        alert("Error saving entries: " + error.message);
+    } finally {
+        if(btn) {
+            btn.innerHTML = '🚀 Confirm & Save All';
+            btn.disabled = false;
+        }
+    }
+  };
+  window.generateBulkGrid = function() {
+    const monthVal = document.getElementById('bulk-month-picker').value; // format: YYYY-MM
+    if(!monthVal) return;
+
+    const [year, month] = monthVal.split('-').map(Number);
+    const sundays = [];
+    let d = new Date(year, month - 1, 1);
+
+    // Auto-detect kung 4 o 5 Sundays ang buwan
+    while (d.getMonth() === month - 1) { 
+        if(d.getDay() === 0) sundays.push(d.toISOString().split('T')[0]); 
+        d.setDate(d.getDate() + 1); 
+    }
+    
+    // I-render ang table grid (Member List vs Sundays)
+    let h = `<table class="bulk-table"><thead><tr><th>Member</th>`;
+    sundays.forEach((s, i) => h += `<th>Wk ${i+1}<br><small>${s.split('-')[2]}</small></th>`);
+    h += `</tr></thead><tbody>`;
+
+    globalMembers.forEach(m => {
+        h += `<tr data-mid="${m.memberId}" data-mname="${m.lastName}, ${m.firstName}">
+                <td style="font-size:11px;"><b>${m.memberId}</b> ${m.lastName}</td>`;
+        sundays.forEach(s => h += `<td><input type="number" class="bulk-amt" data-date="${s}" style="width:60px;"></td>`);
+        h += `</tr>`;
+    });
+
+    document.getElementById('bulk-grid-container').innerHTML = h + `</tbody></table>`;
+};
+// Function para i-parse ang CSV at i-push sa draft list
+// --- AUTOMATIC CSV READER ---
+// Sinisiguro nito na kahit kailan ka mag-upload, babasahin niya ito.
+document.getElementById('csv-upload').addEventListener('change', function(e) {
+    // Kinukuha natin yung value mula sa bagong selector na ginawa natin sa Step 1
+    const selectedMonth = document.getElementById('bulk-month-picker').value; 
+    
+    if (!selectedMonth) {
+        alert("⚠️ Sandali! Piliin mo muna yung 'Month at Year' sa Step 1 bago ka mag-upload.");
+        this.value = ''; // Reset file input
+        return;
+    }
+
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = function(event) {
+        const text = event.target.result;
+        const rows = text.split('\n').filter(row => row.trim() !== '');
+        const dataRows = rows.slice(1); // Skip header
+
+        // Dito nadedetect kung pang-anong buwan ang isesave sa Firebase
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const sundays = [];
+        let d = new Date(year, month - 1, 1);
+        while (d.getMonth() === month - 1) {
+            if (d.getDay() === 0) {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                sundays.push(`${y}-${m}-${day}`);
+            }
+            d.setDate(d.getDate() + 1);
+        }
+
+        dataRows.forEach(row => {
+            const cols = row.split(',');
+            if (cols.length < 3) return;
+            const memberName = cols[1].trim();
+
+            sundays.forEach((sundayDate, index) => {
+                const colIndex = index + 2; 
+                const amount = parseFloat(cols[colIndex]);
+                if (amount > 0) {
+                    draftRecords.push({
+                        id: Date.now() + Math.random(),
+                        date: sundayDate, // Susunod na ito sa pinili mong Month/Year
+                        member: memberName,
+                        type: 'Source of Funds',
+                        amount: amount,
+                        payment: 'Cash',
+                        budgetCategory: 'Tithe',
+                        budgetDetails: `Bulk Import - ${selectedMonth}`,
+                        notes: "Initial Migration",
+                        isNewMember: false
+                    });
+                }
+            });
+        });
+
+        if (typeof updateUI === "function") updateUI();
+        alert(`✅ Nice! Na-load na ang data para sa ${selectedMonth}. I-check ang table sa baba.`);
+        e.target.value = ''; 
+    };
+    reader.readAsText(file);
+});
+</script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        try {
+            // Kunin ang tamang data gamit ang 'graceBooksUser'
+            const userString = sessionStorage.getItem("graceBooksUser");
+            
+            if (userString) {
+                // Dahil naka-JSON package ito, kailangan natin i-parse
+                const userData = JSON.parse(userString);
+                
+                // Kunin yung role sa loob ng package
+                const userRole = userData.role ? userData.role.toLowerCase() : "";
+
+                // Hanapin ang Bulk Entry section
+                const bulkEntrySection = document.getElementById("bulk-entry");
+
+                // Itago kung counter ang naka-login
+                if (userRole === "counter" && bulkEntrySection) {
+                    bulkEntrySection.style.display = "none";
+                }
+            }
+        } catch (error) {
+            console.error("May error sa pag-check ng role:", error);
+        }
+    });
+</script>
+</body>
+</html>
+

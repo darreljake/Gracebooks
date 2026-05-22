@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Report Workflow - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Poppins', sans-serif; background: #f4f6f8; color: #222; min-height: 100vh; }
+    .topbar {
+      background: #8B0000; color: white; padding: 14px 24px;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand img { width: 42px; height: 42px; object-fit: contain; }
+    .brand h1 { font-size: 20px; font-weight: 700; }
+    .brand div div { font-size: 11px; opacity: 0.78; }
+    .top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: none; border-radius: 7px; padding: 9px 13px; cursor: pointer;
+      font-family: inherit; font-weight: 700; font-size: 12px;
+      display: inline-flex; gap: 7px; align-items: center; justify-content: center;
+    }
+    .btn-back { background: rgba(255,255,255,0.18); color: white; text-decoration: none; }
+    .btn-primary { background: #8B0000; color: white; }
+    .btn-secondary { background: #1a5276; color: white; }
+    .btn-good { background: #1e8449; color: white; }
+    .btn-muted { background: #eef1f4; color: #334; }
+    .btn:disabled { background: #d8dde3; color: #7b8490; cursor: not-allowed; }
+    .container { max-width: 1080px; margin: 0 auto; padding: 24px 18px 48px; }
+    .controls {
+      background: white; border: 1px solid #e6e8eb; border-radius: 8px;
+      padding: 18px; display: flex; gap: 14px; flex-wrap: wrap; align-items: end;
+      margin-bottom: 18px;
+    }
+    label { display: block; font-size: 11px; font-weight: 700; color: #667085; text-transform: uppercase; margin-bottom: 5px; }
+    select, textarea {
+      width: 100%; border: 1px solid #d8dde3; border-radius: 7px; padding: 9px 10px;
+      font-family: inherit; font-size: 13px; background: white;
+    }
+    textarea { min-height: 82px; resize: vertical; }
+    .field { min-width: 150px; }
+    .status-card {
+      background: white; border: 1px solid #e6e8eb; border-left: 5px solid #8B0000;
+      border-radius: 8px; padding: 18px; margin-bottom: 18px;
+      display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px;
+    }
+    .status-title { font-size: 20px; font-weight: 700; color: #8B0000; }
+    .muted { color: #667085; font-size: 13px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 700;
+      background: #f2f4f7; color: #344054; margin-top: 8px;
+    }
+    .pill.ready, .pill.final { background: #d5f5e3; color: #196f3d; }
+    .pill.pending { background: #fef5e7; color: #9a5b00; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .card { background: white; border: 1px solid #e6e8eb; border-radius: 8px; padding: 18px; }
+    .card h2 { font-size: 16px; color: #8B0000; margin-bottom: 12px; }
+    .step { border-top: 1px solid #eef1f4; padding: 13px 0; display: grid; gap: 8px; }
+    .step:first-of-type { border-top: none; padding-top: 0; }
+    .step-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
+    .step-title { font-weight: 700; font-size: 14px; }
+    .step-meta { font-size: 12px; color: #667085; }
+    .notes-grid { display: grid; gap: 12px; }
+    .message { padding: 12px; border-radius: 7px; margin-bottom: 16px; display: none; font-size: 13px; }
+    .message.show { display: block; }
+    .message.ok { background: #eafaf1; color: #1e8449; border: 1px solid #c8ead7; }
+    .message.err { background: #fdecea; color: #a93226; border: 1px solid #f5c6c0; }
+    @media (max-width: 760px) {
+      .status-card, .grid { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .top-actions, .btn { width: 100%; }
+      .controls { align-items: stretch; }
+      .field { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+      <div>
+        <h1>Report Workflow</h1>
+        <div>Review, approval, and signature routing</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="role-label" class="muted" style="color:white;"></span>
+      <a class="btn btn-back" href="index.html"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div id="message" class="message"></div>
+
+    <div class="controls">
+      <div class="field">
+        <label>Report Type</label>
+        <select id="report-type" onchange="syncPeriodControls(); loadWorkflow();">
+          <option value="monthly">Monthly</option>
+          <option value="annual">Annual</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Year</label>
+        <select id="period-year" onchange="loadWorkflow()"></select>
+      </div>
+      <div class="field" id="month-field">
+        <label>Month</label>
+        <select id="period-month" onchange="loadWorkflow()"></select>
+      </div>
+      <button class="btn btn-secondary" onclick="openPrintReport()"><i class="fa-solid fa-print"></i> Open Print Report</button>
+    </div>
+
+    <div class="status-card">
+      <div>
+        <div class="status-title" id="period-title">Loading...</div>
+        <div class="muted" id="status-summary">Checking workflow status.</div>
+        <div class="pill pending" id="status-pill"><i class="fa-solid fa-circle-info"></i> Draft</div>
+      </div>
+      <div>
+        <label>Current Account</label>
+        <div id="profile-summary" class="step-meta"></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Approval Chain</h2>
+        <div class="step">
+          <div class="step-head">
+            <div>
+              <div class="step-title">Treasurer review and submit</div>
+              <div class="step-meta" id="treasurer-meta">Pending</div>
+            </div>
+            <button class="btn btn-primary" id="btn-submit" onclick="submitReport()">Submit</button>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-head">
+            <div>
+              <div class="step-title">Auditor audit approval</div>
+              <div class="step-meta" id="auditor-meta">Pending</div>
+            </div>
+            <button class="btn btn-good" id="btn-auditor" onclick="approveAudit()">Approve</button>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-head">
+            <div>
+              <div class="step-title">Finance Chair approval</div>
+              <div class="step-meta" id="finance-meta">Pending</div>
+            </div>
+            <button class="btn btn-good" id="btn-finance" onclick="approveFinance()">Approve</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Final Signatures</h2>
+        <div id="signature-list"></div>
+      </div>
+
+      <div class="card">
+        <h2>Chairperson Notes</h2>
+        <div class="notes-grid">
+          <textarea id="chair-notes" placeholder="Chairperson notes"></textarea>
+          <button class="btn btn-primary" id="btn-save-chair-notes" onclick="saveNotes('chairpersonNotes')">Save Notes</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Pastor Notes</h2>
+        <div class="notes-grid">
+          <textarea id="pastor-notes" placeholder="Pastor notes"></textarea>
+          <button class="btn btn-primary" id="btn-save-pastor-notes" onclick="saveNotes('pastorNotes')">Save Notes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const db = firebase.firestore();
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const SIGNERS = [
+      { key: 'chairperson', role: 'Chairperson', label: 'Chairperson' },
+      { key: 'financeChair', role: 'Finance Chair', label: 'Finance Chair' },
+      { key: 'treasurer', role: 'Treasurer', label: 'Treasurer' },
+      { key: 'auditor', role: 'Auditor', label: 'Auditor' },
+      { key: 'pastor', role: 'Pastor', label: 'Pastor' }
+    ];
+    let profile = null;
+    let workflow = null;
+
+    setupPeriodControls();
+    window.graceBooksAuthReady.then(userProfile => {
+      profile = userProfile;
+      document.getElementById('role-label').textContent = profile.role;
+      document.getElementById('profile-summary').textContent = `${profile.name} (${profile.role})`;
+      loadWorkflow();
+    });
+
+    function setupPeriodControls() {
+      const now = new Date();
+      const yearSel = document.getElementById('period-year');
+      for (let y = now.getFullYear() + 1; y >= 2023; y--) {
+        yearSel.innerHTML += `<option value="${y}">${y}</option>`;
+      }
+      yearSel.value = String(now.getFullYear());
+      const monthSel = document.getElementById('period-month');
+      MONTHS.forEach((month, index) => {
+        monthSel.innerHTML += `<option value="${index}">${month}</option>`;
+      });
+      monthSel.value = String(now.getMonth());
+      syncPeriodControls();
+    }
+
+    function syncPeriodControls() {
+      document.getElementById('month-field').style.display =
+        document.getElementById('report-type').value === 'monthly' ? 'block' : 'none';
+    }
+
+    function workflowId() {
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      if (type === 'annual') return `annual-${year}`;
+      const month = String(Number(document.getElementById('period-month').value) + 1).padStart(2, '0');
+      return `monthly-${year}-${month}`;
+    }
+
+    function periodLabel() {
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      if (type === 'annual') return `Annual Report ${year}`;
+      return `${MONTHS[Number(document.getElementById('period-month').value)]} ${year}`;
+    }
+
+    async function loadWorkflow() {
+      if (!profile) return;
+      const doc = await db.collection('reportReviews').doc(workflowId()).get();
+      workflow = doc.exists ? doc.data() : null;
+      renderWorkflow();
+    }
+
+    function renderWorkflow() {
+      const data = workflow || {};
+      const signatures = data.signatures || {};
+      const hasAudit = !!data.auditorApprovedAt;
+      const hasFinance = !!data.financeChairApprovedAt;
+      const readyForSignatures = hasAudit && hasFinance;
+      const allSigned = SIGNERS.every(signer => signatures[signer.key] && signatures[signer.key].signedAt);
+      const status = allSigned ? 'Final' : readyForSignatures ? 'Ready for signatures' : data.treasurerSubmittedAt ? 'Submitted' : 'Draft';
+
+      document.getElementById('period-title').textContent = periodLabel();
+      document.getElementById('status-summary').textContent =
+        allSigned ? 'All required signatures are complete.' :
+        readyForSignatures ? 'Auditor and Finance Chair approvals are complete. Final signatures may now be added.' :
+        data.treasurerSubmittedAt ? 'Waiting for Auditor and Finance Chair approvals.' :
+        'Treasurer has not submitted this report yet.';
+      const pill = document.getElementById('status-pill');
+      pill.className = `pill ${allSigned ? 'final' : readyForSignatures ? 'ready' : 'pending'}`;
+      pill.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${status}`;
+
+      document.getElementById('treasurer-meta').textContent = stampText(data.treasurerSubmittedBy, data.treasurerSubmittedAt);
+      document.getElementById('auditor-meta').textContent = stampText(data.auditorApprovedBy, data.auditorApprovedAt);
+      document.getElementById('finance-meta').textContent = stampText(data.financeChairApprovedBy, data.financeChairApprovedAt);
+      document.getElementById('chair-notes').value = data.chairpersonNotes || '';
+      document.getElementById('pastor-notes').value = data.pastorNotes || '';
+
+      document.getElementById('btn-submit').disabled = profile.role !== 'Treasurer' || !!data.treasurerSubmittedAt;
+      document.getElementById('btn-auditor').disabled = profile.role !== 'Auditor' || !data.treasurerSubmittedAt || !!data.auditorApprovedAt;
+      document.getElementById('btn-finance').disabled = profile.role !== 'Finance Chair' || !data.treasurerSubmittedAt || !!data.financeChairApprovedAt;
+      document.getElementById('btn-save-chair-notes').disabled = !['Finance Chair', 'Chairperson'].includes(profile.role);
+      document.getElementById('btn-save-pastor-notes').disabled = profile.role !== 'Pastor';
+
+      document.getElementById('signature-list').innerHTML = SIGNERS.map(signer => {
+        const sig = signatures[signer.key] || {};
+        const canSign = readyForSignatures && profile.role === signer.role && !sig.signedAt;
+        return `
+          <div class="step">
+            <div class="step-head">
+              <div>
+                <div class="step-title">${signer.label}</div>
+                <div class="step-meta">${stampText(sig.name, sig.signedAt)}</div>
+              </div>
+              <button class="btn btn-good" ${canSign ? '' : 'disabled'} onclick="signReport('${signer.key}', '${signer.role}')">Sign</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function stampText(name, iso) {
+      if (!iso) return 'Pending';
+      const date = new Date(iso);
+      return `${name || 'Recorded'} - ${date.toLocaleString('en-PH')}`;
+    }
+
+    function basePayload(extra) {
+      return {
+        reportId: workflowId(),
+        reportType: document.getElementById('report-type').value,
+        year: Number(document.getElementById('period-year').value),
+        month: document.getElementById('report-type').value === 'monthly' ? Number(document.getElementById('period-month').value) + 1 : null,
+        periodLabel: periodLabel(),
+        updatedAt: new Date().toISOString(),
+        ...extra
+      };
+    }
+
+    async function submitReport() {
+      await saveWorkflow(basePayload({
+        status: 'submitted',
+        treasurerSubmittedAt: new Date().toISOString(),
+        treasurerSubmittedBy: profile.name,
+        treasurerUid: profile.uid
+      }), 'Report submitted for approval.');
+    }
+
+    async function approveAudit() {
+      await saveWorkflow(basePayload({
+        auditorApprovedAt: new Date().toISOString(),
+        auditorApprovedBy: profile.name,
+        auditorUid: profile.uid
+      }), 'Auditor approval recorded.');
+    }
+
+    async function approveFinance() {
+      await saveWorkflow(basePayload({
+        financeChairApprovedAt: new Date().toISOString(),
+        financeChairApprovedBy: profile.name,
+        financeChairUid: profile.uid
+      }), 'Finance Chair approval recorded.');
+    }
+
+    async function signReport(key, expectedRole) {
+      if (profile.role !== expectedRole) return;
+      await saveWorkflow(basePayload({
+        signatures: {
+          [key]: {
+            name: profile.name,
+            role: profile.role,
+            uid: profile.uid,
+            signedAt: new Date().toISOString()
+          }
+        }
+      }), `${expectedRole} signature recorded.`);
+    }
+
+    async function saveNotes(field) {
+      const value = field === 'pastorNotes'
+        ? document.getElementById('pastor-notes').value.trim()
+        : document.getElementById('chair-notes').value.trim();
+      await saveWorkflow(basePayload({ [field]: value }), 'Notes saved.');
+    }
+
+    async function saveWorkflow(payload, successText) {
+      try {
+        await db.collection('reportReviews').doc(workflowId()).set(payload, { merge: true });
+        await writeAuditLog(successText);
+        showMessage(successText, 'ok');
+        await loadWorkflow();
+      } catch (error) {
+        console.error(error);
+        showMessage(error.message || 'Unable to update workflow.', 'err');
+      }
+    }
+
+    async function writeAuditLog(summary) {
+      const user = firebase.auth().currentUser;
+      await db.collection('auditLogs').add({
+        action: 'reportWorkflow',
+        collection: 'reportReviews',
+        docId: workflowId(),
+        summary,
+        actorUid: user ? user.uid : '',
+        actorEmail: user ? user.email : '',
+        actorName: profile ? profile.name : '',
+        actorRole: profile ? profile.role : '',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    function showMessage(text, type) {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.className = `message ${type} show`;
+      setTimeout(() => el.classList.remove('show'), 3500);
+    }
+
+    function openPrintReport() {
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      const month = document.getElementById('period-month').value;
+      const query = type === 'annual' ? `?type=annual&year=${year}` : `?type=monthly&year=${year}&month=${month}`;
+      window.location.href = `print-report.html${query}`;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Financial Overview — GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* BASIC RESET */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+    }
+    .topbar {
+      background: #8B0000;
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white;
+      border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+
+    /* HERO CARD */
+    .hero-card {
+      background: linear-gradient(135deg, #8B0000, #c0392b);
+      border-radius: 20px; padding: 28px 24px;
+      color: white; margin-bottom: 20px;
+      box-shadow: 0 8px 25px rgba(139,0,0,0.35);
+      position: relative; overflow: hidden;
+    }
+    .hero-card::before {
+      content:''; position:absolute; top:-40px; right:-40px;
+      width:150px; height:150px;
+      background:rgba(255,255,255,0.06); border-radius:50%;
+    }
+    .hero-card::after {
+      content:''; position:absolute; bottom:-60px; left:-30px;
+      width:200px; height:200px;
+      background:rgba(255,255,255,0.04); border-radius:50%;
+    }
+    .hero-label { font-size:13px; opacity:0.85; margin-bottom:6px; }
+    .hero-amount { font-size:36px; font-weight:700; letter-spacing:-1px; margin-bottom:16px; }
+    .hero-row { display:flex; gap:20px; }
+    .hero-stat { flex:1; }
+    .hero-stat .h-label { font-size:11px; opacity:0.75; margin-bottom:2px; }
+    .hero-stat .h-value { font-size:15px; font-weight:600; }
+    .hero-stat.income .h-value { color:#a8f0c6; }
+    .hero-stat.expense .h-value { color:#ffa8a8; }
+    .hero-date { font-size:11px; opacity:0.6; margin-top:14px; text-align:right; }
+
+    /* ACCOUNTS - FIXED SCROLL FUNCTION */
+    .section-title { font-size:14px; font-weight:600; color:#333; margin-bottom:12px; }
+    
+    .accounts-scroll {
+      display: flex; 
+      gap: 12px; 
+      overflow-x: auto;      /* Nagbibigay ng scroll ability */
+      overflow-y: hidden;    /* Pinipigilan ang vertical leak */
+      padding: 10px 5px 20px 5px; /* Padding para hindi putol ang shadow */
+      scrollbar-width: none; /* Tinatago ang scrollbar sa Firefox */
+      -webkit-overflow-scrolling: touch; /* Smooth swipe sa mobile */
+      width: 100%;
+    }
+    
+    .accounts-scroll::-webkit-scrollbar { display:none; } /* Tinatago ang scrollbar sa Chrome/Safari */
+
+    .account-card {
+      min-width: 160px;      /* Fixed width para manatiling card ang hitsura */
+      flex-shrink: 0;        /* PINAKAMAHALAGA: Pinipigilan ang pag-ipit ng cards */
+      border-radius: 16px;
+      padding: 18px 16px; 
+      color: white; 
+      cursor: pointer; 
+      transition: transform 0.2s;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+      position: relative; 
+      overflow: hidden; 
+      border: 3px solid transparent;
+    }
+
+    .account-card:hover { transform:translateY(-3px); }
+    .account-card.selected { border-color:white; transform:translateY(-3px); }
+
+    .account-card::after {
+      content:''; position:absolute; bottom:-20px; right:-20px;
+      width:80px; height:80px;
+      background:rgba(255,255,255,0.08); border-radius:50%;
+    }
+
+    /* ACCOUNT COLORS - NO CHANGES */
+    .account-card.cash-hand   { background:linear-gradient(135deg,#1a5276,#2980b9); }
+    .account-card.cash-bank   { background:linear-gradient(135deg,#1e8449,#27ae60); }
+    .account-card.petty-cash  { background:linear-gradient(135deg,#b7770d,#d4ac0d); }
+    .account-card.building    { background:linear-gradient(135deg,#7d3c98,#9b59b6); }
+    .account-card.mission     { background:linear-gradient(135deg,#d35400,#e67e22); }
+    .account-card.investment  { background:linear-gradient(135deg,#1a6b8a,#148f77); }
+
+    .acc-icon   { font-size:24px; margin-bottom:8px; }
+    .acc-name   { font-size:11px; opacity:0.85; margin-bottom:4px; }
+    .acc-amount { font-size:18px; font-weight:700; }
+    .acc-sub    { font-size:10px; opacity:0.7; margin-top:2px; }
+
+    /* QUICK ACTIONS */
+    .quick-actions {
+      display:grid; grid-template-columns:repeat(4,1fr);
+      gap:10px; margin-bottom:20px;
+    }
+    .action-btn {
+      background:white; border-radius:12px;
+      padding:14px 8px; text-align:center;
+      cursor:pointer; transition:0.2s;
+      box-shadow:0 2px 8px rgba(0,0,0,0.06); border:none;
+    }
+    .action-btn:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.1); }
+    .action-btn .a-icon  { font-size:22px; margin-bottom:6px; }
+    .action-btn .a-label { font-size:11px; color:#555; font-weight:600; }
+
+    /* ACCOUNT DETAIL PANEL */
+    .account-detail {
+      background:white; border-radius:16px;
+      margin-bottom:20px; overflow:hidden;
+      box-shadow:0 2px 12px rgba(0,0,0,0.06);
+      display:none;
+    }
+    .account-detail.show { display:block; }
+    .detail-header { padding:20px; color:white; position:relative; }
+    .detail-header.cash-hand   { background:linear-gradient(135deg,#1a5276,#2980b9); }
+    .detail-header.cash-bank   { background:linear-gradient(135deg,#1e8449,#27ae60); }
+    .detail-header.petty-cash  { background:linear-gradient(135deg,#b7770d,#d4ac0d); }
+    .detail-header.building    { background:linear-gradient(135deg,#7d3c98,#9b59b6); }
+    .detail-header.mission     { background:linear-gradient(135deg,#d35400,#e67e22); }
+    .detail-header.investment  { background:linear-gradient(135deg,#1a6b8a,#148f77); }
+    
+    .detail-header .d-icon     { font-size:28px; margin-bottom:6px; }
+    .detail-header .d-name     { font-size:13px; opacity:0.85; }
+    .detail-header .d-balance  { font-size:28px; font-weight:700; margin:4px 0; }
+    .detail-header .d-beginning { font-size:11px; opacity:0.75; }
+    .detail-close {
+      position:absolute; top:16px; right:16px;
+      background:rgba(255,255,255,0.2); border:none;
+      color:white; width:30px; height:30px;
+      border-radius:50%; cursor:pointer; font-size:16px;
+    }
+    .detail-stats { display:flex; border-bottom:1px solid #f5f5f5; }
+    .detail-stat { flex:1; padding:14px; text-align:center; border-right:1px solid #f5f5f5; }
+    .detail-stat:last-child { border-right:none; }
+    .detail-stat .ds-label { font-size:10px; color:#999; margin-bottom:4px; }
+    .detail-stat .ds-value { font-size:15px; font-weight:700; }
+    .detail-stat .ds-value.in  { color:#1e8449; }
+    .detail-stat .ds-value.out { color:#c0392b; }
+    .detail-stat .ds-value.begin { color:#1a5276; }
+    .detail-trans { padding:16px; }
+    .detail-trans h5 { font-size:13px; font-weight:600; color:#333; margin-bottom:12px; }
+
+    /* TRANSACTIONS CARD */
+    .transactions-card {
+      background:white; border-radius:16px;
+      padding:20px; box-shadow:0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom:20px;
+    }
+    .trans-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+    .trans-header h4 { font-size:14px; font-weight:600; color:#333; }
+    .filter-tabs { display:flex; gap:6px; }
+    .filter-tab {
+      padding:4px 12px; border-radius:20px;
+      font-size:11px; cursor:pointer; border:none;
+      background:#f0f2f5; color:#888;
+      font-family:'Poppins',sans-serif;
+    }
+    .filter-tab.active { background:#8B0000; color:white; font-weight:600; }
+    .trans-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #f5f5f5; }
+    .trans-item:last-child { border-bottom:none; }
+    .trans-icon {
+      width:42px; height:42px; border-radius:12px;
+      display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;
+    }
+    .trans-icon.income { background:#eafaf1; }
+    .trans-icon.expense { background:#fdf2f2; }
+    .trans-icon.transfer { background:#eaf2ff; }
+    .trans-icon.begin { background:#f0f4f8; }
+    .trans-details { flex:1; }
+    .trans-name { font-size:13px; font-weight:600; color:#333; }
+    .trans-sub { font-size:11px; color:#999; margin-top:2px; }
+    .trans-right { text-align:right; }
+    .trans-amount { font-size:14px; font-weight:700; }
+    .trans-amount.income { color:#1e8449; }
+    .trans-amount.expense { color:#c0392b; }
+    .trans-amount.transfer { color:#1a5276; }
+    .trans-amount.begin { color:#7d3c98; }
+    .trans-date { font-size:11px; color:#bbb; margin-top:2px; }
+    .empty-trans { text-align:center; padding:30px; color:#ccc; font-size:13px; }
+    .empty-trans .e-icon { font-size:40px; margin-bottom:8px; }
+
+    /* MODALS */
+    .modal-overlay {
+      display:none; position:fixed;
+      top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.5); z-index:9999;
+      justify-content:center; align-items:flex-end;
+    }
+    .modal-overlay.active { display:flex; }
+    .modal-box {
+      background:white; border-radius:24px 24px 0 0;
+      padding:28px 24px; width:100%; max-width:480px;
+      max-height:90vh; overflow-y:auto;
+    }
+    .modal-handle { width:40px; height:4px; background:#eee; border-radius:2px; margin:0 auto 20px; }
+    .modal-box h3 { font-size:18px; font-weight:600; color:#333; margin-bottom:20px; }
+    .modal-form-group { margin-bottom:16px; }
+    .modal-form-group label { display:block; font-size:12px; color:#888; margin-bottom:6px; font-weight:600; text-transform:uppercase; }
+    .modal-form-group input, .modal-form-group select {
+      width:100%; padding:12px; border:1px solid #eee; border-radius:10px; font-size:14px; font-family:'Poppins',sans-serif;
+    }
+    .modal-form-group input:focus, .modal-form-group select:focus { outline:none; border-color:#8B0000; }
+    .modal-btn {
+      width:100%; padding:14px; background:#8B0000;
+      color:white; border:none; border-radius:10px;
+      font-size:15px; font-weight:600; cursor:pointer; margin-top:8px;
+    }
+    .modal-btn:hover { background:#a30000; }
+    .modal-cancel { width:100%; padding:12px; background:#f5f5f5; color:#555; border:none; border-radius:10px; font-size:14px; cursor:pointer; margin-top:8px; }
+    .amount-display { background:#fdf8f8; border-radius:12px; padding:20px; text-align:center; margin-bottom:16px; }
+    .amount-display .big-amount { font-size:32px; font-weight:700; color:#8B0000; }
+    .amount-display .amount-label { font-size:12px; color:#999; }
+
+    /* BEGINNING BALANCE ITEMS */
+    .begin-list { margin-bottom:16px; }
+    .begin-item {
+      display:flex; align-items:center; gap:12px; padding:12px;
+      border:1px solid #eee; border-radius:10px; margin-bottom:8px; background:#fafafa;
+    }
+    .begin-item .b-icon { font-size:20px; }
+    .begin-item .b-name { flex:1; font-size:13px; font-weight:600; color:#333; }
+    .begin-item input {
+      width:130px; padding:8px 10px; border:1px solid #ddd; border-radius:8px; font-size:13px; text-align:right; font-family:'Poppins',sans-serif;
+    }
+
+    /* TOAST */
+    .toast {
+      position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+      background:#1e8449; color:white; padding:12px 24px; border-radius:20px;
+      font-size:13px; font-weight:600; box-shadow:0 4px 15px rgba(0,0,0,0.2);
+      display:none; z-index:99999; white-space:nowrap;
+    }
+    .toast.show { display:block; animation:fadeInUp 0.3s ease; }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateX(-50%) translateY(10px); }
+      to   { opacity:1; transform:translateX(-50%) translateY(0); }
+    }
+    /* Eto ang magpapakulay sa tab pag clinick */
+    .filter-tab.active { 
+      background: #8B0000 !important; /* Original Red mo */
+      color: white !important; 
+      font-weight: 600; 
+      box-shadow: 0 2px 6px rgba(139, 0, 0, 0.3);
+    }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h2>🏦 Financial Overview</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+</div>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero-card">
+    <div class="hero-label">Total Church Funds</div>
+    <div class="hero-amount" id="hero-total">₱0.00</div>
+    <div class="hero-row">
+      <div class="hero-stat income">
+        <div class="h-label">↑ Total In</div>
+        <div class="h-value" id="hero-income">₱0.00</div>
+      </div>
+      <div class="hero-stat expense">
+        <div class="h-label">↓ Total Out</div>
+        <div class="h-value" id="hero-expense">₱0.00</div>
+      </div>
+    </div>
+    <div class="hero-date" id="hero-date"></div>
+  </div>
+
+  <!-- ACCOUNTS -->
+  <div style="margin-bottom:20px;">
+    <div class="section-title">💳 Accounts — tap to view details</div>
+    <div class="accounts-scroll" id="accounts-scroll"></div>
+  </div>
+
+  <!-- ACCOUNT DETAIL PANEL -->
+  <div class="account-detail" id="account-detail">
+    <div class="detail-header" id="detail-header">
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+      <div class="d-icon" id="d-icon"></div>
+      <div class="d-name" id="d-name"></div>
+      <div class="d-balance" id="d-balance"></div>
+      <div class="d-beginning" id="d-beginning"></div>
+    </div>
+    <div class="detail-stats">
+      <div class="detail-stat">
+        <div class="ds-label">Beginning</div>
+        <div class="ds-value begin" id="ds-begin">₱0.00</div>
+      </div>
+      <div class="detail-stat">
+        <div class="ds-label">Total In</div>
+        <div class="ds-value in" id="ds-in">₱0.00</div>
+      </div>
+      <div class="detail-stat">
+        <div class="ds-label">Total Out</div>
+        <div class="ds-value out" id="ds-out">₱0.00</div>
+      </div>
+    </div>
+    <div class="detail-trans">
+      <h5>Account Transactions</h5>
+      <div id="detail-trans-list"></div>
+    </div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="quick-actions">
+    <button class="action-btn" onclick="openModal('add-modal')">
+      <div class="a-icon">➕</div>
+      <div class="a-label">Add Funds</div>
+    </button>
+    <button class="action-btn" onclick="openModal('transfer-modal')">
+      <div class="a-icon">🔄</div>
+      <div class="a-label">Transfer</div>
+    </button>
+    <button class="action-btn" onclick="openModal('withdraw-modal')">
+      <div class="a-icon">➖</div>
+      <div class="a-label">Withdraw</div>
+    </button>
+    <button class="action-btn" onclick="openModal('begin-modal')">
+      <div class="a-icon">⚙️</div>
+      <div class="a-label">Set Balance</div>
+    </button>
+  </div>
+
+  <!-- ALL TRANSACTIONS -->
+  <div class="transactions-card">
+    <div class="trans-header">
+      <h4>All Transactions</h4>
+      <div class="filter-tabs">
+  <button class="filter-tab active" onclick="filterTransactions('all', this)">All</button>
+<button class="filter-tab" onclick="filterTransactions('income', this)">In</button>
+<button class="filter-tab" onclick="filterTransactions('expense', this)">Out</button>
+<button class="filter-tab" onclick="filterTransactions('transfer', this)">Move</button>
+</div>
+    </div>
+    <div id="trans-list"></div>
+  </div>
+
+</div>
+
+<!-- ADD FUNDS MODAL -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>➕ Add Funds</h3>
+    <div class="modal-form-group">
+      <label>Account</label>
+      <select id="add-account"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>Amount (₱)</label>
+      <input type="number" id="add-amount" placeholder="0.00"
+        min="0" step="0.01" oninput="updatePreview('add-amount','add-preview')" />
+    </div>
+    <div class="amount-display">
+      <div class="amount-label">Amount to Add</div>
+      <div class="big-amount" id="add-preview">₱0.00</div>
+    </div>
+    <div class="modal-form-group">
+      <label>Description</label>
+      <input type="text" id="add-desc" placeholder="e.g. Sunday Collection" />
+    </div>
+    <button class="modal-btn green" onclick="addFunds()">✅ Confirm Add Funds</button>
+    <button class="modal-cancel" onclick="closeModal('add-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- TRANSFER MODAL -->
+<div class="modal-overlay" id="transfer-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>🔄 Transfer Funds</h3>
+    <div class="modal-form-group">
+      <label>From Account</label>
+      <select id="transfer-from"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>To Account</label>
+      <select id="transfer-to"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>Amount (₱)</label>
+      <input type="number" id="transfer-amount" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="modal-form-group">
+      <label>Description</label>
+      <input type="text" id="transfer-desc" placeholder="e.g. Deposit to bank" />
+    </div>
+    <button class="modal-btn" onclick="transferFunds()">✅ Confirm Transfer</button>
+    <button class="modal-cancel" onclick="closeModal('transfer-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- WITHDRAW MODAL -->
+<div class="modal-overlay" id="withdraw-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>➖ Withdraw Funds</h3>
+    <div class="modal-form-group">
+      <label>From Account</label>
+      <select id="withdraw-account"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>Amount (₱)</label>
+      <input type="number" id="withdraw-amount" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="modal-form-group">
+      <label>Purpose / Description</label>
+      <input type="text" id="withdraw-desc" placeholder="e.g. Paid electricity bill" />
+    </div>
+    <button class="modal-btn red" onclick="withdrawFunds()">✅ Confirm Withdrawal</button>
+    <button class="modal-cancel" onclick="closeModal('withdraw-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- BEGINNING BALANCE MODAL -->
+<div class="modal-overlay" id="begin-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>⚙️ Set Beginning Balance</h3>
+    <p style="font-size:13px;color:#888;margin-bottom:16px;">
+      Enter the starting balance for each account.
+      This is a one-time setup — it will appear as the
+      first transaction in each account's history.
+    </p>
+    <div class="begin-list" id="begin-list"></div>
+    <button class="modal-btn" onclick="saveBeginningBalances()">
+      💾 Save Beginning Balances
+    </button>
+    <button class="modal-cancel" onclick="closeModal('begin-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+
+<script>
+  // 2. FIREBASE CONFIG
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  const db = firebase.firestore();
+
+  // 3. ORIGINAL ACCOUNTS ARRAY
+  const ACCOUNTS = [
+    { id:'cash-hand',  name:'Cash on Hand',    icon:'💵', cls:'cash-hand',  balance:0, beginning:0 },
+    { id:'cash-bank',  name:'Cash in Bank',     icon:'🏦', cls:'cash-bank',  balance:0, beginning:0 },
+    { id:'petty-cash', name:'Petty Cash Fund',  icon:'💰', cls:'petty-cash', balance:0, beginning:0 },
+    { id:'building',   name:'Building Fund',    icon:'⛪', cls:'building',   balance:0, beginning:0 },
+    { id:'mission',    name:'Mission Fund',     icon:'✈️', cls:'mission',    balance:0, beginning:0 },
+    { id:'investment', name:'Investments/TD',   icon:'📈', cls:'investment', balance:0, beginning:0 },
+  ];
+
+  let transactions = [];
+  let currentFilter = 'all';
+  let selectedAccountId = null;
+
+  let fbIncome = [];
+let fbExpenses = [];
+
+function setupFinancialListeners() {
+  // 1. INCOME LISTENER
+  db.collection("income").onSnapshot((snapshot) => {
+    fbIncome = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      let resolvedTargetAccId = data.targetAccount; 
+      
+      if (data.type === 'Building Fund') resolvedTargetAccId = 'building';
+      else if (data.type === 'Mission Fund') resolvedTargetAccId = 'mission';
+      else if (data.type === 'Investment Income') resolvedTargetAccId = 'investment';
+      else if (!resolvedTargetAccId) resolvedTargetAccId = data.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+
+      const accountMap = {
+        'cash-hand': 'Cash on Hand', 'cash-bank': 'Cash in Bank',
+        'petty-cash': 'Petty Cash Fund', 'building': 'Building Fund',
+        'mission': 'Mission Fund', 'investment': 'Investments/TD'
+      };
+      
+      fbIncome.push({
+        id: doc.id,
+        type: data.type === 'transfer' ? 'transfer' : 'income', 
+        isIncomeTransfer: data.type === 'transfer', // Flag to properly ADD balance
+        account: accountMap[resolvedTargetAccId] || 'Cash on Hand',
+        amount: parseFloat(data.amount) || 0,
+        desc: data.type === 'transfer' ? data.member : `${data.type}: ${data.member || 'Anonymous'}`,
+        date: data.date || "2026-01-01",
+        targetAccId: resolvedTargetAccId 
+      });
+    });
+    combineAndRender();
+  });
+
+  // 2. EXPENSE LISTENER
+  db.collection("expenses").onSnapshot((snapshot) => {
+    fbExpenses = [];
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      // Ensure targetId is reliably fetched for transfers
+      const targetId = data.targetAccId || (data.payment === 'Bank Transfer' ? 'cash-bank' : data.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
+      
+      const accountMap = {
+        'cash-hand': 'Cash on Hand', 'cash-bank': 'Cash in Bank',
+        'petty-cash': 'Petty Cash Fund', 'building': 'Building Fund',
+        'mission': 'Mission Fund', 'investment': 'Investments/TD'
+      };
+
+      fbExpenses.push({
+        id: doc.id,
+        type: data.type === 'transfer' ? 'transfer' : 'expense',
+        isExpenseTransfer: data.type === 'transfer', // Flag to properly SUBTRACT balance
+        account: accountMap[targetId] || 'Cash on Hand',
+        amount: parseFloat(data.amount) || 0,
+        desc: data.sub || data.category || "Expense",
+        date: data.date || "2026-01-01",
+        targetAccId: targetId
+      });
+    });
+    combineAndRender();
+  });
+}
+
+// 3. LISTENER PARA SA BEGINNING BALANCES
+db.collection("settings").doc("beginningBalances").onSnapshot((doc) => {
+  if (doc.exists) {
+    const data = doc.data().accounts || {};
+    ACCOUNTS.forEach(a => {
+      a.beginning = parseFloat(data[a.id]) || 0;
+    });
+    combineAndRender();
+  }
+});
+
+// ITO ANG MAGSASAMA NG DATA AT MAG-A-ADD NG TAMANG BALANCES
+function combineAndRender() {
+    transactions = [...fbIncome, ...fbExpenses];
+
+    transactions.sort((a, b) => {
+        const dateA = a.date || "";
+        const dateB = b.date || "";
+        if (dateB !== dateA) return dateB.localeCompare(dateA); 
+        
+        const getTime = (obj) => {
+            if (!obj || !obj.postedAt) return 0;
+            if (typeof obj.postedAt.toMillis === 'function') return obj.postedAt.toMillis();
+            const parsed = new Date(obj.postedAt).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+        };
+        return getTime(b) - getTime(a);
+    });
+
+    ACCOUNTS.forEach(a => a.balance = a.beginning || 0);
+    
+    // Wala nang hardcoded na "cash-hand". Susundin na niya ang targetAccId!
+   transactions.forEach(t => {
+        const amount = parseFloat(t.amount) || 0;
+        const targetId = t.targetAccId || (t.payment || 'cash-hand'); 
+        const acc = ACCOUNTS.find(a => a.id === targetId);
+
+        if (acc) {
+            // Mahigpit na rule: Only add kung income or income-transfer. 
+            if (t.type === 'income' || t.isIncomeTransfer) {
+                acc.balance += amount;
+            } 
+            // Subtract lang kung expense or expense-transfer.
+            else if (t.type === 'expense' || t.isExpenseTransfer) {
+                acc.balance -= amount;
+            }
+        }
+    });
+
+    if (typeof render === "function") render();
+}
+
+// Tawagin ang listener sa dulo
+setupFinancialListeners();
+  function loadData() {
+    const savedAcc = sessionStorage.getItem('graceBooksAccounts');
+    if (savedAcc) {
+      const arr = JSON.parse(savedAcc);
+      ACCOUNTS.forEach(a => {
+        const found = arr.find(s => s.id === a.id);
+        if (found) {
+          a.balance   = found.balance   || 0;
+          a.beginning = found.beginning || 0;
+        }
+      });
+    }
+    const savedTrans = sessionStorage.getItem('graceBooksTransactions');
+    if (savedTrans) transactions = JSON.parse(savedTrans);
+  }
+
+  function saveData() {
+    sessionStorage.setItem('graceBooksAccounts',    JSON.stringify(ACCOUNTS));
+    sessionStorage.setItem('graceBooksTransactions',JSON.stringify(transactions));
+  }
+
+  function render() {
+    renderHero();
+    renderAccounts();
+    renderTransactions();
+    populateSelects();
+    if (selectedAccountId) renderAccountDetail(selectedAccountId);
+  }
+
+  function renderHero() {
+    const total   = ACCOUNTS.reduce((s,a) => s+a.balance, 0);
+    const income  = transactions.filter(t=>t.type==='income' && !t.isIncomeTransfer).reduce((s,t)=>s+t.amount,0);
+    const expense = transactions.filter(t=>t.type==='expense' && !t.isExpenseTransfer).reduce((s,t)=>s+t.amount,0);
+    document.getElementById('hero-total').textContent   = '₱'+fmt(total);
+    document.getElementById('hero-income').textContent  = '₱'+fmt(income);
+    document.getElementById('hero-expense').textContent = '₱'+fmt(expense);
+    document.getElementById('hero-date').textContent    = 'As of '+new Date().toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'});
+  }
+
+  function renderAccounts() {
+    document.getElementById('accounts-scroll').innerHTML =
+      ACCOUNTS.map(a => `
+        <div class="account-card ${a.cls} ${selectedAccountId===a.id?' selected':''}" onclick="selectAccount('${a.id}')">
+          <div class="acc-icon">${a.icon}</div>
+          <div class="acc-name">${a.name}</div>
+          <div class="acc-amount">₱${fmt(a.balance)}</div>
+          <div class="acc-sub">Available Balance</div>
+        </div>`).join('');
+  }
+
+  function selectAccount(id) {
+    selectedAccountId = id;
+    renderAccounts();
+    renderAccountDetail(id);
+    const detailEl = document.getElementById('account-detail');
+    if(detailEl) {
+        detailEl.classList.add('show');
+        detailEl.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }
+
+  function renderAccountDetail(id) {
+    const acc = ACCOUNTS.find(a => a.id === id);
+    if (!acc) return;
+    const header = document.getElementById('detail-header');
+    if(header) header.className = 'detail-header ' + acc.cls;
+    
+    document.getElementById('d-icon').textContent      = acc.icon;
+    document.getElementById('d-name').textContent      = acc.name;
+    document.getElementById('d-balance').textContent   = '₱' + fmt(acc.balance);
+    document.getElementById('d-beginning').textContent = 'Beginning Balance: ₱' + fmt(acc.beginning);
+
+    const accTrans = getAccountTransactions(acc);
+    const totalIn  = accTrans.filter(t => t.type==='income' || t.isIncomeTransfer).reduce((s,t)=>s+t.amount,0);
+    const totalOut = accTrans.filter(t => t.type==='expense' || t.isExpenseTransfer).reduce((s,t)=>s+t.amount,0);
+
+    document.getElementById('ds-begin').textContent = '₱'+fmt(acc.beginning);
+    document.getElementById('ds-in').textContent    = '₱'+fmt(totalIn);
+    document.getElementById('ds-out').textContent   = '₱'+fmt(totalOut);
+
+    const list = document.getElementById('detail-trans-list');
+    if (accTrans.length === 0) {
+      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No transactions yet.</div>`;
+      return;
+    }
+    let html = '';
+    if (acc.beginning > 0) {
+      html += `<div class="trans-item"><div class="trans-icon begin">🏁</div><div class="trans-details"><div class="trans-name">Beginning</div></div><div class="trans-right"><div class="trans-amount begin">+₱${fmt(acc.beginning)}</div></div></div>`;
+    }
+    [...accTrans].reverse().forEach(t => {
+      const isIn = t.type==='income' || t.isIncomeTransfer;
+      const icon = isIn ? '⬆️' : '⬇️';
+      html += `<div class="trans-item"><div class="trans-icon">${icon}</div><div class="trans-details"><div class="trans-name">${t.desc}</div></div><div class="trans-right"><div class="trans-amount">${fmt(t.amount)}</div></div></div>`;
+    });
+    list.innerHTML = html;
+  }
+
+ function getAccountTransactions(acc) {
+    return transactions
+      .filter(t => t.targetAccId === acc.id)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  function closeDetail() {
+    selectedAccountId = null;
+    document.getElementById('account-detail').classList.remove('show');
+    renderAccounts();
+  }
+
+  function renderTransactions() {
+    // I-sort muna ang main list (Newest to Oldest) bago i-render
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const list = document.getElementById('trans-list');
+    
+    // 1. FILTER LOGIC
+    let filtered = transactions.filter(t => {
+      if (currentFilter === 'all') return true;
+      if (currentFilter === 'income' && t.type === 'income') return true;
+      if (currentFilter === 'expense' && t.type === 'expense') return true;
+      if (currentFilter === 'transfer' && t.type === 'transfer') return true;
+      return false;
+    });
+
+    // 2. SORTING (Latest first)
+    filtered.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No transactions yet.</div>`;
+      return;
+    }
+
+    let html = '';
+    let lastDate = '';
+
+    filtered.forEach(t => {
+      // 3. DATE GROUPING
+      const d = new Date(t.date);
+      const dateLabel = d.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+
+      if (dateLabel !== lastDate) {
+        html += `<div style="font-size: 11px; font-weight: 700; color: #8B0000; padding: 18px 0 8px; border-bottom: 1px solid #f0f0f0; margin-top: 5px;">${dateLabel}</div>`;
+        lastDate = dateLabel;
+      }
+
+      let icon = '🔄'; 
+      if (t.type === 'income') icon = '📥';
+      if (t.type === 'expense') icon = '📤';
+
+     const isIncomeEntry = t.type === 'income' || t.isIncomeTransfer;
+
+      html += `
+        <div class="trans-item">
+          <div class="trans-icon ${t.type}" style="width: 35px; height: 35px; font-size: 16px;">${icon}</div>
+          <div class="trans-details">
+            <div class="trans-name">${t.desc}</div>
+            <div class="trans-sub">${t.account || ''} ${t.toAccount ? '→ ' + t.toAccount : ''}</div>
+          </div>
+          <div class="trans-right">
+            <div class="trans-amount ${t.type}">
+               ${isIncomeEntry ? '+' : '-'}₱${fmt(t.amount)}
+            </div>
+            <div class="trans-date" style="font-size: 9px; opacity: 0.6;">
+              ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            </div>
+          </div>
+        </div>`;
+    });
+    list.innerHTML = html;
+  }
+
+  function filterTransactions(type, element) {
+    currentFilter = type;
+    const tabs = document.querySelectorAll('.filter-tab');
+    tabs.forEach(tab => tab.classList.remove('active'));
+    
+    if (element) {
+      element.classList.add('active');
+    } else {
+      // Fallback kung walang element (para sa init)
+      tabs.forEach(tab => {
+          if(tab.innerText.toLowerCase() === type || (type==='income' && tab.innerText==='In')) {
+              tab.classList.add('active');
+          }
+      });
+    }
+    renderTransactions();
+  }
+
+  function openModal(id) { if (id==='begin-modal') openBeginModal(); populateSelects(); document.getElementById(id).classList.add('active'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+  
+  function populateSelects() {
+    const opts = ACCOUNTS.map(a=>`<option value="${a.id}">${a.icon} ${a.name}</option>`).join('');
+    ['add-account','transfer-from','transfer-to','withdraw-account'].forEach(id=>{ 
+        const el = document.getElementById(id);
+        if(el) el.innerHTML=opts; 
+    });
+  }
+function openBeginModal() {
+    const list = document.getElementById('begin-list');
+    if (list) {
+      list.innerHTML = ACCOUNTS.map(a => `
+        <div class="begin-item">
+          <div class="b-icon">${a.icon}</div>
+          <div class="b-name">${a.name}</div>
+          <input type="number" id="beg-${a.id}" value="${a.beginning || 0}" step="0.01">
+        </div>
+      `).join('');
+    }
+  }
+
+  async function saveBeginningBalances() {
+    let totalBeginning = 0;
+    let begData = {};
+
+    // Kunin lahat ng nilagay sa input fields
+    ACCOUNTS.forEach(a => {
+      const val = parseFloat(document.getElementById(`beg-${a.id}`).value) || 0;
+      a.beginning = val;
+      begData[a.id] = val;
+      totalBeginning += val; // I-total lahat ng beginning balances
+    });
+
+    // I-save sa Firebase Settings para mabasa ng Print Report
+    await db.collection('settings').doc('beginningBalances').set({
+      accounts: begData,
+      total: totalBeginning
+    });
+
+    showToast("Beginning Balances Saved!");
+    closeModal('begin-modal');
+    combineAndRender();
+  }
+  function fmt(n) { return (n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
+  function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 3000); }
+  function today() { return new Date().toLocaleDateString('en-PH'); }
+
+  loadData();
+  setupFirebaseListener(); 
+  render();
+  async function transferFunds() {
+    // 1. Safety lock para hindi ma-double click
+    const btn = document.querySelector('#transfer-modal .modal-btn');
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+
+    const fromId = document.getElementById('transfer-from').value;
+    const toId = document.getElementById('transfer-to').value;
+    const amount = parseFloat(document.getElementById('transfer-amount').value) || 0;
+    const desc = document.getElementById('transfer-desc').value || 'Funds Transfer';
+
+    if (!fromId || !toId || fromId === toId) {
+      showToast("Invalid transfer selection.");
+      btn.disabled = false; btn.textContent = "✅ Confirm Transfer";
+      return;
+    }
+    if (amount <= 0) {
+      showToast("Please enter a valid amount.");
+      btn.disabled = false; btn.textContent = "✅ Confirm Transfer";
+      return;
+    }
+
+    const fromAcc = ACCOUNTS.find(a => a.id === fromId);
+    const toAcc = ACCOUNTS.find(a => a.id === toId);
+
+    if (fromAcc.balance < amount) {
+      showToast("Insufficient balance in source account.");
+      btn.disabled = false; btn.textContent = "✅ Confirm Transfer";
+      return;
+    }
+
+    const dateStr = new Date().toISOString();
+
+    try {
+      // 2. I-save sa Expenses (Deduction sa source)
+      await db.collection("expenses").add({
+        amount: amount,
+        category: "Transfer",
+        sub: desc,
+        payment: fromId, 
+        targetAccId: fromId, 
+        type: 'transfer',
+        date: dateStr,
+        toAccount: toAcc.name 
+      });
+
+      // 3. I-save sa Income (Addition sa destination)
+      await db.collection("income").add({
+        amount: amount,
+        member: desc,
+        payment: "Transfer",
+        targetAccount: toId,
+        targetAccId: toId, 
+        type: 'transfer',
+        date: dateStr,
+        fromAccount: fromAcc.name 
+      });
+
+      // PANSININ: Inalis na natin yung manual addition dito.
+      // Firebase na ang bahalang mag-trigger ng update sa UI natin!
+
+      closeModal('transfer-modal');
+      showToast("Transfer Successful!");
+
+      document.getElementById('transfer-amount').value = '';
+      document.getElementById('transfer-desc').value = '';
+      
+    } catch (error) {
+      console.error("Transfer Error: ", error);
+      showToast("Error processing transfer.");
+    } finally {
+      // I-unlock ulit ang button
+      btn.disabled = false;
+      btn.textContent = "✅ Confirm Transfer";
+    }
+  }
+</script>
+</body>
+</html>

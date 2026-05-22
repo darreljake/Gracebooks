@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GraceBooks — Financial Reports</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --red:      #8B0000;
+      --red-mid:  #c0392b;
+      --red-light:#fdf2f2;
+      --gold:     #c9a84c;
+      --dark:     #1a1a1a;
+      --gray:     #555;
+      --line:     #ccc;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #f0f2f5;
+      color: var(--dark);
+      min-height: 100vh;
+    }
+
+    /* ── TOPBAR ─────────────────────────────────────────────── */
+    .topbar {
+      background: var(--red);
+      color: white;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 3px 15px rgba(0,0,0,0.25);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { height: 46px; }
+    .brand-text { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .brand-sub  { font-size: 11px; opacity: 0.75; letter-spacing: 0.5px; }
+
+    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-action {
+      padding: 8px 14px; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+      color: white; transition: 0.2s; font-family: 'Poppins', sans-serif;
+    }
+    .btn-action:hover { opacity: 0.85; transform: translateY(-1px); }
+    .btn-back   { background: rgba(255,255,255,0.15); }
+    .btn-excel  { background: #1e8449; }
+    .btn-print  { background: #1a5276; }
+    .btn-fullscreen { background: #5a2a7a; }
+
+    /* ── CONTROLS ───────────────────────────────────────────── */
+    .controls-bar {
+      background: white;
+      padding: 16px 28px;
+      display: flex; gap: 14px; flex-wrap: wrap;
+      align-items: center;
+      border-bottom: 1px solid #e0e0e0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .controls-bar label { font-size: 12px; font-weight: 600; color: var(--gray); }
+    .controls-bar select {
+      padding: 8px 12px; border: 1px solid #ddd;
+      border-radius: 6px; font-size: 13px; background: white;
+      font-family: 'Poppins', sans-serif;
+    }
+    .controls-bar select:focus { outline: none; border-color: var(--red); }
+    .report-type-tabs {
+      display: flex; gap: 6px;
+    }
+    .rtype-btn {
+      padding: 7px 16px; border: 2px solid #ddd;
+      border-radius: 20px; background: white;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      color: var(--gray); transition: 0.2s;
+      font-family: 'Poppins', sans-serif;
+    }
+    .rtype-btn.active {
+      background: var(--red); color: white; border-color: var(--red);
+    }
+
+    /* ── MODAL STYLES (For Signatories) ─────────────────────── */
+    .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; }
+    .modal-content { background:white; padding:30px; border-radius:12px; width:600px; max-width:95%; box-shadow:0 10px 25px rgba(0,0,0,0.2); }
+    .modal-header { font-size:18px; font-weight:700; margin-bottom:5px; border-bottom:1px solid #ddd; padding-bottom:10px; color:var(--dark); }
+    .modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+    .btn-cancel { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:#eee; color:#333; }
+    .btn-save { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:var(--red); color:white; }
+    
+    .sig-header-label { font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 8px; margin-top: 15px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+    .sig-grid { display: grid; grid-template-columns: 1fr 1.5fr 1.5fr; gap: 10px; margin-bottom: 10px; }
+    .sig-grid label { font-size: 11px; color: var(--gray); font-weight: 600; margin-bottom: 3px; display: block; }
+    .sig-grid input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-family: 'Poppins', sans-serif; font-size: 13px; }
+
+    /* ── REPORT WRAPPER ─────────────────────────────────────── */
+    .report-wrapper {
+      max-width: 860px;
+      margin: 28px auto;
+      padding: 0 20px 60px;
+    }
+
+    /* ── REPORT PAGE (Printable) ────────────────────────────── */
+    .report-page {
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      padding: 48px 56px;
+      position: relative;
+    }
+    .report-page::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 5px;
+      background: linear-gradient(to bottom, var(--red), var(--red-mid));
+    }
+
+    .fullscreen-toolbar {
+      display: none;
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 2000;
+      gap: 8px;
+      align-items: center;
+      background: rgba(26,26,26,0.9);
+      color: white;
+      padding: 8px;
+      border-radius: 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+    }
+    .fs-tool-btn {
+      width: 34px;
+      height: 34px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.14);
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .fs-tool-btn:hover { background: rgba(255,255,255,0.24); }
+    .fs-zoom-label {
+      min-width: 52px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    body.report-fullscreen {
+      overflow: auto;
+      background: #1a1a1a;
+    }
+    body.report-fullscreen .topbar,
+    body.report-fullscreen .controls-bar {
+      display: none;
+    }
+    body.report-fullscreen .fullscreen-toolbar {
+      display: flex;
+    }
+    body.report-fullscreen .report-wrapper {
+      max-width: none;
+      min-height: 100vh;
+      margin: 0;
+      padding: 56px 24px 40px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      overflow: auto;
+    }
+    body.report-fullscreen .report-page {
+      transform: scale(var(--report-zoom, 1));
+      transform-origin: top center;
+      margin-bottom: 40px;
+    }
+
+    /* ── REPORT HEADER ──────────────────────────────────────── */
+    .rpt-header {
+      display: flex;
+      align-items: center; 
+      gap: 20px;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--red);
+    }
+    .rpt-header img { height: 70px; }
+    .rpt-header-text { flex: 1; text-align: center; }
+    .rpt-church-name {
+      font-family: 'EB Garamond', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--red);
+    }
+    .rpt-church-address { font-size: 11px; color: var(--gray); margin-top: 2px; }
+    .rpt-title { font-size: 14px; font-weight: 700; color: var(--dark); text-transform: uppercase; margin-top: 10px; }
+    .rpt-period { font-size: 12px; color: var(--gray); margin-top: 2px; }
+
+    /* ── SIKSIK LAYOUT CONTAINER ────────────────────────────── */
+    .siksik-container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    /* ── FINANCIAL STATEMENT TABLE ──────────────── */
+    .fs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    .fs-table td {
+      padding: 2.5px 4px;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .col-desc { width: 60%; color: #111; }
+    .col-sub  { width: 20%; text-align: right; padding-right: 12px; color: var(--gray); }
+    .col-main { width: 20%; text-align: right; font-weight: 600; }
+    .indent-1 { padding-left: 18px !important; font-weight: 600; }
+    .indent-2 { padding-left: 36px !important; color: #111; font-size: 12px; }
+    .indent-3 { padding-left: 54px !important; color: #222; font-size: 11.5px; }
+
+    .section-header td {
+      font-weight: 700;
+      font-size: 12.5px;
+      text-transform: uppercase;
+      padding-top: 14px !important;
+      padding-bottom: 4px !important;
+      color: var(--red);
+      border-bottom: 1px solid var(--red);
+    }
+
+    .bold-row td { font-weight: 700; }
+    .subtotal-row td { font-weight: 700; border-top: 1px solid var(--line); padding-top: 4px !important; }
+    .total-row td {
+      font-weight: 700; font-size: 13px; border-top: 2px solid var(--dark);
+      border-bottom: 3px double var(--dark); padding-top: 5px !important; padding-bottom: 5px !important; color: var(--dark);
+    }
+    .spacer-row td { padding: 5px 0 !important; }
+
+    .amount-positive { color: #1e8449; }
+    .amount-negative { color: var(--red-mid); }
+
+    /* ── SIGNATURES ──────────────────────────────────────────── */
+    .sig-section { margin-top: 60px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+    .sig-box { text-align: center; flex: 1 1 145px; max-width: 180px; }
+    
+    /* ── FOOTER ──────────────────────────────────────────────── */
+    .rpt-footer {
+      margin-top: 32px; padding-top: 12px; border-top: 1px solid #eee;
+      display: flex; justify-content: space-between; font-size: 10px; color: #aaa;
+    }
+
+    /* ── PRINT STYLES ───────────────────────────────────────── */
+
+    /* Default: Long Bond 8.5 x 13 */
+    @page { size: 8.5in 13in; margin: 0.6in 0.65in; }
+
+    /* Letter 8.5 x 11 — activated when <body> has class 'paper-letter' */
+    body.paper-letter { --paper: letter; }
+    @media print {
+      body.paper-letter { }
+    }
+    /* Swap @page size via a dedicated stylesheet injected by JS */
+
+    @media print {
+      .topbar, .controls-bar, .fullscreen-toolbar, .no-print { display: none !important; }
+      body { background: white; }
+      .report-wrapper { margin: 0; padding: 0; max-width: 100%; }
+      .report-page { box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
+      .report-page::before { display: none; }
+      .siksik-container { max-width: 100% !important; }
+
+      /* ── Page-break rules ── */
+      /* Never break immediately after a section header or bold category row */
+      .section-header   { break-after: avoid; page-break-after: avoid; }
+      .bold-row         { break-after: avoid; page-break-after: avoid; }
+      /* Never orphan a sub-row from its parent category */
+      .fs-table tr      { break-inside: avoid; page-break-inside: avoid; }
+      /* Keep signature block together on one page */
+      .sig-section      { break-inside: avoid; page-break-inside: avoid;
+                          break-before: auto; page-break-before: auto; }
+      .rpt-footer       { break-inside: avoid; page-break-inside: avoid; }
+
+      /* ── Font scaling per paper size ── */
+      /* Long bond — default, comfortable */
+      body:not(.paper-letter) .fs-table       { font-size: 12.5px; }
+      body:not(.paper-letter) .fs-table td    { padding: 2.5px 4px; }
+      /* Letter — slightly tighter to fit more per page */
+      body.paper-letter .fs-table             { font-size: 11.5px; }
+      body.paper-letter .fs-table td          { padding: 1.5px 4px; }
+      body.paper-letter .spacer-row td        { padding: 3px 0 !important; }
+      body.paper-letter .section-header td    { padding-top: 10px !important; }
+      /* A4 — similar to letter, slightly adjusted */
+      body.paper-a4 .fs-table                 { font-size: 11.5px; }
+      body.paper-a4 .fs-table td              { padding: 2px 4px; }
+      body.paper-a4 .spacer-row td            { padding: 3px 0 !important; }
+      body.paper-a4 .section-header td        { padding-top: 11px !important; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar no-print">
+  <div class="brand">
+    <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+    <div>
+      <div class="brand-text">GraceBooks</div>
+      <div class="brand-sub">TUMC Finance System</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn-action btn-excel" onclick="exportToExcel()">
+      <i class="fas fa-file-excel"></i> Export Excel
+    </button>
+    <select id="paper-size-sel" onchange="setPaperSize(this.value)"
+      style="padding:7px 10px; border:none; border-radius:6px; font-size:12px;
+             font-weight:600; font-family:'Poppins',sans-serif; background:rgba(255,255,255,0.18);
+             color:white; cursor:pointer; outline:none;">
+      <option value="long" style="color:#333;">📄 Long Bond (8.5×13)</option>
+      <option value="letter" style="color:#333;">📄 Letter (8.5×11)</option>
+      <option value="a4" style="color:#333;">📄 A4 (8.27×11.7)</option>
+    </select>
+    <button class="btn-action btn-print" onclick="window.print()">
+      <i class="fas fa-print"></i> Print
+    </button>
+    <button class="btn-action btn-fullscreen" onclick="openReportFullscreen()">
+      <i class="fas fa-expand"></i> Full Screen
+    </button>
+    <button class="btn-action btn-back" onclick="window.location.href='index.html'">
+      <i class="fas fa-arrow-left"></i> Dashboard
+    </button>
+  </div>
+</div>
+
+<div class="controls-bar no-print">
+  <div class="report-type-tabs">
+    <button class="rtype-btn active" onclick="setReportType('monthly', this)">📋 Monthly Report</button>
+    <button class="rtype-btn" onclick="setReportType('annual', this)">📊 Annual Report</button>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+  <div>
+    <label>Sort Members By</label><br>
+    <select id="sel-member-sort" onchange="render()">
+      <option value="surname">Surname (A-Z)</option>
+      <option value="name">First Name (A-Z)</option>
+      <option value="id">Member ID</option>
+      <option value="amount-desc">Amount (High to Low)</option>
+      <option value="amount-asc">Amount (Low to High)</option>
+    </select>
+  </div>
+</div>
+
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <div>
+      <label>Year</label><br>
+      <select id="sel-year" onchange="render()"></select>
+    </div>
+    <div id="month-control">
+      <label>Month</label><br>
+      <select id="sel-month" onchange="render()">
+        <option value="0">January</option><option value="1">February</option>
+        <option value="2">March</option><option value="3">April</option>
+        <option value="4">May</option><option value="5">June</option>
+        <option value="6">July</option><option value="7">August</option>
+        <option value="8">September</option><option value="9">October</option>
+        <option value="10">November</option><option value="11">December</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-left: auto;">
+    <button class="rtype-btn" onclick="document.getElementById('sig-modal').style.display='flex'">
+      <i class="fas fa-pen-nib"></i> Set Signatories
+    </button>
+  </div>
+</div>
+
+<div id="sig-modal" class="modal no-print">
+  <div class="modal-content">
+    <div class="modal-header">Edit Signatories</div>
+    
+    <div class="sig-header-label">Chairperson</div>
+    <div class="sig-grid">
+      <div>
+        <label>Label</label>
+        <input type="text" id="sig-chairperson-label" placeholder="Approved by">
+      </div>
+      <div>
+        <label>Name</label>
+        <input type="text" id="sig-chairperson-name" placeholder="Chairperson Name">
+      </div>
+      <div>
+        <label>Title</label>
+        <input type="text" id="sig-chairperson-title" placeholder="Church Council Chairperson">
+      </div>
+    </div>
+
+    <div class="sig-header-label">Finance Chair</div>
+    <div class="sig-grid">
+      <div>
+        <label>Label</label>
+        <input type="text" id="sig-finance-chair-label" placeholder="Approved by">
+      </div>
+      <div>
+        <label>Name</label>
+        <input type="text" id="sig-finance-chair-name" placeholder="Finance Chair Name">
+      </div>
+      <div>
+        <label>Title</label>
+        <input type="text" id="sig-finance-chair-title" placeholder="Finance Chair">
+      </div>
+    </div>
+
+    <div class="sig-header-label">Treasurer</div>
+    <div class="sig-grid">
+      <div>
+        <label>Label</label>
+        <input type="text" id="sig-treasurer-label" placeholder="Prepared by">
+      </div>
+      <div>
+        <label>Name</label>
+        <input type="text" id="sig-treasurer-name" placeholder="Juan Dela Cruz">
+      </div>
+      <div>
+        <label>Title</label>
+        <input type="text" id="sig-treasurer-title" placeholder="Church Treasurer">
+      </div>
+    </div>
+
+    <div class="sig-header-label">Auditor</div>
+    <div class="sig-grid">
+      <div>
+        <label>Label</label>
+        <input type="text" id="sig-auditor-label" placeholder="Audited by">
+      </div>
+      <div>
+        <label>Name</label>
+        <input type="text" id="sig-auditor-name" placeholder="Maria Clara">
+      </div>
+      <div>
+        <label>Title</label>
+        <input type="text" id="sig-auditor-title" placeholder="Church Auditor">
+      </div>
+    </div>
+
+    <div class="sig-header-label">Pastor</div>
+    <div class="sig-grid">
+      <div>
+        <label>Label</label>
+        <input type="text" id="sig-pastor-label" placeholder="Noted by">
+      </div>
+      <div>
+        <label>Name</label>
+        <input type="text" id="sig-pastor-name" placeholder="Rev. Juan">
+      </div>
+      <div>
+        <label>Title</label>
+        <input type="text" id="sig-pastor-title" placeholder="Church Pastor">
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="document.getElementById('sig-modal').style.display='none'">Cancel</button>
+      <button class="btn-save" onclick="saveSignatories()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<div class="fullscreen-toolbar no-print" id="fullscreen-toolbar">
+  <button class="fs-tool-btn" onclick="changeReportZoom(-0.1)" title="Zoom out">
+    <i class="fas fa-minus"></i>
+  </button>
+  <span class="fs-zoom-label" id="report-zoom-label">100%</span>
+  <button class="fs-tool-btn" onclick="changeReportZoom(0.1)" title="Zoom in">
+    <i class="fas fa-plus"></i>
+  </button>
+  <button class="fs-tool-btn" onclick="resetReportZoom()" title="Reset zoom">
+    <i class="fas fa-rotate-left"></i>
+  </button>
+  <button class="fs-tool-btn" onclick="closeReportFullscreen()" title="Close full screen">
+    <i class="fas fa-xmark"></i>
+  </button>
+</div>
+
+<div class="report-wrapper">
+  <div class="report-page" id="report-page">
+    <div style="text-align:center; padding:60px; color:#aaa;">
+      <i class="fas fa-spinner fa-spin" style="font-size:32px;"></i>
+      <div style="margin-top:12px; font-size:14px;">Loading data from cloud...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── FIREBASE CONFIGURATION ────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let incomeData   = [];
+  let expenseData  = [];
+  let allIncomeData = [];
+  let allExpenseData = [];
+  let obligationsData = [];
+  let memberNameById = {};
+  let memberNameByLegacyKey = {};
+  let accountOrder = { income: [], expense: [] }; 
+  let reportType   = 'monthly';
+  let systemInitialBalance = 0; 
+  let beginningAccounts = {};
+  let reportZoom = 1;
+  const FINANCIAL_ACCOUNTS = [
+    { id:'cash-hand',  name:'Cash on Hand' },
+    { id:'cash-bank',  name:'Cash in Bank' },
+    { id:'petty-cash', name:'Petty Cash Fund' },
+    { id:'building',   name:'Building Fund' },
+    { id:'mission',    name:'Mission Fund' },
+    { id:'investment', name:'Investments/TD' }
+  ];
+  
+  // Default Signatories Variables (Nakalagay na ang Label, Name, at Title)
+  let signatories = {
+    chairpersonLabel: "Approved by",
+    chairpersonName: "",
+    chairpersonTitle: "Church Council Chairperson",
+
+    financeChairLabel: "Approved by",
+    financeChairName: "",
+    financeChairTitle: "Finance Chair",
+
+    treasurerLabel: "Prepared by",
+    treasurerName: "",
+    treasurerTitle: "Church Treasurer",
+
+    auditorLabel: "Audited by",
+    auditorName: "",
+    auditorTitle: "Church Auditor",
+
+    pastorLabel: "Noted by",
+    pastorName: "",
+    pastorTitle: "Church Pastor"
+  };
+
+  function syncSignatoryInputs() {
+    document.getElementById('sig-chairperson-label').value = signatories.chairpersonLabel;
+    document.getElementById('sig-chairperson-name').value = signatories.chairpersonName;
+    document.getElementById('sig-chairperson-title').value = signatories.chairpersonTitle;
+
+    document.getElementById('sig-finance-chair-label').value = signatories.financeChairLabel;
+    document.getElementById('sig-finance-chair-name').value = signatories.financeChairName;
+    document.getElementById('sig-finance-chair-title').value = signatories.financeChairTitle;
+
+    document.getElementById('sig-treasurer-label').value = signatories.treasurerLabel;
+    document.getElementById('sig-treasurer-name').value = signatories.treasurerName;
+    document.getElementById('sig-treasurer-title').value = signatories.treasurerTitle;
+
+    document.getElementById('sig-auditor-label').value = signatories.auditorLabel;
+    document.getElementById('sig-auditor-name').value = signatories.auditorName;
+    document.getElementById('sig-auditor-title').value = signatories.auditorTitle;
+
+    document.getElementById('sig-pastor-label').value = signatories.pastorLabel;
+    document.getElementById('sig-pastor-name').value = signatories.pastorName;
+    document.getElementById('sig-pastor-title').value = signatories.pastorTitle;
+  }
+
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function fmt(num) {
+    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatCategoryName(str) {
+    if (!str) return '';
+    str = String(str).trim();
+    if (!str) return '';
+    // Preserve words that are all-uppercase (acronyms like SSS, HDMF, BIR, VAT, etc.)
+    return str.split(' ').map(word => {
+      if (!word) return word;
+      // If the word (ignoring slashes and digits) is all uppercase letters, preserve it
+      const letters = word.replace(/[^a-zA-Z]/g, '');
+      if (letters.length > 0 && letters === letters.toUpperCase()) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+  }
+
+  function getMemberId(d) {
+    return (d.memberId || d.memberID || d.memberCode || '').toString().trim();
+  }
+
+  function resolveMemberName(d) {
+    const memberId = getMemberId(d);
+    if (memberId && memberNameById[memberId]) return memberNameById[memberId];
+    const rawName = (d.member || d.name || d.Member || '').trim();
+    const legacyName = memberNameByLegacyKey[normalizeMemberLookupName(rawName)];
+    if (legacyName && legacyName !== '__AMBIGUOUS__') return legacyName;
+    return rawName || 'General Collection';
+  }
+
+  function formatMemberName(d) {
+    const last = d.last || d.lastName || '';
+    const first = d.first || d.firstName || '';
+    return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim();
+  }
+
+  function normalizeMemberLookupName(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function addMemberNameAlias(rawName, currentName) {
+    const key = normalizeMemberLookupName(rawName);
+    if (!key || !currentName) return;
+    if (memberNameByLegacyKey[key] && memberNameByLegacyKey[key] !== currentName) {
+      memberNameByLegacyKey[key] = '__AMBIGUOUS__';
+      return;
+    }
+    memberNameByLegacyKey[key] = currentName;
+  }
+
+  function addMemberNameAliases(d, currentName) {
+    const last = (d.last || d.lastName || '').toString().trim();
+    const first = (d.first || d.firstName || '').toString().trim();
+    const firstToken = first.split(/\s+/).filter(Boolean)[0] || '';
+
+    addMemberNameAlias(currentName, currentName);
+    addMemberNameAlias(`${last}, ${first}`, currentName);
+    addMemberNameAlias(`${first} ${last}`, currentName);
+    addMemberNameAlias(`${last} ${first}`, currentName);
+    if (firstToken && firstToken !== first) {
+      addMemberNameAlias(`${firstToken} ${last}`, currentName);
+      addMemberNameAlias(`${last}, ${firstToken}`, currentName);
+      addMemberNameAlias(`${last} ${firstToken}`, currentName);
+    }
+  }
+
+  // Populate UI dates
+  const now = new Date();
+  const yrSel = document.getElementById('sel-year');
+  document.getElementById('sel-month').value = now.getMonth();
+
+  // ── KUNIN ANG AVAILABLE YEARS SA CLOUD (SYNCED SA BVA) ──
+  db.collection("settings").doc("yearsConfig").get().then(doc => {
+    let availableYears = [2024, 2025, 2026]; // Default fallback
+    if(doc.exists && doc.data().list) {
+      availableYears = doc.data().list;
+    }
+    
+    const currentVal = yrSel.value;
+    yrSel.innerHTML = "";
+    // I-sort para laging nasa itaas ang pinakabagong taon
+    [...availableYears].sort((a,b) => b - a).forEach(y => { 
+      yrSel.innerHTML += `<option value="${y}">${y}</option>`; 
+    });
+    
+    // Panatilihin ang napiling taon, o gamitin ang current year
+    yrSel.value = currentVal || now.getFullYear();
+    render(); 
+  });
+
+  // Load Data
+  db.collection('settings').doc('accountStructure').get().then(s => {
+    if (s.exists) { accountOrder = s.data(); }
+    render();
+  });
+
+  // Listener para sa Beginning Balance
+  db.collection('settings').doc('beginningBalances').get().then(s => {
+    if (s.exists) {
+      systemInitialBalance = parseFloat(s.data().total || 0);
+      beginningAccounts = s.data().accounts || {};
+    }
+    render();
+  });
+
+  // Listener para sa Signatories Settings
+  db.collection('settings').doc('signatories').get().then(s => {
+    if (s.exists) { 
+      const data = s.data();
+
+      signatories.chairpersonLabel = data.chairpersonLabel || "Approved by";
+      signatories.chairpersonName = data.chairpersonName || "";
+      signatories.chairpersonTitle = data.chairpersonTitle || "Church Council Chairperson";
+
+      signatories.financeChairLabel = data.financeChairLabel || "Approved by";
+      signatories.financeChairName = data.financeChairName || "";
+      signatories.financeChairTitle = data.financeChairTitle || "Finance Chair";
+      
+      signatories.treasurerLabel = data.treasurerLabel || "Prepared by";
+      signatories.treasurerName = data.treasurerName || "";
+      signatories.treasurerTitle = data.treasurerTitle || "Church Treasurer";
+      
+      signatories.pastorLabel = data.pastorLabel || "Noted by";
+      signatories.pastorName = data.pastorName || "";
+      signatories.pastorTitle = data.pastorTitle || "Church Pastor";
+      
+      signatories.auditorLabel = data.auditorLabel || "Audited by";
+      signatories.auditorName = data.auditorName || "";
+      signatories.auditorTitle = data.auditorTitle || "Church Auditor";
+
+      // Update Modal Inputs
+      document.getElementById('sig-chairperson-label').value = signatories.chairpersonLabel;
+      document.getElementById('sig-chairperson-name').value = signatories.chairpersonName;
+      document.getElementById('sig-chairperson-title').value = signatories.chairpersonTitle;
+
+      document.getElementById('sig-finance-chair-label').value = signatories.financeChairLabel;
+      document.getElementById('sig-finance-chair-name').value = signatories.financeChairName;
+      document.getElementById('sig-finance-chair-title').value = signatories.financeChairTitle;
+
+      document.getElementById('sig-treasurer-label').value = signatories.treasurerLabel;
+      document.getElementById('sig-treasurer-name').value = signatories.treasurerName;
+      document.getElementById('sig-treasurer-title').value = signatories.treasurerTitle;
+      
+      document.getElementById('sig-pastor-label').value = signatories.pastorLabel;
+      document.getElementById('sig-pastor-name').value = signatories.pastorName;
+      document.getElementById('sig-pastor-title').value = signatories.pastorTitle;
+      
+      document.getElementById('sig-auditor-label').value = signatories.auditorLabel;
+      document.getElementById('sig-auditor-name').value = signatories.auditorName;
+      document.getElementById('sig-auditor-title').value = signatories.auditorTitle;
+    }
+    syncSignatoryInputs();
+    render();
+  });
+
+  db.collection('members').get().then(s => {
+    memberNameById = {};
+    memberNameByLegacyKey = {};
+    s.forEach(doc => {
+      const d = doc.data();
+      const memberId = (d.memberId || doc.id || '').toString().trim();
+      const currentName = formatMemberName(d);
+      if (memberId) memberNameById[memberId] = currentName;
+      addMemberNameAliases(d, currentName);
+    });
+    render();
+  });
+
+  db.collection('income').get().then(s => {
+    // Keep the complete income pool for Financial Overview account balances.
+    allIncomeData = s.docs.map(d => d.data());
+    incomeData = allIncomeData.filter(d => {
+      // Skip transfers
+      if (d.type === 'transfer') return false;
+      // Skip Building Fund
+      if ((d.type || '').toLowerCase().includes('building fund') || 
+          (d.budgetCategory || '').toLowerCase().includes('building fund')) return false;
+      return true;
+    });
+    render();
+  });
+
+  db.collection('expenses').get().then(s => {
+    // Keep the complete expense pool for Financial Overview account balances.
+    allExpenseData = s.docs.map(d => d.data());
+    expenseData = allExpenseData.filter(d => d.type !== 'transfer');
+    render();
+  });
+
+  db.collection('churchObligations').get().then(s => {
+    obligationsData = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    render();
+  });
+
+  function setReportType(type, btn) {
+    reportType = type;
+    document.querySelectorAll('.rtype-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('month-control').style.display = type === 'monthly' ? 'block' : 'none'; 
+    render();
+  }
+
+  // Function pang-save ng Signatories sa Firebase (Tatlong fields per person)
+  async function saveSignatories() {
+    const btn = document.querySelector('#sig-modal .btn-save');
+    btn.textContent = 'Saving...';
+    try {
+      const nextSignatories = {
+        chairpersonLabel: document.getElementById('sig-chairperson-label').value,
+        chairpersonName: document.getElementById('sig-chairperson-name').value,
+        chairpersonTitle: document.getElementById('sig-chairperson-title').value,
+
+        financeChairLabel: document.getElementById('sig-finance-chair-label').value,
+        financeChairName: document.getElementById('sig-finance-chair-name').value,
+        financeChairTitle: document.getElementById('sig-finance-chair-title').value,
+
+        treasurerLabel: document.getElementById('sig-treasurer-label').value,
+        treasurerName: document.getElementById('sig-treasurer-name').value,
+        treasurerTitle: document.getElementById('sig-treasurer-title').value,
+        
+        pastorLabel: document.getElementById('sig-pastor-label').value,
+        pastorName: document.getElementById('sig-pastor-name').value,
+        pastorTitle: document.getElementById('sig-pastor-title').value,
+        
+        auditorLabel: document.getElementById('sig-auditor-label').value,
+        auditorName: document.getElementById('sig-auditor-name').value,
+        auditorTitle: document.getElementById('sig-auditor-title').value
+      };
+      await db.collection('settings').doc('signatories').set(nextSignatories);
+      signatories = { ...signatories, ...nextSignatories };
+      render();
+      document.getElementById('sig-modal').style.display = 'none';
+    } catch(err) {
+      console.error(err);
+      alert("Error saving signatories.");
+    }
+    btn.textContent = 'Save Settings';
+  }
+
+  function render() {
+    if (reportType === 'monthly') renderMonthly();
+    else if (reportType === 'annual') renderAnnual();
+  }
+
+  function updateReportZoom() {
+    document.documentElement.style.setProperty('--report-zoom', reportZoom.toFixed(2));
+    document.getElementById('report-zoom-label').textContent = Math.round(reportZoom * 100) + '%';
+  }
+
+  function openReportFullscreen() {
+    document.body.classList.add('report-fullscreen');
+    updateReportZoom();
+    const page = document.getElementById('report-page');
+    if (page && page.scrollIntoView) page.scrollIntoView({ block: 'start' });
+  }
+
+  function closeReportFullscreen() {
+    document.body.classList.remove('report-fullscreen');
+  }
+
+  function changeReportZoom(delta) {
+    reportZoom = Math.min(1.8, Math.max(0.6, reportZoom + delta));
+    updateReportZoom();
+  }
+
+  function resetReportZoom() {
+    reportZoom = 1;
+    updateReportZoom();
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.body.classList.contains('report-fullscreen')) {
+      closeReportFullscreen();
+    }
+  });
+
+  updateReportZoom();
+
+  function getObligationPaidAmount(o) {
+    if (o.paidAmount !== undefined) return Math.max(0, parseFloat(o.paidAmount) || 0);
+    return o.status === 'Paid' ? (parseFloat(o.amount) || 0) : 0;
+  }
+
+  function getObligationBalance(o) {
+    const amount = Math.max(0, parseFloat(o.amount) || 0);
+    return Math.max(0, amount - getObligationPaidAmount(o));
+  }
+
+  function getObligationStatus(o) {
+    const amount = Math.max(0, parseFloat(o.amount) || 0);
+    const paidAmount = Math.min(amount, getObligationPaidAmount(o));
+    if (amount > 0 && paidAmount >= amount) return 'Paid';
+    if (paidAmount > 0) return 'Partially Paid';
+    return 'Unpaid';
+  }
+
+  // ── CORE REPORT GENERATION ───────────────────────────────────────────────
+  function generateReportHTML(year, month, isAnnual) {
+    const fInc = incomeData.filter(d => {
+      if(!d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear()===year && dt.getMonth()===month);
+    });
+    
+    const fExp = expenseData.filter(d => {
+      if(!d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear()===year && dt.getMonth()===month);
+    });
+
+    let begBal = systemInitialBalance; 
+    let memberSort = 'surname'; // Default sort
+    const targetDate = isAnnual ? new Date(year, 0, 1) : new Date(year, month, 1);
+    
+    incomeData.forEach(d => {
+      if (d.date && new Date(d.date) < targetDate) begBal += parseFloat(d.amount||0);
+    });
+    expenseData.forEach(d => {
+      if (d.date && new Date(d.date) < targetDate) begBal -= parseFloat(d.amount||0);
+    });
+
+    const totalIn  = fInc.reduce((s,d) => s + parseFloat(d.amount||0), 0);
+    const totalOut = fExp.reduce((s,d) => s + parseFloat(d.amount||0), 0);
+    const endBal   = begBal + totalIn - totalOut;
+    const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
+    const netChange = totalIn - totalOut;
+    const accountBalances = getAccountBalancesThrough(periodEndDate);
+    const accountRows = FINANCIAL_ACCOUNTS.map(a => {
+      const balance = accountBalances[a.id] || 0;
+      return `
+        <tr>
+          <td class="col-desc indent-1">${a.name}</td>
+          <td class="col-sub"></td>
+          <td class="col-main ${balance < 0 ? 'amount-negative' : ''}">₱ ${fmt(balance)}</td>
+        </tr>`;
+    }).join('');
+    const periodObligations = obligationsData.filter(o => {
+      if (getObligationBalance(o) <= 0) return false;
+      if (!o.dueDate) return true;
+      const dt = new Date(o.dueDate);
+      return !isNaN(dt.getTime()) && dt.getFullYear() === year;
+    }).sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
+    const obligationRows = periodObligations.map(o => {
+      const amount = Math.max(0, parseFloat(o.amount || 0));
+      const paidAmount = getObligationPaidAmount(o);
+      const balanceAmount = getObligationBalance(o);
+      const status = getObligationStatus(o);
+      const settlementText = paidAmount > 0 ? ` · settled ₱ ${fmt(paidAmount)} of ₱ ${fmt(amount)}` : '';
+      return `
+      <tr>
+        <td class="col-desc indent-1">${o.name || 'Church Obligation'} <span style="color:#777;font-size:11px;">${status}${o.dueDate ? ' · ' + o.dueDate : ''}${settlementText}</span></td>
+        <td class="col-sub"></td>
+        <td class="col-main">₱ ${fmt(balanceAmount)}</td>
+      </tr>`;
+    }).join('');
+
+    // expOrderMain / expOrderSub use the EXACT original strings from accountOrder.expense
+    // so the report order always matches the budget setup exactly, with no formatting drift.
+    let expOrderMain = [];   // e.g. ["Administrative Pastor", "Deaconess", ...]
+    let expOrderSub  = {};   // e.g. { "Administrative Pastor": ["SSS","HDMF/Pagibig",...] }
+    // catKeyToMain: maps the raw category key stored in d.category -> canonical main name
+    // catKeyToSub:  maps the raw category key -> canonical sub name
+    const catKeyToMain = {};
+    const catKeyToSub  = {};
+    const expAllKeys = accountOrder.expense || [];
+    // Helper: resolve correct main group for a key given all sibling keys
+    function resolveMainGroup(k, allKeys) {
+      if (!k.includes(' - ')) return k;
+      const parts = k.split(' - ');
+      // Try longest prefix first
+      for (let i = parts.length - 1; i >= 1; i--) {
+        const prefix = parts.slice(0, i).join(' - ');
+        const prefixDash = prefix + ' - ';
+        if (allKeys.some(other => other !== k && other.startsWith(prefixDash))) return prefix;
+      }
+      return parts[0];
+    }
+    expAllKeys.forEach(k => {
+      let rawMain = resolveMainGroup(k, expAllKeys);
+      let rawSub  = k.startsWith(rawMain + ' - ') ? k.slice(rawMain.length + 3).trim() : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ').trim() : '');
+      // Use formatCategoryName only on the main group for consistent capitalisation of normal words;
+      // preserve the sub exactly as typed in the budget setup (acronyms, slashes, etc.)
+      let m = formatCategoryName(rawMain);
+      let s = rawSub || k;  // standalone key (no dash) uses itself as sub label e.g. 'PCC BOP'
+      if (!expOrderMain.includes(m)) expOrderMain.push(m);
+      if (!expOrderSub[m]) expOrderSub[m] = [];
+      if (!expOrderSub[m].includes(s)) expOrderSub[m].push(s);
+      // Map the full original key -> main & sub so expense records resolve to the right bucket
+      catKeyToMain[k] = m;
+      catKeyToSub[k]  = s;
+    });
+
+    let incOrderMain = [];
+    let incOrderSub = {};
+    (accountOrder.income || []).forEach(k => {
+      let parts = k.split(' - ');
+      let m = formatCategoryName(parts[0].trim());
+      let s = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : 'Others';
+      if (!incOrderMain.includes(m)) incOrderMain.push(m);
+      if (!incOrderSub[m]) incOrderSub[m] = [];
+      if (!incOrderSub[m].includes(s)) incOrderSub[m].push(s);
+    });
+
+    const incGroups = { 'Source of Funds': {t:0, s:{}}, 'Occasional Offering': {t:0, s:{}}, 'Miscellaneous': {t:0, s:{}} };
+    
+    fInc.forEach(d => {
+      let mainType = (d.type || '').trim();
+      let budgetCat = (d.budgetCategory || d.category || '').trim();
+      let details = (d.budgetDetails || d.notes || '').trim();
+      
+      let subLow = budgetCat.toLowerCase();
+      let mainLow = mainType.toLowerCase();
+      let checkMain = formatCategoryName(mainType);
+      
+      let finalMain = '';
+      let sub = '';
+
+      let isKnown = false;
+      if (incOrderMain.length === 0) {
+          isKnown = true; 
+      } else if (incOrderMain.includes(checkMain)) {
+          isKnown = true;
+      }
+      
+      if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school') || mainType === 'Occasional Offering') {
+          isKnown = true;
+      }
+
+      if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
+        finalMain = 'Miscellaneous';
+        
+        let candidates = [details, budgetCat, mainType];
+        let subName = 'Other Unbudgeted Income';
+        
+        for (let cand of candidates) {
+           if (!cand) continue;
+           let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
+           if (cleaned && cleaned.toLowerCase() !== 'others' && cleaned.toLowerCase() !== 'miscellaneous') {
+               subName = formatCategoryName(cleaned);
+               break; 
+           }
+        }
+        sub = subName;
+        
+      } else {
+        if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school')) {
+          finalMain = 'Source of Funds';
+          if (subLow.includes('tithe')) sub = 'Tithes';
+          else if (subLow.includes('loose') || subLow === 'offering') sub = 'Loose Offering';
+          else if (subLow.includes('sunday school')) sub = 'Sunday School';
+          else sub = formatCategoryName(budgetCat);
+        }
+        else if (mainType === 'Occasional Offering') {
+          finalMain = 'Occasional Offering';
+          let cleanedSub = budgetCat;
+          if (cleanedSub.toLowerCase().startsWith('occasional offering')) {
+              cleanedSub = cleanedSub.replace(/occasional offering/i, '').replace(/^[\s\-]+/, '').trim();
+          }
+          if (!cleanedSub) cleanedSub = 'General';
+          sub = formatCategoryName(cleanedSub) || 'Others';
+        } else {
+          finalMain = checkMain;
+          sub = formatCategoryName(budgetCat) || 'Others';
+        }
+      }
+
+      if (finalMain !== 'Miscellaneous' && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) {
+          finalMain = 'Miscellaneous';
+          sub = details ? formatCategoryName(details) : formatCategoryName(budgetCat || 'Other Unbudgeted Income');
+      }
+
+      if (!incGroups[finalMain]) incGroups[finalMain] = {t:0, s:{}};
+  if (!incGroups[finalMain].s[sub]) {
+      incGroups[finalMain].s[sub] = {t:0, m:{}, ids:{}}; // Added ids object here
+  }
+  
+  let amt = parseFloat(d.amount || 0);
+  let member = resolveMemberName(d);
+  let mId = getMemberId(d); // Capture Member ID from database
+  
+  incGroups[finalMain].s[sub].t += amt;
+  
+  if (member.toLowerCase() !== 'general collection') {
+    incGroups[finalMain].s[sub].m[member] = (incGroups[finalMain].s[sub].m[member] || 0) + amt;
+    if (mId) incGroups[finalMain].s[sub].ids[member] = mId; // Map name to ID
+  }
+  incGroups[finalMain].t += amt;
+});
+
+    let incRows = '';
+    const sortedIncMainKeys = Object.keys(incGroups).sort((a, b) => {
+       if (a === 'Miscellaneous') return 1;
+       if (b === 'Miscellaneous') return -1;
+       const order = ['Source of Funds', 'Occasional Offering'];
+       let idxA = order.indexOf(a);
+       let idxB = order.indexOf(b);
+       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+       if (idxA !== -1) return -1;
+       if (idxB !== -1) return 1;
+       return a.localeCompare(b);
+    });
+
+    sortedIncMainKeys.forEach(main => {
+      const g = incGroups[main];
+      if (g.t === 0) return; 
+      
+      incRows += `
+        <tr>
+          <td class="col-desc indent-1" style="font-weight:bold;">${main}</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(g.t)}</td>
+        </tr>`;
+
+      const sortedIncomeSubKeys = Object.keys(g.s).sort((a, b) => {
+        const al = a.toLowerCase(), bl = b.toLowerCase();
+        if (al.includes('tithe') && !bl.includes('tithe')) return -1;
+        if (!al.includes('tithe') && bl.includes('tithe')) return 1;
+        return a.localeCompare(b);
+      });
+
+      sortedIncomeSubKeys.forEach(sub => {
+        incRows += `
+          <tr>
+            <td class="col-desc indent-2">${sub}</td>
+            <td class="col-sub">₱ ${fmt(g.s[sub].t)}</td>
+            <td class="col-main"></td>
+          </tr>`;
+        
+       // Hanapin ang parteng ito sa loob ng generateReportHTML function:
+if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().includes('sunday school')) {
+  
+  // Kunin ang kasalukuyang piniling sort option mula sa dropdown
+  const sortType = document.getElementById('sel-member-sort').value;
+  const memberList = Object.keys(g.s[sub].m);
+  const memberAmounts = g.s[sub].m;
+  const memberIds = g.s[sub].ids || {};
+
+  // Dito isinasagawa ang aktwal na sorting base sa iyong pinili
+  memberList.sort((a, b) => {
+    switch(sortType) {
+      case 'surname':
+        // Kinukuha ang huling salita bilang apelyido
+        const getSurname = (n) => n.trim().split(' ').pop().toLowerCase();
+        return getSurname(a).localeCompare(getSurname(b));
+      
+      case 'id':
+        const idA = memberIds[a] || '';
+        const idB = memberIds[b] || '';
+        // 'numeric: true' para tama ang pagkakasunod ng numbers (e.g. 2 bago ang 10)
+        return idA.localeCompare(idB, undefined, {numeric: true});
+      
+      case 'amount-desc':
+        return memberAmounts[b] - memberAmounts[a];
+      
+      case 'amount-asc':
+        return memberAmounts[a] - memberAmounts[b];
+      
+      case 'name':
+      default:
+        return a.localeCompare(b);
+    }
+  }).forEach(m => {
+    // I-render ang bawat row ng member
+    incRows += `
+      <tr>
+        <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${m}</td>
+        <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[sub].m[m])}</td>
+        <td class="col-main"></td>
+      </tr>`;
+  });
+}
+      });
+    });
+
+    const expGroups = {};
+    fExp.forEach(d => {  // fExp = date-filtered expenses, so totals match totalOut
+      const rawVal = (d.category || '').trim();
+      const rawLow = rawVal.toLowerCase();
+      let main, sub;
+
+      // ── Primary path: look up the category key directly in the budget map ──
+      // catKeyToMain/catKeyToSub were built from accountOrder.expense with the
+      // exact original strings, so this preserves budget order and naming perfectly.
+      if (catKeyToMain[rawVal]) {
+        main = catKeyToMain[rawVal];
+        sub  = catKeyToSub[rawVal];
+      } else {
+        // ── Fallback for unbudgeted / manually-entered categories ──
+        let parts = rawVal.includes(' - ') ? rawVal.split(' - ') : [rawVal];
+        main = parts[0].trim() ? formatCategoryName(parts[0].trim()) : 'Miscellaneous';
+        sub  = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : '';
+        const checkMain = main.toLowerCase();
+        if (rawLow.includes('not in') || checkMain === 'others' || checkMain === 'unbudgeted'
+            || checkMain === 'miscellaneous' || !expOrderMain.includes(main)) {
+          main = 'Miscellaneous';
+        }
+      }
+
+      // ── Miscellaneous: derive best available sub-label ──
+      if (main === 'Miscellaneous') {
+        let _miscRawSub = (d.sub || '').trim();
+        let _miscIsPayroll = d.isPayrollGenerated
+            || /\(wk\s*\d/i.test(_miscRawSub)
+            || /week\s*\d/i.test(_miscRawSub)
+            || /\d{4}-\d{2}$/.test(_miscRawSub);
+        let rSub   = (!_miscIsPayroll && _miscRawSub) ? _miscRawSub : '';
+        let rNotes = (d.notes  || '').trim();
+        let rPayee = (d.payee  || '').trim();
+        let subName = 'Other Unbudgeted';
+        for (let cand of [rNotes, rSub, rPayee, rawVal]) {
+          if (!cand) continue;
+          let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
+          if (cleaned && !['others','miscellaneous','unbudgeted'].includes(cleaned.toLowerCase())) {
+            subName = formatCategoryName(cleaned);
+            break;
+          }
+        }
+        sub = subName;
+
+      } else {
+        // ── Budgeted: optionally append user-entered notes (never payroll junk) ──
+        let rawSub = (d.sub || '').trim();
+        let isPayrollSub = d.isPayrollGenerated
+            || /\(wk\s*\d/i.test(rawSub)
+            || /week\s*\d/i.test(rawSub)
+            || /\d{4}-\d{2}$/.test(rawSub);
+        let notes = (!isPayrollSub && rawSub && rawSub.toLowerCase() !== 'n/a') ? rawSub : '';
+        if (notes && notes !== sub && sub !== 'Others') {
+          sub = sub + ' - ' + notes;
+        } else if (notes && sub === 'Others') {
+          sub = notes;
+        }
+        if (!sub || sub.toLowerCase() === 'n/a') sub = 'Others';
+      }
+
+      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {} };
+      if (sub) expGroups[main].subs[sub] = (expGroups[main].subs[sub] || 0) + parseFloat(d.amount || 0);
+      expGroups[main].total += parseFloat(d.amount || 0);
+    });
+
+    function getExpenseDisplayParts(main, sub) {
+      let label = String(sub || '').trim();
+      if (label.toLowerCase().startsWith(main.toLowerCase() + ' - ')) {
+        label = label.slice(main.length + 3).trim();
+      }
+      const parts = label.split(' - ').map(p => p.trim()).filter(Boolean);
+      if (main.toLowerCase() === 'utilities' && parts.length > 1 && parts.slice(1).join(' - ').toLowerCase() === 'with fee') {
+        return {
+          subCategory: `${parts[0]} - ${parts.slice(1).join(' - ')}`,
+          detail: ''
+        };
+      }
+      return {
+        subCategory: parts[0] || label || 'Others',
+        detail: parts.length > 1 ? parts.slice(1).join(' - ') : ''
+      };
+    }
+
+    let expRows = '';
+    
+    const sortedExpMainKeys = Object.keys(expGroups).sort((a, b) => {
+      if (a === 'Miscellaneous') return 1;
+      if (b === 'Miscellaneous') return -1;
+      
+      let idxA = expOrderMain.indexOf(a);
+      let idxB = expOrderMain.indexOf(b);
+      
+      if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+
+    sortedExpMainKeys.forEach(main => {
+      const g = expGroups[main];
+      expRows += `
+        <tr>
+          <td class="col-desc indent-1" style="font-weight: bold;">${main}</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(g.total)}</td>
+        </tr>`;
+      
+      const sortedSubKeys = Object.keys(g.subs).sort((a, b) => {
+        // g.subs keys are exact original budget sub names, and so is expOrderSub[main].
+        // Simple indexOf gives perfect budget-defined order.
+        let arr = expOrderSub[main] || [];
+        let idxA = arr.indexOf(a);
+        let idxB = arr.indexOf(b);
+        if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+
+      const nestedSubs = [];
+      sortedSubKeys.forEach(sub => {
+        const parts = getExpenseDisplayParts(main, sub);
+        let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
+        if (!group) {
+          group = { subCategory: parts.subCategory, total: 0, rows: [] };
+          nestedSubs.push(group);
+        }
+        group.total += g.subs[sub];
+        group.rows.push({ detail: parts.detail, amount: g.subs[sub] });
+      });
+
+      nestedSubs.forEach(group => {
+        const hasDetails = group.rows.some(row => row.detail);
+        if (!hasDetails) {
+          expRows += `
+            <tr>
+              <td class="col-desc indent-2">${group.subCategory}</td>
+              <td class="col-sub" style="font-weight:600; color:#111;">&#8369; ${fmt(group.total)}</td>
+              <td class="col-main"></td>
+            </tr>`;
+          return;
+        }
+
+        expRows += `
+          <tr>
+            <td class="col-desc indent-2">${group.subCategory}</td>
+            <td class="col-sub" style="font-weight:600; color:#111;">&#8369; ${fmt(group.total)}</td>
+            <td class="col-main"></td>
+          </tr>`;
+
+        group.rows.forEach(row => {
+          expRows += `
+            <tr>
+              <td class="col-desc indent-3">${row.detail || 'General'}</td>
+              <td class="col-sub" style="font-size:11.5px; color:#777;">&#8369; ${fmt(row.amount)}</td>
+              <td class="col-main"></td>
+            </tr>`;
+        });
+      });
+    });
+
+    const periodText = isAnnual ? `For the Year ${year}` : `For the Month of ${MONTHS[month]} ${year}`;
+    const footerText = isAnnual ? `${year}` : `${MONTHS[month]} ${year}`;
+
+    return `
+      <div class="siksik-container" id="printable-content">
+        <div class="rpt-header">
+          <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+          <div class="rpt-header-text">
+            <div class="rpt-church-name">Tagaytay United Methodist Church</div>
+            <div class="rpt-church-address">Maglabe Drive, Asisan, Tagaytay City</div>
+            <div class="rpt-title">Statement of Receipts and Disbursements</div>
+            <div class="rpt-period">${periodText}</div>
+          </div>
+        </div>
+
+        <table class="fs-table" id="export-table">
+          <tr class="bold-row">
+            <td class="col-desc">Beginning Balance</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${begBal<0?'amount-negative':''}">₱ ${fmt(begBal)}</td>
+          </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Receipts / Income</td>
+          </tr>
+          ${incRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No income recorded for this period.</td></tr>'}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="subtotal-row bold-row">
+            <td class="col-desc">Total Cash Receipts</td>
+            <td class="col-sub"></td>
+            <td class="col-main">₱ ${fmt(totalIn)}</td>
+          </tr>
+          <tr class="bold-row">
+            <td class="col-desc">Total Cash Available</td>
+            <td class="col-sub"></td>
+            <td class="col-main">₱ ${fmt(begBal + totalIn)}</td>
+          </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Disbursements / Expenses</td>
+          </tr>
+          ${expRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No expenses recorded for this period.</td></tr>'}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="subtotal-row bold-row">
+            <td class="col-desc">Total Disbursements</td>
+            <td class="col-sub"></td>
+            <td class="col-main">₱ ${fmt(totalOut)}</td>
+          </tr>
+          <tr class="total-row">
+            <td class="col-desc">Ending Balance</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${endBal<0?'amount-negative':'amount-positive'}">₱ ${fmt(endBal)}</td>
+          </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Surplus / Deficit Computation</td>
+          </tr>
+          <tr class="bold-row">
+            <td class="col-desc">Total Income</td>
+            <td class="col-sub"></td>
+            <td class="col-main">₱ ${fmt(totalIn)}</td>
+          </tr>
+          <tr class="subtotal-row">
+            <td class="col-desc">Less: Total Disbursements</td>
+            <td class="col-sub">-</td>
+            <td class="col-main">₱ ${fmt(totalOut)}</td>
+          </tr>
+          <tr class="subtotal-row bold-row">
+            <td class="col-desc">${netChange >= 0 ? 'Surplus' : 'Deficit'}</td>
+            <td class="col-sub">=</td>
+            <td class="col-main ${netChange < 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(Math.abs(netChange))}</td>
+          </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Financial Overview Accounts</td>
+          </tr>
+          ${accountRows}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Church Obligations</td>
+          </tr>
+          ${obligationRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No outstanding church obligations for this year.</td></tr>'}
+        </table>
+
+        <div class="sig-section">
+
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.chairpersonLabel}</div>
+            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+            <div style="font-weight:700; font-size:12px;">${signatories.chairpersonName}</div>
+            <div style="font-size:11px; color:var(--gray);">${signatories.chairpersonTitle}</div>
+          </div>
+
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.financeChairLabel}</div>
+            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+            <div style="font-weight:700; font-size:12px;">${signatories.financeChairName}</div>
+            <div style="font-size:11px; color:var(--gray);">${signatories.financeChairTitle}</div>
+          </div>
+
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.treasurerLabel}</div>
+            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+            <div style="font-weight:700; font-size:12px;">${signatories.treasurerName}</div>
+            <div style="font-size:11px; color:var(--gray);">${signatories.treasurerTitle}</div>
+          </div>
+          
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.auditorLabel}</div>
+            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+            <div style="font-weight:700; font-size:12px;">${signatories.auditorName}</div>
+            <div style="font-size:11px; color:var(--gray);">${signatories.auditorTitle}</div>
+          </div>
+          
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.pastorLabel}</div>
+            <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+            <div style="font-weight:700; font-size:12px;">${signatories.pastorName}</div>
+            <div style="font-size:11px; color:var(--gray);">${signatories.pastorTitle}</div>
+          </div>
+
+        </div>
+
+        <div class="rpt-footer">
+          <span>GraceBooks — TUMC Finance System</span>
+          <span>Tagaytay United Methodist Church · ${footerText}</span>
+        </div>
+      </div>`;
+  }
+
+  function renderMonthly() {
+    const year  = parseInt(document.getElementById('sel-year').value);
+    const month = parseInt(document.getElementById('sel-month').value);
+    document.getElementById('report-page').innerHTML = generateReportHTML(year, month, false);
+  }
+
+  function renderAnnual() {
+    const year = parseInt(document.getElementById('sel-year').value);
+    document.getElementById('report-page').innerHTML = generateReportHTML(year, null, true);
+  }
+
+  const KNOWN_ACCOUNT_IDS = new Set(FINANCIAL_ACCOUNTS.map(account => account.id));
+
+  function normalizeAccountId(value) {
+    const raw = String(value || '').trim();
+    return KNOWN_ACCOUNT_IDS.has(raw) ? raw : '';
+  }
+
+  function getIncomeAccountId(d) {
+    const explicitAccount = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
+    if (explicitAccount) return explicitAccount;
+    if (d.type === 'Building Fund') return 'building';
+    if (d.type === 'Mission Fund') return 'mission';
+    if (d.type === 'Investment Income') return 'investment';
+    return d.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+  }
+
+  function getExpenseAccountId(d) {
+    const explicitAccount = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
+    if (explicitAccount) return explicitAccount;
+    if (d.payment === 'Bank Transfer') return 'cash-bank';
+    if (d.payment === 'Petty Cash') return 'petty-cash';
+    return 'cash-hand';
+  }
+
+  function getAccountBalancesThrough(endDate) {
+    const balances = {};
+    FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
+
+    allIncomeData.forEach(d => {
+      if (!d.date || new Date(d.date) > endDate) return;
+      const id = getIncomeAccountId(d);
+      if (balances[id] === undefined) balances[id] = 0;
+      balances[id] += parseFloat(d.amount || 0);
+    });
+
+    allExpenseData.forEach(d => {
+      if (!d.date || new Date(d.date) > endDate) return;
+      const id = getExpenseAccountId(d);
+      if (balances[id] === undefined) balances[id] = 0;
+      balances[id] -= parseFloat(d.amount || 0);
+    });
+
+    return balances;
+  }
+
+  // ── EXPORT FUNCTIONALITY ──────────────────────────────────────────────────
+  function exportToExcel() {
+    const year  = parseInt(document.getElementById('sel-year').value);
+    const month = parseInt(document.getElementById('sel-month').value);
+    const isAnnual = reportType === 'annual';
+    const periodText = isAnnual
+      ? `For the Year ${year}`
+      : `For the Month of ${MONTHS[month]} ${year}`;
+    const filename = isAnnual
+      ? `Financial_Report_${year}.xlsx`
+      : `Financial_Report_${MONTHS[month]}_${year}.xlsx`;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const wb = XLSX.utils.book_new();
+    const ws = {};
+    let R = 0; // current row (0-indexed)
+
+    // Cell address helper
+    const addr = (r, c) => XLSX.utils.encode_cell({ r, c });
+
+    // Write a cell with optional style
+    function cell(r, c, v, s) {
+      const a = addr(r, c);
+      ws[a] = { v, t: typeof v === 'number' ? 'n' : 's', s: s || {} };
+    }
+
+    // Merge helper — pushes to ws['!merges']
+    if (!ws['!merges']) ws['!merges'] = [];
+    function merge(r1, c1, r2, c2) {
+      ws['!merges'].push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } });
+    }
+
+    // ── Shared style objects ─────────────────────────────────────────────────
+    const RED   = 'FF8B0000';
+    const GOLD  = 'FFC9A84C';
+    const DARK  = 'FF1A1A1A';
+    const GRAY  = 'FF555555';
+    const WHITE = 'FFFFFFFF';
+    const LGRAY = 'FFF5F5F5';
+
+    const fontBase   = { name: 'Calibri', sz: 10 };
+    const fontBold   = { ...fontBase, bold: true };
+    const fontHeader = { name: 'Calibri', sz: 13, bold: true, color: { rgb: WHITE } };
+    const fontSub    = { name: 'Calibri', sz: 10, color: { rgb: GRAY } };
+    const fontTitle  = { name: 'Calibri', sz: 14, bold: true };
+    const fontChurch = { name: 'Calibri', sz: 16, bold: true, color: { rgb: RED } };
+    const fontSection = { name: 'Calibri', sz: 10, bold: true, color: { rgb: WHITE } };
+    const fontIndent1 = { name: 'Calibri', sz: 10, bold: true };
+    const fontIndent2 = { name: 'Calibri', sz: 9.5, color: { rgb: '44333333' } };
+    const fontTotal  = { name: 'Calibri', sz: 11, bold: true };
+
+    const alignR  = { horizontal: 'right', vertical: 'center' };
+    const alignC  = { horizontal: 'center', vertical: 'center' };
+    const alignL  = { horizontal: 'left',  vertical: 'center' };
+
+    const borderThin = { style: 'thin', color: { rgb: 'FFCCCCCC' } };
+    const borderMed  = { style: 'medium', color: { rgb: DARK } };
+    const borderDbl  = { style: 'double', color: { rgb: DARK } };
+    const borderRed  = { style: 'medium', color: { rgb: RED } };
+
+    const numFmt = '₱ #,##0.00';
+
+    // Style factories
+    function sAmount(extra = {}) {
+      return { font: { ...fontBase, ...extra.font }, alignment: alignR,
+               numFmt, border: extra.border || {} };
+    }
+    function sAmountBold(extra = {}) {
+      return { font: { ...fontBold, ...extra.font }, alignment: alignR,
+               numFmt, border: extra.border || {} };
+    }
+
+    // ── HEADER ROWS ──────────────────────────────────────────────────────────
+    // Row 0: Church name (merged A-C)
+    merge(R, 0, R, 2);
+    cell(R, 0, 'Tagaytay United Methodist Church', {
+      font: fontChurch, alignment: alignC
+    });
+    R++;
+
+    // Row 1: Address
+    merge(R, 0, R, 2);
+    cell(R, 0, 'Maglabe Drive, Asisan, Tagaytay City', {
+      font: fontSub, alignment: alignC
+    });
+    R++;
+
+    // Row 2: Report title
+    merge(R, 0, R, 2);
+    cell(R, 0, 'Statement of Receipts and Disbursements', {
+      font: fontTitle, alignment: alignC
+    });
+    R++;
+
+    // Row 3: Period
+    merge(R, 0, R, 2);
+    cell(R, 0, periodText, {
+      font: { ...fontBase, italic: true }, alignment: alignC
+    });
+    R++;
+
+    // Spacer
+    R++;
+
+    // ── Reads data from the already-rendered report HTML ──────────────────────
+    // We pull the live data from the DOM's rendered report table rows.
+    // This is the most reliable source since generateReportHTML already processed everything.
+    const reportTable = document.getElementById('export-table');
+    if (!reportTable) { alert('No report data to export.'); return; }
+
+    const rows = reportTable.querySelectorAll('tr');
+
+    rows.forEach(tr => {
+      const tds = tr.querySelectorAll('td');
+      if (!tds.length) return;
+
+      const cls = tr.className || '';
+      const tdCls0 = tds[0] ? (tds[0].className || '') : '';
+      const text0  = tds[0] ? tds[0].innerText.trim() : '';
+      const text1  = tds[1] ? tds[1].innerText.trim() : '';
+      const text2  = tds[2] ? tds[2].innerText.trim() : '';
+
+      // Helper: parse peso text to number
+      const parsePeso = t => parseFloat((t || '').replace(/[₱,\s]/g, '')) || null;
+
+      // ── Section header (Receipts / Disbursements) ──
+      if (cls.includes('section-header')) {
+        merge(R, 0, R, 2);
+        cell(R, 0, text0.replace(/\n/g, ' '), {
+          font: fontSection,
+          fill: { patternType: 'solid', fgColor: { rgb: RED } },
+          alignment: { ...alignL, indent: 1 },
+          border: { bottom: borderRed }
+        });
+        R++; return;
+      }
+
+      // ── Spacer row ──
+      if (cls.includes('spacer-row')) { R++; return; }
+
+      // ── Total row (Ending Balance) ──
+      if (cls.includes('total-row')) {
+        const amt = parsePeso(text2);
+        cell(R, 0, text0, {
+          font: fontTotal, alignment: alignL,
+          border: { top: borderMed, bottom: borderDbl }
+        });
+        cell(R, 1, text1 || '', { alignment: alignC });
+        if (amt !== null) {
+          cell(R, 2, amt, {
+            font: fontTotal, alignment: alignR, numFmt,
+            border: { top: borderMed, bottom: borderDbl }
+          });
+        }
+        R++; return;
+      }
+
+      // ── Subtotal row ──
+      if (cls.includes('subtotal-row')) {
+        const amt = parsePeso(text2);
+        cell(R, 0, text0, {
+          font: fontBold, alignment: alignL,
+          border: { top: borderThin }
+        });
+        cell(R, 1, text1 || '', { alignment: alignC });
+        if (amt !== null) {
+          cell(R, 2, amt, sAmountBold({ border: { top: borderThin } }));
+        }
+        R++; return;
+      }
+
+      // ── Bold row (Beginning Balance, Total Cash Available) ──
+      if (cls.includes('bold-row')) {
+        const amt = parsePeso(text2);
+        cell(R, 0, text0, { font: fontBold, alignment: alignL });
+        cell(R, 1, text1 || '', { alignment: alignC });
+        if (amt !== null) {
+          cell(R, 2, amt, sAmountBold());
+        }
+        R++; return;
+      }
+
+      // ── Category (indent-1, bold) ──
+      if (tdCls0.includes('indent-1')) {
+        const amt = parsePeso(text2);
+        cell(R, 0, '  ' + text0, {
+          font: fontIndent1, alignment: alignL,
+          fill: { patternType: 'solid', fgColor: { rgb: 'FFF9F2F2' } }
+        });
+        cell(R, 1, '', {
+          fill: { patternType: 'solid', fgColor: { rgb: 'FFF9F2F2' } }
+        });
+        if (amt !== null) {
+          cell(R, 2, amt, {
+            font: fontIndent1, alignment: alignR, numFmt,
+            fill: { patternType: 'solid', fgColor: { rgb: 'FFF9F2F2' } }
+          });
+        }
+        R++; return;
+      }
+
+      // ── Sub-category (indent-2) ──
+      if (tdCls0.includes('indent-2')) {
+        const subAmt = parsePeso(text1);
+        cell(R, 0, '      ' + text0, { font: fontIndent2, alignment: alignL });
+        if (subAmt !== null) {
+          cell(R, 1, subAmt, { font: fontIndent2, alignment: alignR, numFmt });
+        }
+        cell(R, 2, '', {});
+        R++; return;
+      }
+
+      // ── Sub-sub rows (member breakdown, small indent) ──
+      if (tds.length >= 2 && text0.startsWith('-')) {
+        const amt = parsePeso(text1);
+        cell(R, 0, '          ' + text0, {
+          font: { ...fontBase, sz: 9, color: { rgb: GRAY } }, alignment: alignL
+        });
+        if (amt !== null) {
+          cell(R, 1, amt, {
+            font: { ...fontBase, sz: 9, color: { rgb: GRAY } }, alignment: alignR, numFmt
+          });
+        }
+        cell(R, 2, '', {});
+        R++; return;
+      }
+    });
+
+    // Spacer before signatures
+    R += 2;
+
+    // ── SIGNATURE BLOCK ──────────────────────────────────────────────────────
+    // 5 columns: Chairperson | Finance Chair | Treasurer | Auditor | Pastor
+    // Label row
+    cell(R, 0, signatories.chairpersonLabel || 'Approved by', { font: fontBase, alignment: alignC });
+    cell(R, 1, signatories.financeChairLabel || 'Approved by', { font: fontBase, alignment: alignC });
+    cell(R, 2, signatories.treasurerLabel || 'Prepared by', { font: fontBase, alignment: alignC });
+    cell(R, 3, signatories.auditorLabel || 'Audited by', { font: fontBase, alignment: alignC });
+    cell(R, 4, signatories.pastorLabel || 'Noted by', { font: fontBase, alignment: alignC });
+    R += 3; // space for signature
+
+    // Signature line + name
+    const sigLine = { top: { style: 'thin', color: { rgb: DARK } } };
+    cell(R, 0, signatories.chairpersonName || '', { font: fontBold, alignment: alignC, border: sigLine });
+    cell(R, 1, signatories.financeChairName || '', { font: fontBold, alignment: alignC, border: sigLine });
+    cell(R, 2, signatories.treasurerName || '', { font: fontBold, alignment: alignC, border: sigLine });
+    cell(R, 3, signatories.auditorName || '', { font: fontBold, alignment: alignC, border: sigLine });
+    cell(R, 4, signatories.pastorName || '', { font: fontBold, alignment: alignC, border: sigLine });
+    R++;
+
+    // Title
+    cell(R, 0, signatories.chairpersonTitle || 'Church Council Chairperson', { font: fontSub, alignment: alignC });
+    cell(R, 1, signatories.financeChairTitle || 'Finance Chair', { font: fontSub, alignment: alignC });
+    cell(R, 2, signatories.treasurerTitle || 'Church Treasurer', { font: fontSub, alignment: alignC });
+    cell(R, 3, signatories.auditorTitle || 'Church Auditor', { font: fontSub, alignment: alignC });
+    cell(R, 4, signatories.pastorTitle || 'Church Pastor', { font: fontSub, alignment: alignC });
+    R++;
+
+    // ── Footer ──────────────────────────────────────────────────────────────
+    R++;
+    merge(R, 0, R, 4);
+    cell(R, 0, `GraceBooks — TUMC Finance System · ${MONTHS[month] || ''} ${year}`, {
+      font: { ...fontBase, sz: 8.5, color: { rgb: 'FFAAAAAA' } }, alignment: alignC
+    });
+
+    // ── Sheet dimensions ─────────────────────────────────────────────────────
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R, c: 4 } });
+    ws['!cols'] = [
+      { wch: 42 }, // A: description (wide)
+      { wch: 16 }, // B: sub amount
+      { wch: 16 }, // C: main amount
+      { wch: 16 },
+      { wch: 16 },
+    ];
+    ws['!rows'] = [
+      { hpt: 22 }, // church name
+      { hpt: 14 }, // address
+      { hpt: 18 }, // title
+      { hpt: 13 }, // period
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Financial Report');
+    XLSX.writeFile(wb, filename);
+  }
+
+  // ── Paper size switcher ─────────────────────────────────────────────────
+  let _paperStyleEl = null;
+  function setPaperSize(val) {
+    if (!_paperStyleEl) {
+      _paperStyleEl = document.createElement('style');
+      _paperStyleEl.id = 'dynamic-page-size';
+      document.head.appendChild(_paperStyleEl);
+    }
+    document.body.classList.remove('paper-letter', 'paper-a4');
+    if (val === 'letter') {
+      document.body.classList.add('paper-letter');
+      _paperStyleEl.textContent = '@page { size: 8.5in 11in; margin: 0.5in 0.6in; }';
+    } else if (val === 'a4') {
+      document.body.classList.add('paper-a4');
+      _paperStyleEl.textContent = '@page { size: 210mm 297mm; margin: 14mm 16mm; }';
+    } else {
+      _paperStyleEl.textContent = '@page { size: 8.5in 13in; margin: 0.6in 0.65in; }';
+    }
+  }
+</script>
+</body>
+</html>
+

@@ -1,0 +1,102 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role;
+    }
+
+    function hasRole(roles) {
+      return signedIn() && role() in roles;
+    }
+
+    function notMembershipSecretary() {
+      return signedIn() && role() != 'Membership Secretary';
+    }
+
+    function isPayrollOwner() {
+      return signedIn()
+        && resource.data.isPayrollGenerated == true
+        && (
+          (role() == 'Pastor' && resource.data.role == 'Pastor') ||
+          (role() == 'Deaconess' && resource.data.role == 'Deaconess') ||
+          (role() == 'Admin Assistant' && resource.data.role in ['Admin', 'Admin Assistant'])
+        );
+    }
+
+    function isLiquidationOwner() {
+      return signedIn() && resource.data.requesterUid == request.auth.uid;
+    }
+
+    match /userProfiles/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /income/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create: if hasRole(['Treasurer', 'Money Counter']);
+      allow update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /expenses/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']) || isPayrollOwner();
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /members/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Money Counter', 'Membership Secretary']);
+      allow create: if hasRole(['Treasurer', 'Money Counter', 'Membership Secretary']);
+      allow update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
+    }
+
+    match /attendance/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
+    }
+
+    match /churchObligations/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /reportReviews/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create: if hasRole(['Treasurer']);
+      allow update: if hasRole(['Treasurer', 'Auditor', 'Finance Chair', 'Chairperson', 'Pastor']);
+      allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /liquidationRequests/{docId} {
+      allow read: if hasRole(['Treasurer', 'Auditor']) || isLiquidationOwner();
+      allow create: if hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
+        && request.resource.data.requesterUid == request.auth.uid;
+      allow update: if hasRole(['Treasurer']);
+      allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /auditLogs/{docId} {
+      allow read: if hasRole(['Treasurer', 'Auditor']);
+      allow create: if signedIn();
+      allow update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /budgets/{docId} {
+      allow read: if notMembershipSecretary();
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /settings/{docId} {
+      allow read: if notMembershipSecretary();
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

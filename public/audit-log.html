@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Audit Log - GraceBooks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; min-height: 100vh; color: #263238; }
+    .topbar {
+      background: #1a5276; color: white; padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .topbar h2 { font-size: 20px; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 1180px; margin: 30px auto; padding: 0 20px; }
+    .card {
+      background: white; border-radius: 10px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 22px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding-bottom: 12px; margin-bottom: 18px; border-bottom: 2px solid #d6eaf8; flex-wrap: wrap;
+    }
+    .card-header h3 { color: #1a5276; font-size: 18px; }
+    .btn-export {
+      background: #1e8449; color: white; border: none; padding: 10px 16px; border-radius: 7px;
+      cursor: pointer; font-size: 13px; font-weight: bold;
+    }
+    .btn-backfill {
+      display: none; background: #7d3c98; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
+    .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
+    .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
+    .stat-box .label { color: #6b7b88; font-size: 11px; margin-top: 4px; text-transform: uppercase; letter-spacing: .03em; }
+    .filter-bar {
+      display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px;
+      background: #f8fbfd; border: 1px solid #d6eaf8; border-radius: 8px; padding: 14px; margin-bottom: 16px;
+    }
+    .filter-bar input, .filter-bar select {
+      width: 100%; padding: 9px 10px; border: 1px solid #cfd8dc; border-radius: 6px; background: white;
+      font-size: 13px;
+    }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 980px; font-size: 13px; }
+    th { background: #1a5276; color: white; text-align: left; padding: 11px 12px; white-space: nowrap; }
+    td { padding: 12px; border-bottom: 1px solid #edf2f5; vertical-align: top; }
+    tr:hover td { background: #f8fbfd; }
+    .badge { display: inline-block; border-radius: 999px; padding: 4px 9px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+    .badge-create { background: #d5f5e3; color: #1e8449; }
+    .badge-update { background: #fcf3cf; color: #9a6a00; }
+    .badge-delete { background: #fadbd8; color: #a93226; }
+    .badge-receipt { background: #d6eaf8; color: #1a5276; }
+    .muted { color: #7b8a94; font-size: 12px; }
+    .summary { max-width: 320px; line-height: 1.4; }
+    .btn-detail {
+      background: #eaf2f8; color: #1a5276; border: 1px solid #cfe3f1; padding: 7px 10px;
+      border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold;
+    }
+    .empty { text-align: center; color: #8a99a5; padding: 28px; }
+    .modal {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 20;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-content {
+      background: white; width: min(900px, 96vw); max-height: 88vh; overflow: auto; border-radius: 10px; padding: 22px;
+    }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .modal-head h3 { color: #1a5276; font-size: 18px; }
+    .close-modal { border: none; background: #eef3f7; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    pre {
+      white-space: pre-wrap; word-break: break-word; background: #f7fafc; border: 1px solid #edf2f5;
+      border-radius: 8px; padding: 12px; font-size: 12px; max-height: 360px; overflow: auto;
+    }
+    @media (max-width: 760px) {
+      .stats-row, .filter-bar, .detail-grid { grid-template-columns: 1fr; }
+      .container { padding: 0 12px; }
+      .card { padding: 18px; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+<div class="topbar">
+  <h2>Audit Log</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">Back to Dashboard</button>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <h3>Activity History</h3>
+      <div>
+        <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
+        <button class="btn-export" onclick="exportCSV()">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box"><div class="num" id="stat-total">0</div><div class="label">Total Logs</div></div>
+      <div class="stat-box"><div class="num" id="stat-today">0</div><div class="label">Today</div></div>
+      <div class="stat-box"><div class="num" id="stat-expenses">0</div><div class="label">Expense Actions</div></div>
+      <div class="stat-box"><div class="num" id="stat-deletes">0</div><div class="label">Deletes</div></div>
+    </div>
+
+    <div class="filter-bar">
+      <input type="date" id="filter-from" onchange="applyFilters()" />
+      <input type="date" id="filter-to" onchange="applyFilters()" />
+      <select id="filter-action" onchange="applyFilters()">
+        <option value="">All Actions</option>
+        <option value="expense_created">Expense Created</option>
+        <option value="expense_updated">Expense Updated</option>
+        <option value="expense_deleted">Expense Deleted</option>
+        <option value="expense_marked_paid">Marked Paid</option>
+        <option value="receipt_removed">Receipt Removed</option>
+        <option value="expense_backfilled">Existing Expense</option>
+        <option value="income_backfilled">Existing Income</option>
+        <option value="income_created">Income Created</option>
+        <option value="attendance_saved">Attendance Saved</option>
+        <option value="obligation_created">Obligation Created</option>
+      </select>
+      <select id="filter-actor" onchange="applyFilters()">
+        <option value="">All Users</option>
+      </select>
+      <input type="text" id="filter-search" placeholder="Search summary, role, document..." oninput="applyFilters()" />
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date / Time</th>
+            <th>Action</th>
+            <th>Actor</th>
+            <th>Summary</th>
+            <th>Document</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="audit-body">
+          <tr><td colspan="6" class="empty">Loading audit log...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="detail-modal">
+  <div class="modal-content">
+    <div class="modal-head">
+      <h3 id="detail-title">Audit Details</h3>
+      <button class="close-modal" onclick="closeDetail()">Close</button>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <div class="muted" style="margin-bottom:6px;">Before</div>
+        <pre id="detail-before"></pre>
+      </div>
+      <div>
+        <div class="muted" style="margin-bottom:6px;">After</div>
+        <pre id="detail-after"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let allLogs = [];
+  let filteredLogs = [];
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    const date = value.toDate ? value.toDate() : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function dateKey(value) {
+    if (!value) return '';
+    const date = value.toDate ? value.toDate() : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  }
+
+  function actionLabel(action) {
+    return {
+      expense_created: 'Expense Created',
+      expense_updated: 'Expense Updated',
+      expense_deleted: 'Expense Deleted',
+      expense_marked_paid: 'Marked Paid',
+      receipt_removed: 'Receipt Removed',
+      expense_backfilled: 'Existing Expense',
+      income_backfilled: 'Existing Income',
+      income_created: 'Income Created',
+      attendance_saved: 'Attendance Saved',
+      obligation_created: 'Obligation Created'
+    }[action] || action || 'Activity';
+  }
+
+  function badgeClass(action) {
+    if ((action || '').includes('deleted')) return 'badge-delete';
+    if ((action || '').includes('receipt')) return 'badge-receipt';
+    if ((action || '').includes('updated') || (action || '').includes('paid')) return 'badge-update';
+    return 'badge-create';
+  }
+
+  async function loadAuditLogs() {
+    try {
+      const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+      if (profile.role === 'Treasurer') document.getElementById('btn-backfill').style.display = 'inline-block';
+      const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
+      allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      populateActorFilter();
+      applyFilters();
+    } catch (error) {
+      document.getElementById('audit-body').innerHTML =
+        `<tr><td colspan="6" class="empty">Unable to load audit logs: ${escapeHtml(error.message)}</td></tr>`;
+    }
+  }
+
+  function populateActorFilter() {
+    const select = document.getElementById('filter-actor');
+    const actors = [...new Set(allLogs.map(log => log.actorName || log.actorEmail || 'Unknown'))].sort();
+    select.innerHTML = '<option value="">All Users</option>' + actors
+      .map(actor => `<option value="${escapeHtml(actor)}">${escapeHtml(actor)}</option>`)
+      .join('');
+  }
+
+  function applyFilters() {
+    const from = document.getElementById('filter-from').value;
+    const to = document.getElementById('filter-to').value;
+    const action = document.getElementById('filter-action').value;
+    const actor = document.getElementById('filter-actor').value;
+    const search = document.getElementById('filter-search').value.toLowerCase();
+
+    filteredLogs = allLogs.filter(log => {
+      const logDate = dateKey(log.createdAt);
+      const actorName = log.actorName || log.actorEmail || 'Unknown';
+      const haystack = [
+        log.action, log.summary, log.collection, log.docId, log.actorName, log.actorEmail, log.actorRole
+      ].join(' ').toLowerCase();
+      return (!from || logDate >= from)
+        && (!to || logDate <= to)
+        && (!action || log.action === action)
+        && (!actor || actorName === actor)
+        && (!search || haystack.includes(search));
+    });
+    renderStats();
+    renderTable();
+  }
+
+  function renderStats() {
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('stat-total').textContent = allLogs.length;
+    document.getElementById('stat-today').textContent = allLogs.filter(log => dateKey(log.createdAt) === today).length;
+    document.getElementById('stat-expenses').textContent = allLogs.filter(log => log.collection === 'expenses' || log.collection === 'income').length;
+    document.getElementById('stat-deletes').textContent = allLogs.filter(log => (log.action || '').includes('deleted')).length;
+  }
+
+  async function backfillExistingTransactions() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can backfill audit records.');
+    const button = document.getElementById('btn-backfill');
+    button.disabled = true;
+    button.textContent = 'Backfilling...';
+
+    try {
+      const [expenseSnap, incomeSnap] = await Promise.all([
+        db.collection('expenses').get(),
+        db.collection('income').get()
+      ]);
+
+      let count = 0;
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+      const actor = firebase.auth().currentUser;
+
+      async function queueLog(collectionName, docSnap, action) {
+        const data = docSnap.data();
+        const auditId = `backfill_${collectionName}_${docSnap.id}`;
+        const createdAt = data.postedAt || data.timestamp || data.date || new Date().toISOString();
+        const summary = collectionName === 'expenses'
+          ? `Existing expense: ${data.category || data.sub || 'expense'}`
+          : `Existing income: ${data.type || 'income'}${data.member ? ' - ' + data.member : ''}`;
+        const auditRef = db.collection('auditLogs').doc(auditId);
+        batch.set(auditRef, {
+          action,
+          collection: collectionName,
+          docId: docSnap.id,
+          summary,
+          before: null,
+          after: data,
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt,
+          backfilledAt: new Date().toISOString()
+        });
+        count++;
+        operations++;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+
+      for (const docSnap of expenseSnap.docs) await queueLog('expenses', docSnap, 'expense_backfilled');
+      for (const docSnap of incomeSnap.docs) await queueLog('income', docSnap, 'income_backfilled');
+      if (operations > 0) await batch.commit();
+
+      alert(`Backfilled ${count} existing transaction records.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Backfill failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Backfill Existing Records';
+    }
+  }
+
+  function renderTable() {
+    const body = document.getElementById('audit-body');
+    if (!filteredLogs.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">No audit records match the filters.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = filteredLogs.map((log, index) => {
+      const actor = log.actorName || log.actorEmail || 'Unknown';
+      const role = log.actorRole ? `<div class="muted">${escapeHtml(log.actorRole)}</div>` : '';
+      return `
+        <tr>
+          <td>${escapeHtml(formatDate(log.createdAt))}</td>
+          <td><span class="badge ${badgeClass(log.action)}">${escapeHtml(actionLabel(log.action))}</span></td>
+          <td><strong>${escapeHtml(actor)}</strong>${role}</td>
+          <td class="summary">${escapeHtml(log.summary || '')}</td>
+          <td><strong>${escapeHtml(log.collection || '')}</strong><div class="muted">${escapeHtml(log.docId || '')}</div></td>
+          <td><button class="btn-detail" onclick="openDetail(${index})">View</button></td>
+        </tr>`;
+    }).join('');
+  }
+
+  function openDetail(index) {
+    const log = filteredLogs[index];
+    if (!log) return;
+    document.getElementById('detail-title').textContent = actionLabel(log.action);
+    document.getElementById('detail-before').textContent = JSON.stringify(log.before || {}, null, 2);
+    document.getElementById('detail-after').textContent = JSON.stringify(log.after || {}, null, 2);
+    document.getElementById('detail-modal').style.display = 'flex';
+  }
+
+  function closeDetail() {
+    document.getElementById('detail-modal').style.display = 'none';
+  }
+
+  function exportCSV() {
+    const rows = [['Created At', 'Action', 'Actor', 'Role', 'Collection', 'Document ID', 'Summary']];
+    filteredLogs.forEach(log => rows.push([
+      formatDate(log.createdAt),
+      actionLabel(log.action),
+      log.actorName || log.actorEmail || 'Unknown',
+      log.actorRole || '',
+      log.collection || '',
+      log.docId || '',
+      log.summary || ''
+    ]));
+    const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = 'gracebooks-audit-log.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  window.addEventListener('click', event => {
+    if (event.target.id === 'detail-modal') closeDetail();
+  });
+
+  window.graceBooksAuthReady.then(loadAuditLogs);
+</script>
+</body>
+</html>

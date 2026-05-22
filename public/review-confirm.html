@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Review & Confirm — GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #f0f2f5; min-height: 100vh;
+    }
+    .topbar {
+      background: #8B0000; color: white;
+      padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white;
+      border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 700px; margin: 0 auto; padding: 20px 16px 40px; }
+    .date-card {
+      background: white; border-radius: 16px;
+      padding: 20px 24px; margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .date-card h4 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; }
+    .date-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .date-row input {
+      flex: 1; padding: 10px 14px;
+      border: 1px solid #ddd; border-radius: 10px;
+      font-size: 14px; font-family: 'Poppins', sans-serif;
+    }
+    .date-row input:focus { outline: none; border-color: #8B0000; }
+    .btn-load {
+      padding: 10px 20px; background: #8B0000;
+      color: white; border: none; border-radius: 10px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-load:hover { background: #a30000; }
+    .tabs {
+      display: flex; gap: 4px; margin-bottom: 20px;
+      background: white; border-radius: 12px;
+      padding: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .tab-btn {
+      flex: 1; padding: 10px; border: none; background: none;
+      font-size: 13px; cursor: pointer; color: #888;
+      border-radius: 8px; font-family: 'Poppins', sans-serif;
+      font-weight: 600; transition: 0.2s;
+    }
+    .tab-btn.active { background: #8B0000; color: white; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .summary-hero {
+      border-radius: 16px; padding: 24px;
+      color: white; margin-bottom: 20px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    }
+    .summary-hero.income  { background: linear-gradient(135deg, #1e8449, #27ae60); }
+    .summary-hero.expense { background: linear-gradient(135deg, #8B0000, #c0392b); }
+    .sh-label  { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+    .sh-date   { font-size: 13px; opacity: 0.75; margin-bottom: 12px; }
+    .sh-amount { font-size: 36px; font-weight: 700; letter-spacing: -1px; margin-bottom: 16px; }
+    .sh-stats  { display: flex; gap: 16px; flex-wrap: wrap; }
+    .sh-stat   { flex: 1; }
+    .sh-stat .ss-label { font-size: 11px; opacity: 0.75; margin-bottom: 2px; }
+    .sh-stat .ss-value { font-size: 15px; font-weight: 600; }
+    .breakdown-card {
+      background: white; border-radius: 16px;
+      padding: 20px; margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .breakdown-card h4 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 14px; }
+    .breakdown-row {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 10px 0;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .breakdown-row:last-child { border-bottom: none; }
+    .br-type   { font-size: 13px; color: #555; }
+    .br-count  { font-size: 12px; color: #999; margin-top: 2px; }
+    .br-amount { font-size: 14px; font-weight: 700; color: #8B0000; }
+    .entries-card {
+      background: white; border-radius: 16px;
+      padding: 20px; margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .entries-header {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 16px;
+    }
+    .entries-header h4 { font-size: 14px; font-weight: 600; color: #333; }
+    .entry-count {
+      background: #fdf2f2; color: #8B0000;
+      padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600;
+    }
+    .entry-item {
+      border: 1px solid #f0f0f0; border-radius: 12px;
+      padding: 14px; margin-bottom: 10px; transition: 0.2s;
+    }
+    .entry-item:hover  { border-color: #ddd; }
+    .entry-item.editing { border-color: #8B0000; background: #fdf8f8; }
+    .entry-top {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; margin-bottom: 6px;
+    }
+    .entry-name   { font-size: 14px; font-weight: 600; color: #333; }
+    .entry-amount { font-size: 16px; font-weight: 700; color: #8B0000; }
+    .entry-meta   { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .meta-badge   { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .meta-type    { background: #fdf2f2; color: #8B0000; }
+    .meta-payment { background: #eaf2ff; color: #1a5276; }
+    .meta-cat     { background: #fdebd0; color: #d35400; }
+    .entry-notes  { font-size: 12px; color: #999; }
+    .entry-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-edit-entry {
+      flex: 1; padding: 8px; background: #eaf2ff;
+      color: #1a5276; border: none; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .btn-delete-entry {
+      flex: 1; padding: 8px; background: #fdf2f2;
+      color: #c0392b; border: none; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .btn-edit-entry:hover   { background: #d6eaf8; }
+    .btn-delete-entry:hover { background: #fadbd8; }
+    .edit-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; }
+    .edit-row  { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .edit-row .form-group { flex: 1; min-width: 140px; }
+    .form-group label {
+      display: block; font-size: 11px; color: #888;
+      margin-bottom: 4px; font-weight: 600; text-transform: uppercase;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%; padding: 9px 12px;
+      border: 1px solid #ddd; border-radius: 8px;
+      font-size: 13px; font-family: 'Poppins', sans-serif;
+    }
+    .form-group input:focus,
+    .form-group select:focus { outline: none; border-color: #8B0000; }
+    .edit-btns { display: flex; gap: 8px; }
+    .btn-save-edit {
+      flex: 1; padding: 9px; background: #8B0000;
+      color: white; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .btn-cancel-edit {
+      flex: 1; padding: 9px; background: #f5f5f5;
+      color: #555; border: none; border-radius: 8px;
+      font-size: 13px; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .confirm-card {
+      background: white; border-radius: 16px;
+      padding: 24px; margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .confirm-card h4 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 16px; }
+    .confirm-row {
+      display: flex; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid #f5f5f5; font-size: 14px;
+    }
+    .confirm-row:last-child { border-bottom: none; }
+    .confirm-row.total {
+      font-weight: 700; font-size: 16px; color: #8B0000;
+      border-top: 2px solid #8B0000; margin-top: 8px; padding-top: 12px;
+    }
+    .confirm-note {
+      background: #fef9e7; border: 1px solid #f9e79f;
+      border-radius: 10px; padding: 14px;
+      font-size: 13px; color: #7d6608; margin-bottom: 16px;
+    }
+    .btn-confirm {
+      width: 100%; padding: 16px; background: #1e8449;
+      color: white; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      font-family: 'Poppins', sans-serif; margin-bottom: 10px; transition: 0.2s;
+    }
+    .btn-confirm:hover { background: #196f3d; transform: translateY(-1px); }
+    .btn-confirm.expense-confirm { background: #8B0000; }
+    .btn-confirm.expense-confirm:hover { background: #a30000; }
+    .btn-back-entry {
+      width: 100%; padding: 12px; background: #f5f5f5;
+      color: #555; border: none; border-radius: 12px;
+      font-size: 14px; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .empty-state {
+      text-align: center; padding: 50px 20px;
+      background: white; border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .empty-state .e-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state h4 { font-size: 16px; color: #333; margin-bottom: 8px; }
+    .empty-state p  { font-size: 13px; color: #999; }
+    .success-overlay {
+      display: none; position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 9999;
+      justify-content: center; align-items: center;
+    }
+    .success-overlay.show { display: flex; }
+    .success-box {
+      background: white; border-radius: 24px;
+      padding: 40px 32px; text-align: center;
+      max-width: 320px; width: 90%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .success-icon { font-size: 64px; margin-bottom: 16px; }
+    .success-box h3 { font-size: 22px; font-weight: 700; color: #1e8449; margin-bottom: 8px; }
+    .success-box p  { font-size: 14px; color: #888; margin-bottom: 24px; }
+    .success-box .s-amount { font-size: 28px; font-weight: 700; color: #8B0000; margin-bottom: 20px; }
+    .btn-done {
+      width: 100%; padding: 14px; background: #8B0000;
+      color: white; border: none; border-radius: 12px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script></head>
+<body>
+<div class="topbar">
+  <h2>✅ Review & Confirm</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+</div>
+
+<div class="container">
+
+  <div class="date-card">
+    <h4>📅 Select Date to Review</h4>
+    <div class="date-row">
+      <input type="date" id="review-date" />
+      <button class="btn-load" onclick="loadEntries()">🔍 Load Entries</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('income-tab', this)">💰 Income</button>
+    <button class="tab-btn" onclick="showTab('expense-tab', this)">🧾 Expenses</button>
+  </div>
+
+  <div class="tab-content active" id="income-tab">
+    <div id="income-content"></div>
+  </div>
+
+  <div class="tab-content" id="expense-tab">
+    <div id="expense-content"></div>
+  </div>
+
+</div>
+
+<div class="success-overlay" id="success-overlay">
+  <div class="success-box">
+    <div class="success-icon">🎉</div>
+    <h3 id="success-title">Confirmed!</h3>
+    <p id="success-msg">All entries have been confirmed.</p>
+    <div class="s-amount" id="success-amount"></div>
+    <button class="btn-done" onclick="closeSuccess()">✅ Done</button>
+  </div>
+</div>
+
+<script>
+  const INCOME_KEY            = 'graceBooksIncome';
+  const EXPENSE_KEY           = 'graceBooksExpenses';
+  const ACCOUNTS_KEY          = 'graceBooksAccounts';
+  const TRANSACTIONS_KEY      = 'graceBooksTransactions';
+  const CONFIRMED_INCOME_KEY  = 'graceBooksConfirmedIncome';
+  const CONFIRMED_EXPENSE_KEY = 'graceBooksConfirmedExpense';
+
+  let incomeEntries  = [];
+  let expenseEntries = [];
+  let selectedDate   = '';
+  let editingIndex   = { income: null, expense: null };
+
+  document.getElementById('review-date').value =
+    new Date().toISOString().split('T')[0];
+
+  loadEntries();
+
+  function loadEntries() {
+    selectedDate = document.getElementById('review-date').value;
+    if (!selectedDate) { alert('Please select a date.'); return; }
+    const allIncome  = JSON.parse(sessionStorage.getItem(INCOME_KEY)  || '[]');
+    const allExpense = JSON.parse(sessionStorage.getItem(EXPENSE_KEY) || '[]');
+    incomeEntries  = allIncome.filter(e => e.date === selectedDate);
+    expenseEntries = allExpense.filter(e => e.date === selectedDate);
+    renderIncome();
+    renderExpense();
+  }
+
+  // ── RENDER INCOME ──────────────────────────────────────────────────────────
+  function renderIncome() {
+    const div = document.getElementById('income-content');
+    if (incomeEntries.length === 0) {
+      div.innerHTML = `
+        <div class="empty-state">
+          <div class="e-icon">💰</div>
+          <h4>No Income Entries</h4>
+          <p>No income recorded for ${selectedDate || 'selected date'}.</p>
+        </div>`;
+      return;
+    }
+    const total  = incomeEntries.reduce((s,e) => s + e.amount, 0);
+    const byType = groupBy(incomeEntries, 'type');
+
+    div.innerHTML = `
+      <div class="summary-hero income">
+        <div class="sh-label">Total Income</div>
+        <div class="sh-date">${formatDate(selectedDate)}</div>
+        <div class="sh-amount">₱${fmt(total)}</div>
+        <div class="sh-stats">
+          <div class="sh-stat">
+            <div class="ss-label">Entries</div>
+            <div class="ss-value">${incomeEntries.length}</div>
+          </div>
+          <div class="sh-stat">
+            <div class="ss-label">Cash</div>
+            <div class="ss-value">₱${fmt(
+              incomeEntries.filter(e => e.payment === 'Cash')
+                .reduce((s,e) => s + e.amount, 0)
+            )}</div>
+          </div>
+          <div class="sh-stat">
+            <div class="ss-label">Bank Transfer</div>
+            <div class="ss-value">₱${fmt(
+              incomeEntries.filter(e => e.payment === 'Bank Transfer')
+                .reduce((s,e) => s + e.amount, 0)
+            )}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="breakdown-card">
+        <h4>📊 Breakdown by Type</h4>
+        ${Object.entries(byType).map(([type, items]) => `
+          <div class="breakdown-row">
+            <div>
+              <div class="br-type">${type}</div>
+              <div class="br-count">${items.length} entr${items.length === 1 ? 'y' : 'ies'}</div>
+            </div>
+            <div class="br-amount">₱${fmt(items.reduce((s,e) => s + e.amount, 0))}</div>
+          </div>`).join('')}
+      </div>
+
+      <div class="entries-card">
+        <div class="entries-header">
+          <h4>📋 All Entries</h4>
+          <span class="entry-count">${incomeEntries.length} records</span>
+        </div>
+        <div id="income-entries-list"></div>
+      </div>
+
+      <div class="confirm-card">
+        <h4>✅ Confirm Income</h4>
+        <div class="confirm-row">
+          <span>Date</span><span>${formatDate(selectedDate)}</span>
+        </div>
+        <div class="confirm-row">
+          <span>Total Entries</span><span>${incomeEntries.length}</span>
+        </div>
+        ${Object.entries(byType).map(([type, items]) => `
+          <div class="confirm-row">
+            <span>${type}</span>
+            <span>₱${fmt(items.reduce((s,e) => s + e.amount, 0))}</span>
+          </div>`).join('')}
+        <div class="confirm-row total">
+          <span>TOTAL INCOME</span>
+          <span>₱${fmt(total)}</span>
+        </div>
+        <div class="confirm-note">
+          ⚠️ Please review all entries carefully before confirming.
+          Once confirmed, entries will be posted to the Income Log
+          and Financial Overview.
+        </div>
+        <button class="btn-confirm" onclick="confirmIncome()">
+          ✅ Confirm & Post Income
+        </button>
+        <button class="btn-back-entry"
+          onclick="window.location.href='tithe-entry.html'">
+          ← Back to Income Entry
+        </button>
+      </div>`;
+
+    renderIncomeEntries();
+  }
+
+  function renderIncomeEntries() {
+    const list = document.getElementById('income-entries-list');
+    if (!list) return;
+    // Sort alphabetically by member name
+    incomeEntries.sort((a, b) => a.member.localeCompare(b.member));
+    list.innerHTML = incomeEntries.map((e, i) => `
+      <div class="entry-item ${editingIndex.income === i ? 'editing' : ''}"
+        id="income-entry-${i}">
+        <div class="entry-top">
+          <div class="entry-name">${e.member}</div>
+          <div class="entry-amount">₱${fmt(e.amount)}</div>
+        </div>
+        <div class="entry-meta">
+          <span class="meta-badge meta-type">${e.type}</span>
+          <span class="meta-badge meta-payment">${e.payment || 'Cash'}</span>
+        </div>
+        ${e.notes ? `<div class="entry-notes">📝 ${e.notes}</div>` : ''}
+        <div class="entry-actions">
+          <button class="btn-edit-entry"
+            onclick="toggleEditIncome(${i})">✏️ Edit</button>
+          <button class="btn-delete-entry"
+            onclick="deleteIncome(${i})">🗑️ Delete</button>
+        </div>
+        ${editingIndex.income === i ? `
+          <div class="edit-form">
+            <div class="edit-row">
+              <div class="form-group">
+                <label>Member</label>
+                <input type="text" id="ei-member-${i}" value="${e.member}" />
+              </div>
+              <div class="form-group">
+                <label>Amount</label>
+                <input type="number" id="ei-amount-${i}" value="${e.amount}" />
+              </div>
+            </div>
+            <div class="edit-row">
+              <div class="form-group">
+                <label>Type</label>
+                <select id="ei-type-${i}">
+                  ${['Tithe','Offering','Special Offering','Pledge',
+                     'Donation','Mission Offering','Love Gift']
+                    .map(t => `<option ${t === e.type ? 'selected' : ''}>${t}</option>`)
+                    .join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Payment</label>
+                <select id="ei-payment-${i}">
+                  <option ${e.payment === 'Cash' ? 'selected' : ''}>Cash</option>
+                  <option ${e.payment === 'Bank Transfer' ? 'selected' : ''}>Bank Transfer</option>
+                </select>
+              </div>
+            </div>
+            <div class="edit-row">
+              <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="ei-notes-${i}"
+                  value="${e.notes || ''}" placeholder="Optional" />
+              </div>
+            </div>
+            <div class="edit-btns">
+              <button class="btn-save-edit"
+                onclick="saveEditIncome(${i})">💾 Save</button>
+              <button class="btn-cancel-edit"
+                onclick="cancelEdit('income')">Cancel</button>
+            </div>
+          </div>` : ''}
+      </div>`).join('');
+  }
+
+  // ── RENDER EXPENSE ─────────────────────────────────────────────────────────
+  function renderExpense() {
+    const div = document.getElementById('expense-content');
+    if (expenseEntries.length === 0) {
+      div.innerHTML = `
+        <div class="empty-state">
+          <div class="e-icon">🧾</div>
+          <h4>No Expense Entries</h4>
+          <p>No expenses recorded for ${selectedDate || 'selected date'}.</p>
+        </div>`;
+      return;
+    }
+    const total = expenseEntries.reduce((s,e) => s + e.amount, 0);
+    const byCat = groupBy(expenseEntries, 'category');
+
+    div.innerHTML = `
+      <div class="summary-hero expense">
+        <div class="sh-label">Total Expenses</div>
+        <div class="sh-date">${formatDate(selectedDate)}</div>
+        <div class="sh-amount">₱${fmt(total)}</div>
+        <div class="sh-stats">
+          <div class="sh-stat">
+            <div class="ss-label">Entries</div>
+            <div class="ss-value">${expenseEntries.length}</div>
+          </div>
+          <div class="sh-stat">
+            <div class="ss-label">Cash</div>
+            <div class="ss-value">₱${fmt(
+              expenseEntries.filter(e => e.payment === 'Cash')
+                .reduce((s,e) => s + e.amount, 0)
+            )}</div>
+          </div>
+          <div class="sh-stat">
+            <div class="ss-label">Bank</div>
+            <div class="ss-value">₱${fmt(
+              expenseEntries.filter(e => e.payment === 'Bank Transfer')
+                .reduce((s,e) => s + e.amount, 0)
+            )}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="breakdown-card">
+        <h4>📊 Breakdown by Category</h4>
+        ${Object.entries(byCat).map(([cat, items]) => `
+          <div class="breakdown-row">
+            <div>
+              <div class="br-type">${cat}</div>
+              <div class="br-count">${items.length} entr${items.length === 1 ? 'y' : 'ies'}</div>
+            </div>
+            <div class="br-amount">₱${fmt(items.reduce((s,e) => s + e.amount, 0))}</div>
+          </div>`).join('')}
+      </div>
+
+      <div class="entries-card">
+        <div class="entries-header">
+          <h4>📋 All Entries</h4>
+          <span class="entry-count">${expenseEntries.length} records</span>
+        </div>
+        <div id="expense-entries-list"></div>
+      </div>
+
+      <div class="confirm-card">
+        <h4>✅ Confirm Expenses</h4>
+        <div class="confirm-row">
+          <span>Date</span><span>${formatDate(selectedDate)}</span>
+        </div>
+        <div class="confirm-row">
+          <span>Total Entries</span><span>${expenseEntries.length}</span>
+        </div>
+        ${Object.entries(byCat).map(([cat, items]) => `
+          <div class="confirm-row">
+            <span>${cat}</span>
+            <span>₱${fmt(items.reduce((s,e) => s + e.amount, 0))}</span>
+          </div>`).join('')}
+        <div class="confirm-row total">
+          <span>TOTAL EXPENSES</span>
+          <span>₱${fmt(total)}</span>
+        </div>
+        <div class="confirm-note">
+          ⚠️ Please review all entries carefully before confirming.
+          Once confirmed, entries will be posted to the Expense Log
+          and Financial Overview.
+        </div>
+        <button class="btn-confirm expense-confirm"
+          onclick="confirmExpense()">
+          ✅ Confirm & Post Expenses
+        </button>
+        <button class="btn-back-entry"
+          onclick="window.location.href='expenses.html'">
+          ← Back to Expenses
+        </button>
+      </div>`;
+
+    renderExpenseEntries();
+  }
+
+  function renderExpenseEntries() {
+    const list = document.getElementById('expense-entries-list');
+    if (!list) return;
+    list.innerHTML = expenseEntries.map((e, i) => `
+      <div class="entry-item ${editingIndex.expense === i ? 'editing' : ''}"
+        id="expense-entry-${i}">
+        <div class="entry-top">
+          <div class="entry-name">${e.sub || e.category}</div>
+          <div class="entry-amount">₱${fmt(e.amount)}</div>
+        </div>
+        <div class="entry-meta">
+          <span class="meta-badge meta-cat">${e.category}</span>
+          <span class="meta-badge meta-payment">${e.payment}</span>
+        </div>
+        ${e.payee ? `<div class="entry-notes">👤 ${e.payee}</div>` : ''}
+        ${e.notes ? `<div class="entry-notes">📝 ${e.notes}</div>` : ''}
+        <div class="entry-actions">
+          <button class="btn-edit-entry"
+            onclick="toggleEditExpense(${i})">✏️ Edit</button>
+          <button class="btn-delete-entry"
+            onclick="deleteExpense(${i})">🗑️ Delete</button>
+        </div>
+        ${editingIndex.expense === i ? `
+          <div class="edit-form">
+            <div class="edit-row">
+              <div class="form-group">
+                <label>Payee</label>
+                <input type="text" id="ee-payee-${i}" value="${e.payee || ''}" />
+              </div>
+              <div class="form-group">
+                <label>Amount</label>
+                <input type="number" id="ee-amount-${i}" value="${e.amount}" />
+              </div>
+            </div>
+            <div class="edit-row">
+              <div class="form-group">
+                <label>Payment Method</label>
+                <select id="ee-payment-${i}">
+                  <option ${e.payment === 'Cash' ? 'selected' : ''}>Cash</option>
+                  <option ${e.payment === 'Petty Cash' ? 'selected' : ''}>Petty Cash</option>
+                  <option ${e.payment === 'Bank Transfer' ? 'selected' : ''}>Bank Transfer</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Notes</label>
+                <input type="text" id="ee-notes-${i}"
+                  value="${e.notes || ''}" placeholder="Optional" />
+              </div>
+            </div>
+            <div class="edit-btns">
+              <button class="btn-save-edit"
+                onclick="saveEditExpense(${i})">💾 Save</button>
+              <button class="btn-cancel-edit"
+                onclick="cancelEdit('expense')">Cancel</button>
+            </div>
+          </div>` : ''}
+      </div>`).join('');
+  }
+
+  // ── EDIT / DELETE INCOME ───────────────────────────────────────────────────
+  function toggleEditIncome(i) {
+    editingIndex.income = editingIndex.income === i ? null : i;
+    renderIncomeEntries();
+  }
+
+  function saveEditIncome(i) {
+    incomeEntries[i].member  = document.getElementById(`ei-member-${i}`).value;
+    incomeEntries[i].amount  = parseFloat(document.getElementById(`ei-amount-${i}`).value) || 0;
+    incomeEntries[i].type    = document.getElementById(`ei-type-${i}`).value;
+    incomeEntries[i].payment = document.getElementById(`ei-payment-${i}`).value;
+    incomeEntries[i].notes   = document.getElementById(`ei-notes-${i}`).value;
+    editingIndex.income = null;
+    syncIncomeToStorage();
+    renderIncome();
+  }
+
+  function deleteIncome(i) {
+    if (!confirm('Delete this income entry?')) return;
+    incomeEntries.splice(i, 1);
+    syncIncomeToStorage();
+    renderIncome();
+  }
+
+  function syncIncomeToStorage() {
+    const all    = JSON.parse(sessionStorage.getItem(INCOME_KEY) || '[]');
+    const others = all.filter(e => e.date !== selectedDate);
+    sessionStorage.setItem(INCOME_KEY,
+      JSON.stringify([...others, ...incomeEntries]));
+  }
+
+  // ── EDIT / DELETE EXPENSE ──────────────────────────────────────────────────
+  function toggleEditExpense(i) {
+    editingIndex.expense = editingIndex.expense === i ? null : i;
+    renderExpenseEntries();
+  }
+
+  function saveEditExpense(i) {
+    expenseEntries[i].payee   = document.getElementById(`ee-payee-${i}`).value;
+    expenseEntries[i].amount  = parseFloat(document.getElementById(`ee-amount-${i}`).value) || 0;
+    expenseEntries[i].payment = document.getElementById(`ee-payment-${i}`).value;
+    expenseEntries[i].notes   = document.getElementById(`ee-notes-${i}`).value;
+    editingIndex.expense = null;
+    syncExpenseToStorage();
+    renderExpense();
+  }
+
+  function deleteExpense(i) {
+    if (!confirm('Delete this expense entry?')) return;
+    expenseEntries.splice(i, 1);
+    syncExpenseToStorage();
+    renderExpense();
+  }
+
+  function syncExpenseToStorage() {
+    const all    = JSON.parse(sessionStorage.getItem(EXPENSE_KEY) || '[]');
+    const others = all.filter(e => e.date !== selectedDate);
+    sessionStorage.setItem(EXPENSE_KEY,
+      JSON.stringify([...others, ...expenseEntries]));
+  }
+
+  function cancelEdit(type) {
+    editingIndex[type] = null;
+    if (type === 'income')  renderIncomeEntries();
+    if (type === 'expense') renderExpenseEntries();
+  }
+
+  // ── CONFIRM INCOME ─────────────────────────────────────────────────────────
+  function confirmIncome() {
+    if (incomeEntries.length === 0) return;
+    const total = incomeEntries.reduce((s,e) => s + e.amount, 0);
+
+    const confirmed = JSON.parse(
+      sessionStorage.getItem(CONFIRMED_INCOME_KEY) || '[]');
+    confirmed.push(...incomeEntries.map(e => ({...e, confirmed: true})));
+    sessionStorage.setItem(CONFIRMED_INCOME_KEY, JSON.stringify(confirmed));
+
+    const accounts     = JSON.parse(sessionStorage.getItem(ACCOUNTS_KEY)     || '[]');
+    const transactions = JSON.parse(sessionStorage.getItem(TRANSACTIONS_KEY) || '[]');
+
+    incomeEntries.forEach(e => {
+      const accName = e.payment === 'Bank Transfer' ? 'Cash in Bank' : 'Cash on Hand';
+      const acc     = accounts.find(a => a.name === accName);
+      if (acc) acc.balance = (acc.balance || 0) + e.amount;
+      transactions.push({
+        type    : 'income',
+        account : accName,
+        amount  : e.amount,
+        desc    : `${e.type} — ${e.member}`,
+        date    : formatDateShort(selectedDate),
+        source  : 'Confirmed Entry'
+      });
+    });
+
+    sessionStorage.setItem(ACCOUNTS_KEY,     JSON.stringify(accounts));
+    sessionStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+    showSuccess('💰 Income Confirmed!',
+      `${incomeEntries.length} entries posted to Income Log`, total);
+  }
+
+  // ── CONFIRM EXPENSE ────────────────────────────────────────────────────────
+  function confirmExpense() {
+    if (expenseEntries.length === 0) return;
+    const total = expenseEntries.reduce((s,e) => s + e.amount, 0);
+
+    const confirmed = JSON.parse(
+      sessionStorage.getItem(CONFIRMED_EXPENSE_KEY) || '[]');
+    confirmed.push(...expenseEntries.map(e => ({...e, confirmed: true})));
+    sessionStorage.setItem(CONFIRMED_EXPENSE_KEY, JSON.stringify(confirmed));
+
+    const accounts     = JSON.parse(sessionStorage.getItem(ACCOUNTS_KEY)     || '[]');
+    const transactions = JSON.parse(sessionStorage.getItem(TRANSACTIONS_KEY) || '[]');
+
+    expenseEntries.forEach(e => {
+      const accName =
+        e.payment === 'Bank Transfer' ? 'Cash in Bank'    :
+        e.payment === 'Petty Cash'    ? 'Petty Cash Fund' :
+        'Cash on Hand';
+      const acc = accounts.find(a => a.name === accName);
+      if (acc) acc.balance = (acc.balance || 0) - e.amount;
+      transactions.push({
+        type    : 'expense',
+        account : accName,
+        amount  : e.amount,
+        desc    : `${e.sub || e.category} — ${e.payee || ''}`,
+        date    : formatDateShort(selectedDate),
+        source  : 'Confirmed Entry'
+      });
+    });
+
+    sessionStorage.setItem(ACCOUNTS_KEY,     JSON.stringify(accounts));
+    sessionStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+    showSuccess('🧾 Expenses Confirmed!',
+      `${expenseEntries.length} entries posted to Expense Log`, total);
+  }
+
+  // ── SUCCESS ────────────────────────────────────────────────────────────────
+  function showSuccess(title, msg, amount) {
+    document.getElementById('success-title').textContent  = title;
+    document.getElementById('success-msg').textContent    = msg;
+    document.getElementById('success-amount').textContent = '₱' + fmt(amount);
+    document.getElementById('success-overlay').classList.add('show');
+  }
+
+  function closeSuccess() {
+    document.getElementById('success-overlay').classList.remove('show');
+    loadEntries();
+  }
+
+  // ── TABS ───────────────────────────────────────────────────────────────────
+  function showTab(tabId, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  // ── HELPERS ────────────────────────────────────────────────────────────────
+  function groupBy(arr, key) {
+    return arr.reduce((acc, item) => {
+      const k = item[key] || 'Unknown';
+      if (!acc[k]) acc[k] = [];
+      acc[k].push(item);
+      return acc;
+    }, {});
+  }
+
+  function fmt(n) {
+    return (n || 0).toLocaleString('en-PH',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatDate(d) {
+    if (!d) return '';
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-PH',
+      { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  function formatDateShort(d) {
+    if (!d) return '';
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-PH',
+      { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+</script>
+</body>
+</html>

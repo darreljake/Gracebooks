@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Income Log — GraceBooks</title>
+
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #fdf2f2; min-height: 100vh; }
+    
+    /* Theme Color: Red */
+    .topbar {
+      background: #c0392b; color: white;
+      padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .topbar h2 { font-size: 20px; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white;
+      border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    
+    .container { max-width: 960px; margin: 30px auto; padding: 0 20px; }
+    .card {
+      background: white; border-radius: 12px;
+      padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 24px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 20px;
+      padding-bottom: 10px; border-bottom: 2px solid #fadbd8;
+      flex-wrap: wrap; gap: 10px;
+    }
+    .card-header h3 { color: #c0392b; font-size: 18px; }
+    
+    .stats-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-box {
+      background: #fff5f5; border-radius: 8px;
+      padding: 14px 20px; text-align: center;
+      border-left: 4px solid #c0392b; flex: 1; min-width: 100px;
+    }
+    .stat-box .s-num { font-size: 20px; font-weight: bold; color: #c0392b; }
+    .stat-box .s-label { font-size: 11px; color: #888; margin-top: 4px; }
+    
+    .filter-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    .filter-bar select, .filter-bar input {
+      padding: 9px 12px; border: 1px solid #ddd;
+      border-radius: 8px; font-size: 13px; background: white;
+    }
+    .filter-bar select:focus, .filter-bar input:focus { outline: none; border-color: #c0392b; }
+    
+    .total-bar {
+      background: #c0392b; color: white;
+      padding: 14px 20px; border-radius: 8px;
+      display: flex; justify-content: space-between;
+      font-size: 15px; font-weight: bold; margin-bottom: 16px;
+    }
+    
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: #c0392b; color: white;
+      padding: 12px; text-align: left; white-space: nowrap;
+    }
+    td { padding: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    tr.consolidated-row:hover td { background: #fff5f5; cursor: pointer; }
+    
+    .badge {
+      padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: bold; white-space: nowrap;
+    }
+    .badge-Tithe { background: #fadbd8; color: #c0392b; }
+    .badge-Offering { background: #d5f5e3; color: #1e8449; }
+    .btn-export {
+      background: #27ae60; color: white;
+      border: none; padding: 10px 16px;
+      border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold;
+    }
+    .empty { text-align: center; color: #aaa; padding: 30px; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <h2>📋 Income Log</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Dashboard</button>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <h3>Consolidated Daily Income</h3>
+      <button class="btn-export" onclick="exportCSV()">📥 Export CSV</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box"><div class="s-num" id="stat-total">₱0.00</div><div class="s-label">Total Income</div></div>
+      <div class="stat-box"><div class="s-num" id="stat-count">0</div><div class="s-label">Total Transactions</div></div>
+      <div class="stat-box"><div class="s-num" id="stat-members">0</div><div class="s-label">Unique Members</div></div>
+    </div>
+
+    <div class="filter-bar">
+      <select id="filter-year" onchange="processData()">
+        </select>
+      <select id="filter-month" onchange="processData()">
+        <option value="all">All Months</option>
+        <option value="01">January</option>
+        <option value="02">February</option>
+        <option value="03">March</option>
+        <option value="04">April</option>
+        <option value="05">May</option>
+        <option value="06">June</option>
+        <option value="07">July</option>
+        <option value="08">August</option>
+        <option value="09">September</option>
+        <option value="10">October</option>
+        <option value="11">November</option>
+        <option value="12">December</option>
+      </select>
+      <select id="filter-type" onchange="processData()">
+        <option value="">All Types</option>
+        <option value="Tithe">Tithe</option>
+        <option value="Offering">Offering</option>
+        <option value="Special Offering">Special Offering</option>
+      </select>
+    </div>
+
+    <div class="total-bar">
+      <span>💰 Filtered Total</span>
+      <span id="filtered-total">₱0.00</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Total Amount</th>
+            <th>Entries</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+          <tr><td colspan="5" class="empty">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let rawRecords = [];
+  let consolidatedData = [];
+
+  // Dinagdag: Para i-setup ang Default Year at Month
+  function initFilters() {
+    const yearSelect = document.getElementById('filter-year');
+    const currentYear = new Date().getFullYear();
+    for (let i = currentYear + 1; i >= 2020; i--) {
+      const opt = document.createElement('option');
+      opt.value = i; opt.innerHTML = i;
+      yearSelect.appendChild(opt);
+    }
+    yearSelect.value = currentYear;
+    
+    const currentMonth = ("0" + (new Date().getMonth() + 1)).slice(-2);
+    document.getElementById('filter-month').value = currentMonth;
+  }
+
+  function setupListener() {
+    db.collection("income").orderBy("date", "desc").get().then(snapshot => {
+      rawRecords = [];
+      snapshot.forEach(doc => {
+        rawRecords.push({ id: doc.id, ...doc.data() });
+      });
+      processData();
+    }).catch(error => {
+      console.error("Error loading income records:", error);
+      document.getElementById('log-body').innerHTML = '<tr><td colspan="5" class="empty">Error loading records.</td></tr>';
+    });
+  }
+
+  function processData() {
+    const selYear = document.getElementById('filter-year').value;
+    const selMonth = document.getElementById('filter-month').value;
+    const typeF = document.getElementById('filter-type').value;
+
+    // Filter Raw Data - Binago para i-check per Month at Year
+    let filteredRaw = rawRecords.filter(r => {
+      if (!r.date) return false;
+      const matchYear = r.date.startsWith(selYear);
+      const matchMonth = (selMonth === 'all') ? true : r.date.substring(5, 7) === selMonth;
+      const matchType = !typeF || r.type === typeF;
+      const isTransfer = (r.type || '').toLowerCase() === 'transfer';
+      return matchYear && matchMonth && matchType && !isTransfer;
+    });
+
+    // Consolidate by Date and Type
+    const groups = {};
+    filteredRaw.forEach(r => {
+      const key = `${r.date}_${r.type}`;
+      if (!groups[key]) {
+        groups[key] = { date: r.date, type: r.type, total: 0, count: 0, items: [] };
+      }
+      groups[key].total += parseFloat(r.amount || 0);
+      groups[key].count += 1;
+      groups[key].items.push(r);
+    });
+
+    consolidatedData = Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
+    renderTable(filteredRaw);
+  }
+
+  function renderTable(filteredRaw) {
+    const tbody = document.getElementById('log-body');
+    const totalSum = consolidatedData.reduce((s, g) => s + g.total, 0);
+    
+    document.getElementById('filtered-total').textContent = '₱' + fmt(totalSum);
+    document.getElementById('stat-total').textContent = '₱' + fmt(totalSum);
+    document.getElementById('stat-count').textContent = filteredRaw.length;
+    document.getElementById('stat-members').textContent = [...new Set(filteredRaw.map(r => r.member))].length;
+
+    if (consolidatedData.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No records found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = consolidatedData.map((g, index) => `
+      <tr class="consolidated-row" onclick="viewBreakdown('${g.date}', '${g.type}')">
+        <td><strong>${g.date}</strong></td>
+        <td><span class="badge badge-${g.type.split(' ')[0]}">${g.type}</span></td>
+        <td><strong>₱${fmt(g.total)}</strong></td>
+        <td>${g.count} members</td>
+        <td style="color: #c0392b; font-weight: bold;">View Details →</td>
+      </tr>
+    `).join('');
+  }
+
+  function viewBreakdown(date, type) {
+    const group = consolidatedData.find(g => g.date === date && g.type === type);
+    if (!group) return;
+
+    let details = `BREAKDOWN FOR ${type} (${date})\n\n`;
+    group.items.forEach((item, i) => {
+      details += `${i + 1}. ${item.member || 'Anonymous'}: ₱${fmt(item.amount)}\n`;
+      if (item.notes) details += `   Note: ${item.notes}\n`;
+    });
+    details += `\nTOTAL: ₱${fmt(group.total)}`;
+
+    alert(details);
+  }
+
+  function fmt(n) {
+    return (n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function exportCSV() {
+    let csv = 'Date,Type,Total Amount,Entries\n';
+    consolidatedData.forEach(g => {
+      csv += `${g.date},${g.type},${g.total},${g.count}\n`;
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'gracebooks-consolidated-income.csv';
+    a.click();
+  }
+
+  // Idinagdag sa initialization para tumakbo agad yung Date Sorter
+  initFilters();
+  setupListener();
+</script>
+</body>
+</html>
+
+

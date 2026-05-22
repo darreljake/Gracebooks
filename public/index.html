@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GraceBooks - TUMC</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="auth.js"></script>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), 
+                  url('church.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      min-height: 100vh;
+    }
+
+    .login-container {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .login-box {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+
+    .logo-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .logo {
+      width: 80px;
+      height: 70px;
+      object-fit: contain;
+    }
+
+    .login-box h1 {
+      font-family: 'Playfair Display', serif;
+      color: #8B0000;
+      font-size: 28px;
+      margin: 0;
+    }
+
+    .login-box p {
+      color: #333;
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    input:focus { border-color: #8B0000; outline: none; }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #8B0000;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn:hover { background: #a30000; }
+    .btn:disabled { background: #ccc; cursor: not-allowed; }
+
+    .error { color: red; font-size: 13px; margin-top: 10px; }
+    .warning { color: #d35400; font-size: 12px; margin-bottom: 15px; padding: 8px; background: #fdebd0; border-radius: 6px; }
+
+    .dashboard { display: none; }
+    body.auth-resolved .login-container {
+      display: flex;
+    }
+    body.auth-resolved.authenticated .login-container {
+      display: none;
+    }
+    body.authenticated .dashboard {
+      display: block;
+    }
+    .auth-loading {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 14px; font-weight: 600; letter-spacing: 0.2px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    body.auth-resolved .auth-loading { display: none; }
+
+    .topbar {
+      background: #8B0000;
+      color: white;
+      padding: 12px 24px; 
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px; 
+    }
+
+    .topbar-logo {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+
+    .topbar h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .logout-btn {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .welcome-bar {
+      background: #fdf2f2;
+      padding: 16px 24px;
+      font-size: 14px;
+      color: #8B0000;
+      border-bottom: 1px solid #f8d7da;
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 20px;
+      padding: 30px 24px;
+    }
+
+    .menu-card {
+      background: white;
+      border-radius: 12px;
+      padding: 30px 20px;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+      cursor: pointer;
+      transition: 0.3s;
+      text-decoration: none;
+    }
+
+    .menu-card:hover { transform: translateY(-5px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+
+    .menu-card .icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+      color: #8B0000;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .menu-card .label {
+      font-size: 14px;
+      color: #333;
+      font-weight: 600;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 40px 20px;
+      color: rgba(255,255,255,0.6);
+      font-size: 11px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="auth-loading" id="auth-loading">Loading GraceBooks...</div>
+
+  <div class="login-container" id="login-page">
+    <div class="login-box">
+      <div class="logo-title">
+        <img src="umc-logo.png" alt="UMC Logo" class="logo">
+        <h1>GraceBooks</h1>
+      </div>
+      <p>Tagaytay United Methodist Church</p>
+
+      <div class="warning" id="expiry-notice" style="display:none;">
+        Testing access expires in <span id="days-left"></span> days
+      </div>
+
+      <input type="text" id="username" placeholder="Username" autocomplete="username" />
+      <input type="password" id="password" placeholder="Password" autocomplete="off" />
+      <button class="btn" id="login-btn" onclick="login()">Login</button>
+      <div class="error" id="error-msg"></div>
+    </div>
+  </div>
+
+  <div class="dashboard" id="dashboard-page">
+    <div class="topbar">
+      <div class="topbar-brand">
+        <img src="umc-logo.png" alt="Logo" class="topbar-logo">
+        <h2>GraceBooks</h2>
+      </div>
+      <div>
+        <span id="role-label" style="font-weight: 600; font-size: 13px; opacity: 0.9;"></span>
+        <button class="logout-btn" onclick="logout()" style="margin-left:16px">Logout</button>
+      </div>
+    </div>
+
+    <div class="welcome-bar">
+      Good day, <strong id="welcome-name"></strong>! Welcome to GraceBooks - TUMC Finance System.
+    </div>
+
+    <div class="menu-grid" id="menu-grid"></div>
+
+    <div class="footer">
+      GRACEBOOKS (C) ESTABLISHED 2026 - TAGAYTAY UNITED METHODIST CHURCH
+    </div>
+  </div>
+
+  <script>
+    const DEPLOYMENT_DATE = new Date('2026-05-08').getTime();
+    const TESTING_DURATION_DAYS = 30;
+
+    function isTestingExpired() {
+      const now = new Date().getTime();
+      const elapsed = (now - DEPLOYMENT_DATE) / (1000 * 60 * 60 * 24);
+      return elapsed > TESTING_DURATION_DAYS;
+    }
+
+    function getDaysRemaining() {
+      const now = new Date().getTime();
+      const elapsed = (now - DEPLOYMENT_DATE) / (1000 * 60 * 60 * 24);
+      const remaining = Math.ceil(TESTING_DURATION_DAYS - elapsed);
+      return Math.max(0, remaining);
+    }
+
+    const menus = {
+      'Treasurer': [
+        { iconClass: 'fa-building-columns', label: 'Financial Overview', link: 'financial-overview.html' },
+        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry', link: 'tithe-entry.html' },
+        { iconClass: 'fa-receipt', label: 'Expenses', link: 'expenses.html' },
+        { iconClass: 'fa-users', label: 'Members', link: 'members.html' },
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' },
+        { iconClass: 'fa-clipboard-list', label: 'Income Log', link: 'income-log.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-file-invoice-dollar', label: 'Payroll / Payslips', link: 'payslips.html' },
+        { iconClass: 'fa-clipboard-check', label: 'Liquidation & Reimbursements', link: 'liquidation-reimbursements.html' },
+        { iconClass: 'fa-calendar-check', label: 'Attendance', link: 'membership-attendance.html' },
+        { iconClass: 'fa-magnifying-glass-chart', label: 'Audit Log', link: 'audit-log.html' }
+      ],
+      'Pastor': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' },
+        { iconClass: 'fa-file-invoice-dollar', label: 'My Payslips', link: 'payslips.html' },
+        { iconClass: 'fa-clipboard-check', label: 'Liquidation & Reimbursements', link: 'liquidation-reimbursements.html' }
+      ],
+      'Auditor': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' },
+        { iconClass: 'fa-magnifying-glass-chart', label: 'Audit Log', link: 'audit-log.html' },
+        { iconClass: 'fa-clipboard-list', label: 'Income Log', link: 'income-log.html' },
+        { iconClass: 'fa-receipt', label: 'Expense Log', link: 'expenses.html' }
+      ],
+      'District': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' }
+      ],
+      'Finance Chair': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' }
+      ],
+      'Chairperson': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-signature', label: 'Report Workflow', link: 'report-workflow.html' }
+      ],
+      'Money Counter': [
+        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' }
+      ],
+      'Membership Secretary': [
+        { iconClass: 'fa-calendar-check', label: 'Weekly Attendance', link: 'membership-attendance.html' }
+      ],
+      'Deaconess': [
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-file-invoice-dollar', label: 'My Payslips', link: 'payslips.html' },
+        { iconClass: 'fa-clipboard-check', label: 'Liquidation & Reimbursements', link: 'liquidation-reimbursements.html' }
+      ],
+      'Admin Assistant': [
+        { iconClass: 'fa-file-invoice-dollar', label: 'My Payslips', link: 'payslips.html' },
+        { iconClass: 'fa-clipboard-check', label: 'Liquidation & Reimbursements', link: 'liquidation-reimbursements.html' }
+      ]
+    };
+
+    let currentUser = null;
+
+    // INITIALIZATION
+    window.onload = function() {
+      const daysLeft = getDaysRemaining();
+      if (daysLeft <= 7 && daysLeft > 0) {
+        document.getElementById('expiry-notice').style.display = 'block';
+        document.getElementById('days-left').textContent = daysLeft;
+      }
+
+      firebase.auth().onAuthStateChanged(async (user) => {
+        if (!user) {
+          document.body.classList.remove('authenticated');
+          document.body.classList.add('auth-resolved');
+          return;
+        }
+        try {
+          currentUser = await getGraceBooksProfile(user);
+          showDashboard();
+        } catch (error) {
+          console.error(error);
+          await firebase.auth().signOut();
+          sessionStorage.clear();
+          document.getElementById('error-msg').textContent = 'Your account is missing a GraceBooks role profile.';
+          document.body.classList.remove('authenticated');
+          document.body.classList.add('auth-resolved');
+        }
+      });
+    };
+
+    async function login() {
+      if (isTestingExpired()) {
+        alert('Testing period has expired (30 days). Contact administrator.');
+        return;
+      }
+
+      const username = document.getElementById('username').value.trim().toLowerCase();
+      const email = username.includes('@') ? username : `${username}@gracebooks.local`;
+      const password = document.getElementById('password').value;
+      const errorMsg = document.getElementById('error-msg');
+      const loginBtn = document.getElementById('login-btn');
+
+      if (!username || !password) {
+        errorMsg.textContent = 'Username and password required.';
+        return;
+      }
+
+      if (!/^[a-z0-9._-]{3,40}(@[a-z0-9.-]+)?$/.test(username)) {
+        errorMsg.textContent = 'Invalid username format.';
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logging in...';
+      errorMsg.textContent = '';
+
+      try {
+        const result = await firebase.auth().signInWithEmailAndPassword(email, password);
+        currentUser = await getGraceBooksProfile(result.user);
+        showDashboard();
+      } catch (error) {
+        console.error(error);
+        errorMsg.textContent = 'Invalid email/password or missing role profile.';
+      }
+
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Login';
+    }
+    function showDashboard() {
+      document.body.classList.add('authenticated', 'auth-resolved');
+      document.getElementById('login-page').style.display = 'none';
+      document.getElementById('dashboard-page').style.display = 'block';
+      document.getElementById('role-label').textContent = currentUser.role;
+      document.getElementById('welcome-name').textContent = currentUser.name;
+
+      const grid = document.getElementById('menu-grid');
+      grid.innerHTML = '';
+
+      const userMenu = menus[currentUser.role] || [];
+
+      userMenu.forEach(item => {
+        grid.innerHTML += `
+          <a class="menu-card" href="${item.link}">
+            <div class="icon"><i class="fa-solid ${item.iconClass}"></i></div>
+            <div class="label">${item.label}</div>
+          </a>`;
+      });
+    }
+
+    async function logout() {
+      if (confirm('Are you sure you want to logout?')) {
+        await firebase.auth().signOut();
+        sessionStorage.clear();
+        currentUser = null;
+        document.body.classList.remove('authenticated');
+        document.body.classList.add('auth-resolved');
+        document.getElementById('login-page').style.display = 'flex';
+        document.getElementById('dashboard-page').style.display = 'none';
+        document.getElementById('username').value = '';
+        document.getElementById('password').value = '';
+        document.getElementById('error-msg').textContent = '';
+      }
+    }
+
+    // Prevent back button access after logout
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted && !firebase.auth().currentUser) {
+        window.location.href = 'index.html';
+      }
+    });
+</script>
+</body>
+</html>

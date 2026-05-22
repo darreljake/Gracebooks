@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weekly Attendance - GraceBooks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #fdf2f2; min-height: 100vh; color: #333; }
+    .topbar {
+      background: #c0392b; color: white; padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .topbar h2 { font-size: 20px; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    .container { max-width: 920px; margin: 30px auto; padding: 0 20px; }
+    .card {
+      background: white; border-radius: 10px; padding: 24px; box-shadow: 0 3px 12px rgba(0,0,0,0.06);
+      border-top: 4px solid #c0392b; margin-bottom: 22px;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding-bottom: 12px; border-bottom: 2px solid #f9ebea; margin-bottom: 18px; flex-wrap: wrap;
+    }
+    .card-header h3 { color: #c0392b; font-size: 18px; }
+    .form-grid {
+      display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; align-items: end;
+    }
+    label { display: block; font-size: 11px; color: #777; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+    input, textarea {
+      width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 10px 11px; font-size: 14px;
+      font-family: Arial, sans-serif;
+    }
+    textarea { min-height: 74px; resize: vertical; }
+    .span-2 { grid-column: span 2; }
+    .btn {
+      background: #c0392b; color: white; border: none; border-radius: 8px; padding: 11px 14px;
+      cursor: pointer; font-weight: bold; font-size: 14px;
+    }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .success { display: none; background: #d5f5e3; color: #1e8449; padding: 11px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; font-weight: bold; }
+    .member-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 18px 0 12px; }
+    .member-toolbar input { flex: 1; min-width: 220px; }
+    .btn-light {
+      background: #fff5f5; color: #c0392b; border: 1px solid #f0c7c3; border-radius: 8px;
+      padding: 10px 12px; cursor: pointer; font-weight: bold; font-size: 13px;
+    }
+    .member-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;
+      max-height: 310px; overflow: auto; border: 1px solid #f4d3d0; border-radius: 10px; padding: 10px;
+      background: #fffafa;
+    }
+    .member-item {
+      display: flex; gap: 8px; align-items: flex-start; background: white; border: 1px solid #f1eeee;
+      border-radius: 8px; padding: 9px; cursor: pointer;
+    }
+    .member-item input { width: auto; margin-top: 2px; }
+    .member-name { font-weight: bold; font-size: 13px; }
+    .member-meta { color: #777; font-size: 11px; margin-top: 2px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
+    th { background: #c0392b; color: white; padding: 11px 12px; text-align: left; }
+    td { padding: 12px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
+    tr:hover td { background: #fff5f5; }
+    .empty { text-align: center; color: #999; padding: 24px; }
+    .muted { color: #777; font-size: 12px; }
+    @media (max-width: 760px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .span-2 { grid-column: span 1; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+<div class="topbar">
+  <h2>Weekly Attendance</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">Dashboard</button>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="card-header">
+      <h3>Attendance Entry</h3>
+      <div class="muted" id="role-label"></div>
+    </div>
+    <div class="success" id="success-msg">Attendance saved.</div>
+    <div class="form-grid">
+      <div>
+        <label>Service Date</label>
+        <input type="date" id="service-date" />
+      </div>
+      <div>
+        <label>Total Attendance</label>
+        <input type="number" id="attendance-count" min="0" step="1" placeholder="0" />
+      </div>
+      <div>
+        <label>First-Time Guests</label>
+        <input type="number" id="guest-count" min="0" step="1" placeholder="0" oninput="syncMinimumAttendance()" />
+      </div>
+      <div>
+        <button class="btn" id="save-btn" onclick="saveWeeklyAttendance()">Save Week</button>
+      </div>
+      <div class="span-2">
+        <label>Notes</label>
+        <textarea id="attendance-notes" placeholder="Optional notes"></textarea>
+      </div>
+    </div>
+    <div class="member-toolbar">
+      <input type="text" id="member-search" placeholder="Search member name or ID..." oninput="renderMemberRoster()" />
+      <button class="btn-light" type="button" onclick="selectActiveMembers()">Select Active</button>
+      <button class="btn-light" type="button" onclick="clearSelectedMembers()">Clear</button>
+      <span class="muted" id="selected-count">0 members selected</span>
+    </div>
+    <div class="member-grid" id="member-roster">
+      <div class="empty">Loading member names...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Recent Weekly Records</h3>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Attendance</th>
+            <th>Members Present</th>
+            <th>Guests</th>
+            <th>Notes</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="attendance-body">
+          <tr><td colspan="5" class="empty">Loading attendance records...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  let activeUserProfile = null;
+  let attendanceRecords = [];
+  let members = [];
+  let selectedMemberIds = new Set();
+
+  document.getElementById('service-date').value = new Date().toISOString().slice(0, 10);
+
+  window.graceBooksAuthReady.then(profile => {
+    activeUserProfile = profile;
+    document.getElementById('role-label').textContent = profile.role;
+    if (!['Membership Secretary', 'Treasurer'].includes(profile.role)) {
+      window.location.href = 'index.html';
+      return;
+    }
+    loadMembers();
+    loadAttendance();
+  });
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function getDateParts(dateValue) {
+    const date = new Date(`${dateValue}T00:00:00`);
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      monthKey: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    };
+  }
+
+  async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: 'attendance',
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '',
+      actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  async function saveWeeklyAttendance() {
+    if (!activeUserProfile || !['Membership Secretary', 'Treasurer'].includes(activeUserProfile.role)) {
+      return alert('Only the Membership Secretary or Treasurer can save attendance.');
+    }
+    const btn = document.getElementById('save-btn');
+    const serviceDate = document.getElementById('service-date').value;
+    const attendance = parseInt(document.getElementById('attendance-count').value, 10) || 0;
+    const guests = parseInt(document.getElementById('guest-count').value, 10) || 0;
+    const notes = document.getElementById('attendance-notes').value.trim();
+    const presentMembers = members
+      .filter(member => selectedMemberIds.has(member.memberId))
+      .map(member => ({
+        memberId: member.memberId,
+        first: member.first || '',
+        last: member.last || '',
+        status: member.status || ''
+      }));
+    if (!serviceDate) return alert('Select a service date.');
+    if (attendance <= 0) return alert('Enter total attendance.');
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const docId = `week-${serviceDate}`;
+      const existing = await db.collection('attendance').doc(docId).get();
+      const dateParts = getDateParts(serviceDate);
+      const payload = {
+        ...dateParts,
+        serviceDate,
+        attendance,
+        guests,
+        presentMemberIds: presentMembers.map(member => member.memberId),
+        presentMembers,
+        presentMemberCount: presentMembers.length,
+        notes,
+        entryType: 'weekly',
+        updatedAt: new Date().toISOString()
+      };
+      await db.collection('attendance').doc(docId).set(payload, { merge: true });
+      await writeAuditLog('attendance_saved', docId, existing.exists ? existing.data() : null, payload, `Saved weekly attendance for ${serviceDate}`);
+      document.getElementById('success-msg').style.display = 'block';
+      setTimeout(() => document.getElementById('success-msg').style.display = 'none', 2200);
+      document.getElementById('attendance-count').value = '';
+      document.getElementById('guest-count').value = '';
+      document.getElementById('attendance-notes').value = '';
+      selectedMemberIds.clear();
+      renderMemberRoster();
+      loadAttendance();
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Week';
+    }
+  }
+
+  async function loadAttendance() {
+    const snap = await db.collection('attendance').orderBy('serviceDate', 'desc').limit(16).get();
+    attendanceRecords = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(row => row.entryType === 'weekly' || row.serviceDate);
+    renderAttendance();
+  }
+
+  async function loadMembers() {
+    const snap = await db.collection('members').get();
+    members = snap.docs.map(doc => ({ memberId: doc.id, ...doc.data() }))
+      .sort((a, b) => `${a.last || ''} ${a.first || ''}`.localeCompare(`${b.last || ''} ${b.first || ''}`));
+    renderMemberRoster();
+  }
+
+  function renderMemberRoster() {
+    const roster = document.getElementById('member-roster');
+    const search = document.getElementById('member-search').value.toLowerCase();
+    const filtered = members.filter(member => {
+      const haystack = `${member.memberId || ''} ${member.first || ''} ${member.last || ''} ${member.status || ''}`.toLowerCase();
+      return !search || haystack.includes(search);
+    });
+    document.getElementById('selected-count').textContent = `${selectedMemberIds.size} members selected`;
+    if (!filtered.length) {
+      roster.innerHTML = '<div class="empty">No members found.</div>';
+      return;
+    }
+    roster.innerHTML = filtered.map(member => {
+      const id = escapeHtml(member.memberId || '');
+      const checked = selectedMemberIds.has(member.memberId) ? 'checked' : '';
+      const name = escapeHtml(`${member.last || ''}, ${member.first || ''}`.replace(/^, /, '').trim() || member.memberId || 'Member');
+      const meta = escapeHtml(`${member.memberId || ''}${member.status ? ' - ' + member.status : ''}`);
+      return `
+        <label class="member-item">
+          <input type="checkbox" value="${id}" ${checked} onchange="toggleMember('${id}', this.checked)" />
+          <span>
+            <span class="member-name">${name}</span>
+            <span class="member-meta">${meta}</span>
+          </span>
+        </label>`;
+    }).join('');
+  }
+
+  function toggleMember(memberId, checked) {
+    if (checked) selectedMemberIds.add(memberId);
+    else selectedMemberIds.delete(memberId);
+    document.getElementById('selected-count').textContent = `${selectedMemberIds.size} members selected`;
+    syncMinimumAttendance();
+  }
+
+  function selectActiveMembers() {
+    members.filter(member => (member.status || '').toLowerCase() === 'active')
+      .forEach(member => selectedMemberIds.add(member.memberId));
+    renderMemberRoster();
+    syncMinimumAttendance();
+  }
+
+  function clearSelectedMembers() {
+    selectedMemberIds.clear();
+    renderMemberRoster();
+    syncMinimumAttendance();
+  }
+
+  function syncMinimumAttendance() {
+    const attendanceInput = document.getElementById('attendance-count');
+    const guests = parseInt(document.getElementById('guest-count').value, 10) || 0;
+    const minimum = selectedMemberIds.size + guests;
+    const current = parseInt(attendanceInput.value, 10) || 0;
+    if (minimum > current) attendanceInput.value = minimum;
+  }
+
+  function renderAttendance() {
+    const body = document.getElementById('attendance-body');
+    if (!attendanceRecords.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">No weekly attendance records yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = attendanceRecords.map(row => `
+      <tr>
+        <td>${escapeHtml(row.serviceDate || row.monthKey || '-')}</td>
+        <td><strong>${Number(row.attendance || 0).toLocaleString('en-PH')}</strong></td>
+        <td>${Number(row.presentMemberCount || (row.presentMemberIds || []).length || 0).toLocaleString('en-PH')}</td>
+        <td>${Number(row.guests || 0).toLocaleString('en-PH')}</td>
+        <td>${escapeHtml(row.notes || '-')}</td>
+        <td class="muted">${escapeHtml(row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')}</td>
+      </tr>
+    `).join('');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,1137 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Expenses - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', sans-serif; background: #fdf2f2; min-height: 100vh; color: #333; }
+    
+    .topbar { background: #c0392b; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: 'Poppins', sans-serif; }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    
+    .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
+    
+    .card { background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #fadbd8; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #fadbd8; }
+    .card-header h3 { color: #c0392b; font-size: 18px; font-weight: 600; }
+    
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
+    .form-group { flex: 1; min-width: 180px; }
+    .form-group label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600; }
+    .form-group input[type="text"], .form-group input[type="date"], .form-group input[type="number"], .form-group select {
+      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white; font-family: 'Poppins', sans-serif;
+    }
+    .form-group input[type="file"] {
+      width: 100%; padding: 9px 10px; border: 1px dashed #c0392b; border-radius: 6px; font-size: 13px; background: #fff8f8; font-family: 'Poppins', sans-serif;
+    }
+    .receipt-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .btn-receipt {
+      background: #1a5276; color: white; border: none; border-radius: 6px;
+      padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .btn-receipt.secondary { background: #fdf2f2; color: #c0392b; border: 1px solid #fadbd8; }
+    .receipt-preview {
+      display: none; margin-top: 8px; font-size: 11px; color: #555;
+      background: #f8f9fa; border: 1px solid #eee; border-radius: 6px; padding: 8px;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: #c0392b; }
+    
+    .lock-check { cursor: pointer; width: 14px; height: 14px; accent-color: #c0392b; }
+    
+    .btn-save { width: 100%; padding: 14px; background: #c0392b; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 10px; font-family: 'Poppins', sans-serif; }
+    .btn-save:hover { background: #a93226; }
+    
+    .success { background: #d5f5e3; color: #1e8449; padding: 12px; border-radius: 6px; text-align: center; font-size: 13px; display: none; margin-bottom: 16px; font-weight: 600; }
+    
+    .total-bar { background: #c0392b; color: white; padding: 14px 20px; border-radius: 6px; display: flex; justify-content: space-between; font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 15px; background: #fdf8f8; padding: 15px; border-radius: 6px; border: 1px solid #fadbd8; flex-wrap: wrap; }
+    .filter-bar .filter-group { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 5px; }
+    .filter-bar label { font-size: 11px; font-weight: 600; color: #555; text-transform: uppercase; }
+    .filter-bar input, .filter-bar select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; font-family: 'Poppins', sans-serif; }
+
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: white; min-width: 800px; }
+    th { background: #f8f9fa; color: #555; padding: 12px 15px; text-align: left; font-size: 13px; border-bottom: 2px solid #ddd; font-weight: 600; }
+    td { padding: 15px; border-bottom: 1px solid #eee; font-size: 13px; word-wrap: break-word; }
+
+    .action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; background: #fdf8f8; padding: 15px; border-radius: 6px; border: 1px dashed #fadbd8; }
+    .btn-payroll { background: #27ae60; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif; }
+    .btn-payroll:hover { background: #1e8449; }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 25px; border-radius: 12px; width: 95%; max-width: 1300px; max-height: 90vh; display: flex; flex-direction: column; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .modal-header h3 { color: #27ae60; font-weight: 600; font-size: 18px; }
+    .close-modal { background: none; border: none; font-size: 24px; cursor: pointer; color: #777; }
+    .camera-modal .modal-content { max-width: 560px; }
+    .camera-view {
+      width: 100%; aspect-ratio: 4 / 3; background: #111; border-radius: 8px;
+      object-fit: cover; margin-bottom: 12px;
+    }
+    .camera-note { font-size: 12px; color: #777; margin-bottom: 12px; }
+
+    /* WIDE INPUTS FOR SMART PAYROLL */
+    .pr-table-wrap { width: 100%; overflow-x: auto; overflow-y: auto; max-height: 50vh; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 15px; }
+    .pr-table { width: 100%; border-collapse: collapse; min-width: 1400px; table-layout: fixed; }
+    .pr-table th { background: #27ae60; padding: 10px; font-size: 12px; color: white; position: sticky; top: 0; z-index: 2; font-weight: 600; text-align: left; }
+    .pr-table td { padding: 8px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: top; }
+    .pr-table input, .pr-table select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: 'Poppins', sans-serif; font-weight: 600; }
+    .pr-table .chk-col { width: 40px; text-align: center; }
+    .input-gross { background: #fdf2e9; border-color: #e67e22 !important; color: #d35400; }
+
+    .badge-paid { background: #d5f5e3; color: #1e8449; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-pending { background: #fcf3cf; color: #b7950b; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .btn-mark-paid { background: #27ae60; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-top: 5px; display: block; font-family: 'Poppins', sans-serif; font-weight: 600; }
+    .ledger-actions { display: flex; flex-direction: column; gap: 6px; min-width: 88px; }
+    .btn-ledger {
+      border: none; border-radius: 5px; padding: 6px 8px; font-size: 11px;
+      font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .btn-ledger.view { background: #eaf2f8; color: #1a5276; }
+    .btn-ledger.edit { background: #fef5e7; color: #b7950b; }
+    .btn-ledger.danger { background: #f9ebeb; color: #c0392b; }
+    .btn-ledger:disabled { opacity: 0.45; cursor: not-allowed; }
+    .edit-banner {
+      display: none; align-items: center; justify-content: space-between; gap: 10px;
+      background: #fef5e7; border: 1px solid #f5cba7; color: #935116;
+      padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;
+    }
+    .edit-banner button {
+      background: transparent; border: 1px solid #d68910; color: #935116;
+      border-radius: 5px; padding: 6px 10px; cursor: pointer; font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+    }
+    .receipt-frame {
+      width: 100%; min-height: 62vh; border: 1px solid #eee; border-radius: 8px;
+      background: #f8f9fa; object-fit: contain;
+    }
+    .receipt-viewer .modal-content { max-width: 850px; }
+
+    /* RECURRING EXPENSE SECTION (BOTTOM) */
+    .recurring-section { background: #fff5e6; padding: 12px 15px; border-radius: 6px; border: 1px solid #f39c12; display: flex; justify-content: space-between; align-items: center; margin-top: 20px; flex-wrap: wrap; gap: 10px; }
+    .recurring-section select { padding: 8px; border-radius: 4px; border: 1px solid #f39c12; font-size: 13px; font-weight: 600; color: #d35400; min-width: 250px; font-family: 'Poppins', sans-serif; }
+    .btn-recurring { background: #d35400; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: 'Poppins', sans-serif; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <h2>🧾 Expenses & Ledger</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+</div>
+
+<div class="container">
+  
+  <div class="modal-overlay" id="payrollModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📅 Smart Monthly Payroll Generator</h3>
+        <button class="close-modal" onclick="closePayrollModal()">×</button>
+      </div>
+
+      <div class="form-row" style="background:#eafaf1; padding:15px; border-radius:8px; align-items:flex-end;">
+        <div class="form-group">
+          <label>Payroll Month</label>
+          <input type="month" id="pr-month" value="" />
+        </div>
+        <div class="form-group">
+          <label>Allowances Schedule</label>
+          <select id="pr-allowance-week">
+            <option value="4">Insert at Week 4</option>
+            <option value="5">Insert at Week 5</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Source of Fund</label>
+          <select id="pr-payment">
+            <option value="cash-hand">💵 Cash on Hand</option>
+            <option value="cash-bank">🏦 Cash in Bank</option>
+            <option value="petty-cash">💰 Petty Cash Fund</option>
+            <option value="building">⛪ Building Fund</option>
+            <option value="mission">✈️ Mission Fund</option>
+            <option value="investment">📈 Investments/TD</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 0.5;">
+          <button onclick="generateSmartSchedule()" style="width:100%; padding:10px 12px; background:#2980b9; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:14px; font-family:'Poppins', sans-serif;">⚡ Generate</button>
+        </div>
+      </div>
+      
+      <div class="pr-table-wrap">
+        <table class="pr-table" id="pr-table">
+          <thead>
+            <tr>
+              <th class="chk-col">✔</th>
+              <th style="width: 60px;">Wk</th>
+              <th style="width: 140px;">Date (Sun)</th>
+              <th style="width: 160px;">Role/Type</th>
+              <th style="width: 280px;">Budget Mapping</th>
+              <th style="width: 140px;">Gross (₱)</th>
+              <th style="width: 110px;">Tithe</th>
+              <th style="width: 110px;">SSS Ded.</th>
+              <th style="width: 160px;">Other Ded (Name/Amt)</th>
+              <th style="width: 110px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="pr-body">
+            <tr><td colspan="10" style="text-align:center; padding:20px; color:#999;">Click "Generate" to load schedule.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button class="btn-save" style="background:#8e44ad; flex:1;" onclick="saveAsDefaultTemplate()">⚙️ Save as Default Template</button>
+        <button class="btn-save" style="background:#27ae60; flex:2;" id="btn-save-batch" onclick="saveSmartPayroll()">✅ Save Generated Payroll</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay camera-modal" id="cameraModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Capture Receipt / Voucher</h3>
+        <button class="close-modal" onclick="closeCameraModal()">×</button>
+      </div>
+      <video class="camera-view" id="receipt-camera" autoplay playsinline></video>
+      <canvas id="receipt-canvas" style="display:none;"></canvas>
+      <div class="camera-note">Position the receipt clearly inside the frame, then capture the photo.</div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn-save" style="background:#1a5276; flex:1; margin-top:0;" onclick="captureReceiptPhoto()">Capture Photo</button>
+        <button class="btn-save" style="background:#777; flex:1; margin-top:0;" onclick="closeCameraModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay receipt-viewer" id="receiptViewerModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="receipt-viewer-title">Receipt / Voucher</h3>
+        <button class="close-modal" onclick="closeReceiptViewer()">×</button>
+      </div>
+      <div id="receipt-viewer-body"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>📝 Record Single Expense</h3>
+    </div>
+    
+    <div class="action-bar">
+      <span style="font-size: 13px; color: #555;">Use the Smart Generator to instantly lay out the whole month's salaries, allowances, and church shares.</span>
+      <button class="btn-payroll" onclick="openPayrollModal()">🤖 Smart Monthly Payroll</button>
+    </div>
+
+    <div class="success" id="success-msg">✅ Expense saved!</div>
+    <div class="edit-banner" id="edit-banner">
+      <span id="edit-banner-text">Editing expense</span>
+      <button type="button" onclick="cancelExpenseEdit()">Cancel Edit</button>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Budget Year</label>
+        <select id="budget-year" onchange="handleYearChange()" style="font-weight: 600; color: #c0392b; background: #fdf2f2; border-color: #c0392b;"></select>
+      </div>
+      <div class="form-group">
+        <label>Date <input type="checkbox" id="lock-date" class="lock-check" title="Lock Date"></label>
+        <input type="date" id="exp-date" />
+      </div>
+      <div class="form-group">
+        <label>Source of Fund</label>
+        <select id="exp-payment">
+          <option value="cash-hand">💵 Cash on Hand</option>
+          <option value="cash-bank">🏦 Cash in Bank</option>
+          <option value="petty-cash">💰 Petty Cash Fund</option>
+          <option value="building">⛪ Building Fund</option>
+          <option value="mission">✈️ Mission Fund</option>
+          <option value="investment">📈 Investments/TD</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Main Category <input type="checkbox" id="lock-category" class="lock-check" title="Lock Main Category"></label>
+        <select id="exp-category" onchange="updateSubcategory()" style="border-color: #c0392b; font-weight: 600;">
+          <option value="">-- Loading Budgets... --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Subcategory</label>
+        <select id="exp-subcategory" onchange="checkDeductionsVisibility()" style="border-color: #c0392b; font-weight: 600;">
+          <option value="">-- Select Main Category First --</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group" style="flex:2;">
+        <label>Particulars / Specific Item</label>
+        <input type="text" id="exp-particular" placeholder="e.g. Electricity Bill, etc." />
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Payee / Paid To</label>
+        <input type="text" id="exp-payee" placeholder="e.g. MERALCO" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Gross Amount (₱)</label>
+        <input type="number" id="exp-amount" placeholder="0.00" step="0.01" />
+      </div>
+      
+      <div class="form-group" id="tithe-container" style="display:none; background: #e8f6f3; padding: 10px; border-radius: 6px; border: 1px dashed #1e8449;">
+        <label style="color: #1e8449;">Tithe Ded. (₱)</label>
+        <input type="number" id="exp-tithe" placeholder="0.00" step="0.01" style="border-color: #1e8449;" />
+      </div>
+      <div class="form-group" id="sss-container" style="display:none; background: #eaf2f8; padding: 10px; border-radius: 6px; border: 1px dashed #2874a6;">
+        <label style="color: #2874a6;">SSS Ded. (₱)</label>
+        <input type="number" id="exp-sss" placeholder="0.00" step="0.01" style="border-color: #2874a6;" />
+      </div>
+      
+      <div class="form-group">
+        <label>Status</label>
+        <select id="exp-status" style="border-color: #27ae60; font-weight: 600; color:#1e8449;">
+          <option value="Paid">Paid / Cleared</option>
+          <option value="Pending">Pending / Scheduled</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Receipt / Voucher</label>
+        <input type="file" id="exp-receipt" accept="image/*,.pdf" onchange="updateReceiptPreview()" />
+        <div class="receipt-actions">
+          <button type="button" class="btn-receipt" onclick="openCameraModal()">Take Photo</button>
+          <button type="button" class="btn-receipt secondary" onclick="clearReceiptFile()">Clear Receipt</button>
+        </div>
+        <div class="receipt-preview" id="receipt-preview"></div>
+      </div>
+    </div>
+
+    <button class="btn-save" id="save-btn" onclick="saveSingleExpense()">💾 Save Single Expense</button>
+
+    <div class="recurring-section">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-size:18px;">📌</span>
+        <select id="recurring-list">
+          <option value="">-- Load a Recurring Expense --</option>
+        </select>
+        <button class="btn-recurring" onclick="loadRecurringExpense()">Load Data</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="chk-save-recurring" style="width:16px; height:16px; cursor:pointer; accent-color:#d35400;">
+        <label for="chk-save-recurring" style="font-weight:600; font-size:12px; color:#d35400; cursor:pointer;">Save as Recurring Template</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>📋 Expense Records</h3>
+      <div style="font-size: 12px; color: #777;">* "Pending" records are NOT added to the Total Expenses.</div>
+    </div>
+    
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label>Start Date</label>
+        <input type="date" id="filter-start" onchange="applyFilters()">
+      </div>
+      <div class="filter-group">
+        <label>End Date</label>
+        <input type="date" id="filter-end" onchange="applyFilters()">
+      </div>
+      <div class="filter-group">
+        <label>Category Filter</label>
+        <select id="filter-cat" onchange="applyFilters()">
+          <option value="">-- All Categories --</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="total-bar">
+      <span>📊 Filtered PAID Expenses</span>
+      <span id="total-expenses">₱0.00</span>
+    </div>
+    
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:130px;">Date & Status</th>
+            <th>Particular & Category</th>
+            <th>Payee</th>
+            <th>Source Account</th>
+            <th>Receipt</th>
+            <th style="text-align:right;">Net Amount (₱)</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="expenses-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app"
+  };
+  if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pr-month').value = new Date().toISOString().slice(0,7);
+  
+  let dynamicCategories = {};
+  let allExpenseRecords = []; 
+  let recurringData = [];
+  let receiptCameraStream = null;
+  let editingExpenseId = null;
+  let editingExpenseOriginal = null;
+  let activeUserProfile = null;
+
+  let defaultPayrollTemplate = [
+      { w: 1, e: 'Deaconess', t: 'Salary', g: 10000, tithe: 1000, sss: 500, odName: 'Decker', odAmt: 75 },
+      { w: 2, e: 'Pastor', t: 'Salary', g: 11000, tithe: 1100, sss: 550, odName: 'BOP', odAmt: 660 },
+      { w: 2, e: 'Admin', t: 'Salary', g: 7000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 3, e: 'Deaconess', t: 'Salary', g: 10000, tithe: 1000, sss: 500, odName: 'Decker', odAmt: 75 },
+      { w: 4, e: 'Pastor', t: 'Salary', g: 11000, tithe: 1100, sss: 550, odName: '', odAmt: 0 },
+      { w: 4, e: 'Admin', t: 'Salary', g: 7000, tithe: 0, sss: 700, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Admin', t: 'Transpo', g: 1000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Admin', t: 'Comm', g: 200, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Pastor', t: 'Transpo', g: 2000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Pastor', t: 'Comm', g: 200, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Pastor', t: 'Rep', g: 1000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Deaconess', t: 'Transpo', g: 1000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Deaconess', t: 'Comm', g: 200, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 'aw', e: 'Deaconess', t: 'Rep', g: 1000, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Pastor', t: 'SSS & PhilHealth (Church Share)', g: 2230, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Deaconess', t: 'SSS & PhilHealth (Church Share)', g: 2030, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Admin', t: 'SSS & PhilHealth (Church Share)', g: 1410, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Pastor', t: 'Pag-ibig / HDMF (Church Share)', g: 500, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Deaconess', t: 'Pag-ibig / HDMF (Church Share)', g: 508, tithe: 0, sss: 0, odName: '', odAmt: 0 },
+      { w: 4, e: 'Admin', t: 'Pag-ibig / HDMF (Church Share)', g: 508, tithe: 0, sss: 0, odName: '', odAmt: 0 }
+  ];
+
+  async function initApp() {
+      activeUserProfile = window.graceBooksUser || await window.graceBooksAuthReady;
+      // Load Settings
+      db.collection('settings').doc('payrollTemplate').get().then(doc => {
+          if (doc.exists && doc.data().template) defaultPayrollTemplate = doc.data().template;
+      });
+
+      db.collection('settings').doc('recurringExpenses').get().then(doc => {
+          if (doc.exists && doc.data().list) {
+              recurringData = doc.data().list;
+              const rSel = document.getElementById('recurring-list');
+              rSel.innerHTML = '<option value="">-- Auto-fill a Recurring Template --</option>';
+              recurringData.forEach((r, idx) => {
+                  rSel.innerHTML += `<option value="${idx}">${r.particular} - ₱${Number(r.amount).toLocaleString()}</option>`;
+              });
+          }
+      });
+
+      // Init Years -> Fetch Budgets
+      const yrSel = document.getElementById('budget-year');
+      let currentYear = new Date().getFullYear();
+      let availableYears = [currentYear - 1, currentYear, currentYear + 1];
+      try {
+          const ySnap = await db.collection('settings').doc('yearsConfig').get();
+          if(ySnap.exists && ySnap.data().list) availableYears = ySnap.data().list;
+      } catch(e) {}
+      yrSel.innerHTML = availableYears.sort((a,b)=>b-a).map(y => `<option value="${y}">${y}</option>`).join('');
+      yrSel.value = currentYear;
+      
+      fetchBudgetCategories();
+      listenToLedger();
+  }
+
+  function handleYearChange() { fetchBudgetCategories(); }
+
+  function fetchBudgetCategories() {
+      const selectedYear = document.getElementById('budget-year').value;
+      if (!selectedYear) return;
+      
+      db.collection('budgets').doc(selectedYear.toString()).get().then(doc => {
+          dynamicCategories = {};
+          const catSelect = document.getElementById('exp-category');
+          const filterCat = document.getElementById('filter-cat');
+          
+          catSelect.innerHTML = '<option value="">-- Select Main Category --</option>';
+          filterCat.innerHTML = '<option value="">-- All Categories --</option>';
+
+          if (doc.exists && doc.data().expense) {
+              Object.keys(doc.data().expense).forEach(k => {
+                  let parts = k.includes(' - ') ? k.split(' - ') : [k, "General"];
+                  if (!dynamicCategories[parts[0]]) dynamicCategories[parts[0]] = [];
+                  dynamicCategories[parts[0]].push({ display: parts[1], fullKey: k });
+              });
+              Object.keys(dynamicCategories).sort().forEach(cat => {
+                  catSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+                  filterCat.innerHTML += `<option value="${cat}">${cat}</option>`;
+              });
+
+              // ADD THIS: Manual option for non-budgeted items
+              catSelect.innerHTML += `<option value="Non-Budgeted">⚠️ Non-Budgeted Expense</option>`;
+          }
+      });
+  }
+
+ function updateSubcategory() {
+    const cat = document.getElementById('exp-category').value;
+    const subSelect = document.getElementById('exp-subcategory');
+    subSelect.innerHTML = '<option value="">-- Select Subcategory --</option>';
+    
+    if (cat === "Non-Budgeted") {
+        subSelect.innerHTML = `<option value="Non-Budgeted - General">General Miscellaneous</option>`;
+    } else if (cat && dynamicCategories[cat]) {
+        dynamicCategories[cat].forEach(s => subSelect.innerHTML += `<option value="${s.fullKey}">${s.display}</option>`);
+    }
+    checkDeductionsVisibility();
+  }
+
+  function checkDeductionsVisibility() {
+      const subSelect = document.getElementById('exp-subcategory');
+      if (subSelect.selectedIndex <= 0) {
+          document.getElementById('tithe-container').style.display = 'none';
+          document.getElementById('sss-container').style.display = 'none';
+          return;
+      }
+      const text = subSelect.options[subSelect.selectedIndex].text.toLowerCase();
+      const isSalary = text.includes('salary') || text.includes('salaries') || text.includes('support') || text.includes('allowance');
+      
+      document.getElementById('tithe-container').style.display = isSalary ? 'block' : 'none';
+      document.getElementById('sss-container').style.display = isSalary ? 'block' : 'none';
+      
+      if (!isSalary) {
+          document.getElementById('exp-tithe').value = '';
+          document.getElementById('exp-sss').value = '';
+      }
+  }
+
+  function loadRecurringExpense() {
+      const idx = document.getElementById('recurring-list').value;
+      if (idx === "") return;
+      const r = recurringData[idx];
+      
+      document.getElementById('exp-category').value = r.mainCat;
+      updateSubcategory();
+      setTimeout(() => { document.getElementById('exp-subcategory').value = r.subCat; checkDeductionsVisibility(); }, 200);
+      
+      document.getElementById('exp-particular').value = r.particular;
+      document.getElementById('exp-amount').value = r.amount;
+      document.getElementById('exp-payee').value = r.payee || "";
+      document.getElementById('exp-payment').value = r.payment || "cash-hand";
+  }
+
+  function updateReceiptPreview() {
+      const file = document.getElementById('exp-receipt').files[0];
+      const preview = document.getElementById('receipt-preview');
+      if (!file) {
+          preview.style.display = 'none';
+          preview.textContent = '';
+          return;
+      }
+      preview.style.display = 'block';
+      preview.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+  }
+
+  function clearReceiptFile() {
+      document.getElementById('exp-receipt').value = '';
+      updateReceiptPreview();
+  }
+
+  async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath) {
+      if (!receiptFile) return null;
+      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const receiptPath = `expense-receipts/${docRef.id}/${Date.now()}-${safeName}`;
+      const receiptRef = storage.ref(receiptPath);
+      await receiptRef.put(receiptFile);
+      const receiptUrl = await receiptRef.getDownloadURL();
+      if (oldReceiptPath) {
+          try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }
+      }
+      return {
+          receiptName: receiptFile.name,
+          receiptPath,
+          receiptUrl,
+          receiptUploadedAt: new Date().toISOString()
+      };
+  }
+
+  function validateReceiptFile(receiptFile) {
+      if (!receiptFile) return true;
+      const allowedReceiptTypes = ['application/pdf'];
+      const isAllowedReceipt = receiptFile.type.startsWith('image/') || allowedReceiptTypes.includes(receiptFile.type);
+      if (!isAllowedReceipt) {
+          alert('Receipt must be an image or PDF file.');
+          return false;
+      }
+      if (receiptFile.size > 5 * 1024 * 1024) {
+          alert('Receipt must be 5 MB or smaller.');
+          return false;
+      }
+      return true;
+  }
+
+  function clearExpenseForm() {
+      if (!document.getElementById('lock-date').checked) document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+      if (!document.getElementById('lock-category').checked) {
+          document.getElementById('exp-category').value = "";
+          updateSubcategory();
+      }
+      document.getElementById('exp-amount').value = '';
+      document.getElementById('exp-tithe').value = '';
+      document.getElementById('exp-sss').value = '';
+      document.getElementById('exp-particular').value = '';
+      document.getElementById('exp-payee').value = '';
+      document.getElementById('exp-receipt').value = '';
+      updateReceiptPreview();
+  }
+
+  function cancelExpenseEdit() {
+      editingExpenseId = null;
+      editingExpenseOriginal = null;
+      document.getElementById('edit-banner').style.display = 'none';
+      document.getElementById('save-btn').textContent = '💾 Save Single Expense';
+      clearExpenseForm();
+  }
+
+  function startExpenseEdit(docId) {
+      if (!canManageExpenses()) return alert('Only the Treasurer can edit expenses.');
+      const record = allExpenseRecords.find(e => e.id === docId);
+      if (!record) return alert('Expense record not found.');
+      editingExpenseId = docId;
+      editingExpenseOriginal = { ...record };
+
+      document.getElementById('budget-year').value = record.budgetYear || new Date(record.date || Date.now()).getFullYear();
+      fetchBudgetCategories();
+      const categoryParts = (record.category || '').split(' - ');
+      setTimeout(() => {
+          document.getElementById('exp-category').value = categoryParts[0] || 'Non-Budgeted';
+          updateSubcategory();
+          setTimeout(() => {
+              document.getElementById('exp-subcategory').value = record.category || '';
+              checkDeductionsVisibility();
+          }, 100);
+      }, 200);
+
+      document.getElementById('exp-date').value = record.date || new Date().toISOString().split('T')[0];
+      document.getElementById('exp-payment').value = record.payment || 'cash-hand';
+      document.getElementById('exp-particular').value = record.sub || '';
+      document.getElementById('exp-payee').value = record.payee || '';
+      document.getElementById('exp-amount').value = record.amount || '';
+      document.getElementById('exp-tithe').value = record.workersTithe || '';
+      document.getElementById('exp-sss').value = record.sssDeduction || '';
+      document.getElementById('exp-status').value = record.status || 'Paid';
+      document.getElementById('exp-receipt').value = '';
+      updateReceiptPreview();
+
+      document.getElementById('edit-banner').style.display = 'flex';
+      document.getElementById('edit-banner-text').textContent = `Editing ${record.date || ''} expense. Select a receipt only if you want to replace the current file.`;
+      document.getElementById('save-btn').textContent = 'Update Expense';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openReceiptViewer(docId) {
+      const record = allExpenseRecords.find(e => e.id === docId);
+      if (!record || !record.receiptUrl) return;
+      document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt / Voucher';
+      const isPdf = (record.receiptName || '').toLowerCase().endsWith('.pdf');
+      document.getElementById('receipt-viewer-body').innerHTML = isPdf
+          ? `<iframe class="receipt-frame" src="${record.receiptUrl}" title="Receipt PDF"></iframe>`
+          : `<img class="receipt-frame" src="${record.receiptUrl}" alt="Receipt image">`;
+      document.getElementById('receiptViewerModal').style.display = 'flex';
+  }
+
+  function closeReceiptViewer() {
+      document.getElementById('receipt-viewer-body').innerHTML = '';
+      document.getElementById('receiptViewerModal').style.display = 'none';
+  }
+
+  async function removeExpenseReceipt(docId) {
+      if (!canManageExpenses()) return alert('Only the Treasurer can remove receipts.');
+      const record = allExpenseRecords.find(e => e.id === docId);
+      if (!record || !record.receiptPath) return alert('No receipt is attached to this expense.');
+      if (!confirm('Remove this receipt/voucher from the expense?')) return;
+      try {
+          await storage.ref(record.receiptPath).delete();
+      } catch (error) {
+          console.warn(error);
+      }
+      await db.collection('expenses').doc(docId).update({
+          receiptName: firebase.firestore.FieldValue.delete(),
+          receiptPath: firebase.firestore.FieldValue.delete(),
+          receiptUrl: firebase.firestore.FieldValue.delete(),
+          receiptUploadedAt: firebase.firestore.FieldValue.delete()
+      });
+      await writeAuditLog('receipt_removed', docId, record, null, `Removed receipt from ${record.category || 'expense'}`);
+      listenToLedger();
+  }
+
+  async function deleteExpense(docId) {
+      if (!canManageExpenses()) return alert('Only the Treasurer can delete expenses.');
+      const record = allExpenseRecords.find(e => e.id === docId);
+      if (!record) return alert('Expense record not found.');
+      if (!confirm('Delete this expense record? This cannot be undone.')) return;
+      if (record.receiptPath) {
+          try { await storage.ref(record.receiptPath).delete(); } catch (error) { console.warn(error); }
+      }
+      await db.collection('expenses').doc(docId).delete();
+      await writeAuditLog('expense_deleted', docId, record, null, `Deleted ${record.category || 'expense'} for ${record.date || ''}`);
+      listenToLedger();
+  }
+
+  async function openCameraModal() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert('Camera capture is not available in this browser. Please use file upload instead.');
+          return;
+      }
+      try {
+          receiptCameraStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: 'environment' } },
+              audio: false
+          });
+          const video = document.getElementById('receipt-camera');
+          video.srcObject = receiptCameraStream;
+          document.getElementById('cameraModal').style.display = 'flex';
+      } catch (error) {
+          console.error(error);
+          alert('Unable to open camera. Please allow camera access or use file upload.');
+      }
+  }
+
+  function closeCameraModal() {
+      if (receiptCameraStream) {
+          receiptCameraStream.getTracks().forEach(track => track.stop());
+          receiptCameraStream = null;
+      }
+      document.getElementById('receipt-camera').srcObject = null;
+      document.getElementById('cameraModal').style.display = 'none';
+  }
+
+  function captureReceiptPhoto() {
+      const video = document.getElementById('receipt-camera');
+      if (!video.videoWidth || !video.videoHeight) return alert('Camera is still loading. Please try again.');
+
+      const canvas = document.getElementById('receipt-canvas');
+      const maxWidth = 1600;
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+          if (!blob) return alert('Unable to capture photo. Please try again.');
+          const file = new File([blob], `receipt-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`, { type: 'image/jpeg' });
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(file);
+          document.getElementById('exp-receipt').files = dataTransfer.files;
+          updateReceiptPreview();
+          closeCameraModal();
+      }, 'image/jpeg', 0.82);
+  }
+
+  async function saveSingleExpense() {
+    const btn = document.getElementById('save-btn');
+    const subcat = document.getElementById('exp-subcategory').value;
+    const amount = parseFloat(document.getElementById('exp-amount').value);
+    const tithe = parseFloat(document.getElementById('exp-tithe').value) || 0;
+    const sss = parseFloat(document.getElementById('exp-sss').value) || 0;
+    const dateVal = document.getElementById('exp-date').value;
+    const receiptFile = document.getElementById('exp-receipt').files[0];
+
+    if (!subcat) return alert('Select category!');
+    if (!amount) return alert('Enter amount!');
+    if (!validateReceiptFile(receiptFile)) return;
+
+    btn.disabled = true;
+    btn.textContent = editingExpenseId ? 'Updating...' : 'Saving...';
+    try {
+      const dbPayload = {
+        date: dateVal,
+        category: subcat,
+        sub: document.getElementById('exp-particular').value || '',
+        isPayrollGenerated: false,
+        amount: amount,
+        workersTithe: tithe,
+        sssDeduction: sss,
+        deckerDeduction: 0,
+        bopDeduction: 0,
+        netPay: (amount - tithe - sss),
+        payment: document.getElementById('exp-payment').value,
+        payee: document.getElementById('exp-payee').value,
+        status: document.getElementById('exp-status').value,
+        isPayroll: false,
+        postedAt: editingExpenseOriginal?.postedAt || new Date().toISOString(),
+        budgetYear: document.getElementById('budget-year').value,
+        expenseMonth: dateVal.substring(0, 7)
+      };
+
+      if (document.getElementById('chk-save-recurring').checked) {
+          const rec = { particular: dbPayload.sub, payee: dbPayload.payee, amount: amount, mainCat: document.getElementById('exp-category').value, subCat: subcat, payment: dbPayload.payment };
+          await db.collection('settings').doc('recurringExpenses').set({ list: firebase.firestore.FieldValue.arrayUnion(rec) }, {merge: true});
+          recurringData.push(rec);
+          const rSel = document.getElementById('recurring-list');
+          rSel.innerHTML += `<option value="${recurringData.length - 1}">${escapeHtml(rec.particular)} - ₱${Number(rec.amount).toLocaleString()}</option>`;
+          document.getElementById('chk-save-recurring').checked = false;
+      }
+
+      if (editingExpenseId) {
+          if (!canManageExpenses()) throw new Error('Only the Treasurer can edit expenses.');
+          const docRef = db.collection('expenses').doc(editingExpenseId);
+          const receiptData = await uploadReceiptForExpense(docRef, receiptFile, editingExpenseOriginal?.receiptPath);
+          const updatePayload = receiptData ? { ...dbPayload, ...receiptData, updatedAt: new Date().toISOString() } : { ...dbPayload, updatedAt: new Date().toISOString() };
+          await docRef.update(updatePayload);
+          await writeAuditLog('expense_updated', editingExpenseId, editingExpenseOriginal, updatePayload, `Updated ${dbPayload.category || 'expense'} for ${dbPayload.date || ''}`);
+          editingExpenseId = null;
+          editingExpenseOriginal = null;
+          document.getElementById('edit-banner').style.display = 'none';
+      } else {
+          const docRef = await db.collection('expenses').add(dbPayload);
+          const receiptData = await uploadReceiptForExpense(docRef, receiptFile, null);
+          if (receiptData) await docRef.update(receiptData);
+          await writeAuditLog('expense_created', docRef.id, null, dbPayload, `Created ${dbPayload.category || 'expense'} for ${dbPayload.date || ''}`);
+      }
+
+      listenToLedger();
+      showSuccess();
+      clearExpenseForm();
+    } catch(e) {
+      alert(e.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '💾 Save Single Expense';
+  }
+  // --- SMART PAYROLL LOGIC ---
+  function openPayrollModal() { document.getElementById('payrollModal').style.display = 'flex'; }
+  function closePayrollModal() { document.getElementById('payrollModal').style.display = 'none'; }
+
+  function getSuggestedDate(monthStr, week) {
+      if (!monthStr) return "";
+      let [y, m] = monthStr.split('-');
+      let date = new Date(y, m - 1, 1);
+      let sundays = [];
+      while (date.getMonth() === m - 1) {
+          if (date.getDay() === 0) sundays.push(new Date(date));
+          date.setDate(date.getDate() + 1);
+      }
+      let targetIndex = week - 1;
+      if (targetIndex >= sundays.length) targetIndex = sundays.length - 1;
+      let targetDate = sundays[targetIndex];
+      return `${y}-${m}-${targetDate.getDate().toString().padStart(2, '0')}`;
+  }
+
+  function findBudgetCategory(role, type) {
+      let mainKey = role === 'Pastor' ? "Administrative Pastor" : role === 'Deaconess' ? "Deaconess" : "Personnel and paid staff";
+      let matchedMainCat = Object.keys(dynamicCategories).find(k => k.toLowerCase().includes(mainKey.toLowerCase()));
+      if (!matchedMainCat) return "";
+
+      let options = dynamicCategories[matchedMainCat];
+      let tLower = type.toLowerCase();
+      
+      if (tLower.includes('pag-ibig') || tLower.includes('hdmf')) {
+          let match = options.find(o => { let d = o.display.toLowerCase(); return d.includes('hdmf') || d.includes('pagibig') || d.includes('pag-ibig'); });
+          if (match) return match.fullKey;
+      }
+      if (tLower.includes('sss')) {
+          let match = options.find(o => o.display.toLowerCase().includes('sss'));
+          if (match) return match.fullKey;
+      }
+
+      let match = options.find(o => o.display.toLowerCase().includes(tLower));
+      if(!match && tLower.includes('comm')) match = options.find(o => o.display.toLowerCase().includes('communication'));
+      if(!match && tLower.includes('rep')) match = options.find(o => o.display.toLowerCase().includes('representation'));
+      return match ? match.fullKey : "";
+  }
+
+  function generateSmartSchedule() {
+      const monthStr = document.getElementById('pr-month').value;
+      const aw = parseInt(document.getElementById('pr-allowance-week').value);
+      if(!monthStr) return alert("Please select a Payroll Month!");
+
+      let generatedRows = defaultPayrollTemplate.map(row => {
+          let computedW = row.w === 'aw' ? aw : parseInt(row.w);
+          return { ...row, originalW: row.w, computedW: computedW };
+      });
+      generatedRows.sort((a,b) => a.computedW - b.computedW);
+
+      const tbody = document.getElementById('pr-body');
+      let html = '';
+
+      generatedRows.forEach((r, i) => {
+          let catKey = findBudgetCategory(r.e, r.t);
+          
+          let dropDownHTML = `<option value="">⚠️ Select...</option>`;
+          Object.keys(dynamicCategories).sort().forEach(mainCat => {
+              dropDownHTML += `<optgroup label="${mainCat}">`;
+              dynamicCategories[mainCat].forEach(sub => {
+                  let sel = (sub.fullKey === catKey) ? "selected" : "";
+                  dropDownHTML += `<option value="${sub.fullKey}" ${sel}>${sub.display}</option>`;
+              });
+              dropDownHTML += `</optgroup>`;
+          });
+
+          let suggestedDate = getSuggestedDate(monthStr, r.computedW); 
+          let isBenefitRow = r.t.includes('Share') ? 'row-benefit' : '';
+          
+          html += `
+          <tr class="${isBenefitRow}">
+            <td class="chk-col"><input type="checkbox" id="pr-chk-${i}" checked style="width:16px; height:16px; cursor:pointer; accent-color:#27ae60;"></td>
+            <td><input type="number" id="pr-wk-${i}" value="${r.computedW}" style="text-align:center;"></td>
+            <td><input type="date" id="pr-date-${i}" value="${suggestedDate}"></td>
+            <td><strong>${r.e}</strong><br><span style="font-size:11px; color:#555;">${r.t}</span></td>
+            <td><select id="pr-cat-${i}">${dropDownHTML}</select></td>
+            <td><input type="number" class="input-gross" id="pr-g-${i}" value="${r.g}"></td>
+            <td><input type="number" id="pr-t-${i}" value="${r.tithe}" ${isBenefitRow ? 'disabled' : ''}></td>
+            <td><input type="number" id="pr-s-${i}" value="${r.sss}" ${isBenefitRow ? 'disabled' : ''}></td>
+            <td>
+              <div style="display:flex; gap:4px;">
+                  <input type="text" id="pr-odn-${i}" value="${r.odName||''}" placeholder="Ded. Name" style="flex:1;">
+                  <input type="number" id="pr-oda-${i}" value="${r.odAmt||0}" style="flex:1;">
+              </div>
+            </td>
+            <td>
+              <select id="pr-status-${i}">
+                <option value="Paid">Paid</option>
+                <option value="Pending" selected>Pending</option>
+              </select>
+            </td>
+          </tr>`;
+      });
+      tbody.innerHTML = html;
+  }
+
+  async function saveSmartPayroll() {
+      const monthStr = document.getElementById('pr-month').value;
+      const paymentMode = document.getElementById('pr-payment').value;
+      const btn = document.getElementById('btn-save-batch');
+      btn.disabled = true; btn.textContent = "Saving Batch...";
+
+      try {
+          for (let i = 0; i < defaultPayrollTemplate.length; i++) {
+              if (document.getElementById(`pr-chk-${i}`)?.checked) {
+                  let r = defaultPayrollTemplate[i];
+                  let cat = document.getElementById(`pr-cat-${i}`).value;
+                  let wkVal = document.getElementById(`pr-wk-${i}`).value;
+                  let g = parseFloat(document.getElementById(`pr-g-${i}`).value) || 0;
+                  
+                  if (g > 0 && cat) {
+                      let isBen = r.t.includes('Share');
+                      let t = parseFloat(document.getElementById(`pr-t-${i}`).value) || 0;
+                      let s = parseFloat(document.getElementById(`pr-s-${i}`).value) || 0;
+                      let od = parseFloat(document.getElementById(`pr-oda-${i}`).value) || 0;
+                      let odName = document.getElementById(`pr-odn-${i}`).value || 'Decker';
+                      let prDate = document.getElementById(`pr-date-${i}`).value;
+
+                      let bop = (odName === 'BOP') ? od : 0;
+                      let decker = (odName === 'Decker') ? od : 0;
+                      
+                      let isAllow = r.t !== 'Salary' && !isBen;
+                      let finalPayee = isBen ? (r.t.includes('Pag-ibig') ? `Pag-ibig / HDMF (${r.e})` : `SSS & PhilHealth (${r.e})`) : (r.e === 'Admin' ? 'Admin Assistant' : 'Pastor / Deaconess');
+
+                      const payrollPayload = {
+                          date: prDate,
+                          category: cat,
+                          sub: "",
+                          payrollParticulars: `${r.t} - Week ${wkVal}`,
+                          isPayrollGenerated: true,
+                          amount: g, workersTithe: t, sssDeduction: s,
+                          netPay: (g - t - s - od),
+                          payment: paymentMode, payee: finalPayee,
+                          status: document.getElementById(`pr-status-${i}`).value,
+                          role: r.e, isPayroll: !isBen, isAllowance: isAllow, isBenefit: isBen,
+                          payrollMonth: monthStr, payrollWeek: wkVal, postedAt: new Date().toISOString(),
+                          budgetYear: document.getElementById('budget-year').value,
+                          expenseMonth: prDate.substring(0, 7)
+                      };
+                      const payrollRef = await db.collection('expenses').add(payrollPayload);
+                      await writeAuditLog('expense_created', payrollRef.id, null, payrollPayload, `Created payroll expense ${payrollPayload.payrollParticulars || ''}`);
+                  }
+              }
+          }
+          closePayrollModal();
+          listenToLedger();
+          showSuccess();
+      } catch (e) { alert("Error: " + e.message); }
+      btn.disabled = false; btn.textContent = "✅ Save Generated Payroll";
+  }
+
+  async function saveAsDefaultTemplate() {
+      let updatedTemplate = [];
+      for (let i = 0; i < defaultPayrollTemplate.length; i++) {
+          if (document.getElementById(`pr-wk-${i}`)) {
+              let r = defaultPayrollTemplate[i];
+              let wkInput = parseInt(document.getElementById(`pr-wk-${i}`).value);
+              updatedTemplate.push({
+                  w: (r.w === 'aw') ? 'aw' : wkInput,
+                  e: r.e, t: r.t,
+                  g: parseFloat(document.getElementById(`pr-g-${i}`).value) || 0,
+                  tithe: parseFloat(document.getElementById(`pr-t-${i}`).value) || 0,
+                  sss: parseFloat(document.getElementById(`pr-s-${i}`).value) || 0,
+                  odName: document.getElementById(`pr-odn-${i}`).value,
+                  odAmt: parseFloat(document.getElementById(`pr-oda-${i}`).value) || 0
+              });
+          }
+      }
+      await db.collection('settings').doc('payrollTemplate').set({ template: updatedTemplate });
+      defaultPayrollTemplate = updatedTemplate;
+      alert("Default template updated successfully!");
+  }
+
+  // --- LEDGER AND FILTERS ---
+  function listenToLedger() {
+      db.collection('expenses').orderBy('postedAt', 'desc').get().then(snap => {
+          allExpenseRecords = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          applyFilters();
+      });
+  }
+
+  function applyFilters() {
+      const start = document.getElementById('filter-start').value;
+      const end = document.getElementById('filter-end').value;
+      const cat = document.getElementById('filter-cat').value;
+
+      let filtered = allExpenseRecords;
+
+      if (start) filtered = filtered.filter(e => e.date >= start);
+      if (end) filtered = filtered.filter(e => e.date <= end);
+      if (cat) filtered = filtered.filter(e => e.category && e.category.includes(cat));
+
+      renderExpensesTable(filtered);
+  }
+
+  async function markAsPaid(docId) {
+      if (!canManageExpenses()) return alert('Only the Treasurer can update expense status.');
+      const record = allExpenseRecords.find(e => e.id === docId);
+      await db.collection('expenses').doc(docId).update({ status: 'Paid', updatedAt: new Date().toISOString() });
+      await writeAuditLog('expense_marked_paid', docId, record || null, { status: 'Paid' }, `Marked expense as paid`);
+      listenToLedger();
+  }
+
+  function canManageExpenses() {
+      return activeUserProfile && activeUserProfile.role === 'Treasurer';
+  }
+
+  function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[char]));
+  }
+
+  async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+      const user = firebase.auth().currentUser;
+      await db.collection('auditLogs').add({
+          action,
+          collection: 'expenses',
+          docId,
+          summary,
+          before: beforeData || null,
+          after: afterData || null,
+          actorUid: user ? user.uid : '',
+          actorEmail: user ? user.email : '',
+          actorName: activeUserProfile ? activeUserProfile.name : '',
+          actorRole: activeUserProfile ? activeUserProfile.role : '',
+          createdAt: new Date().toISOString()
+      });
+  }
+
+  function renderExpensesTable(data) {
+      let html = '';
+      let totalPaid = 0;
+      data.forEach(e => {
+          let currentStatus = e.status || 'Paid';
+          if (currentStatus === 'Paid') totalPaid += parseFloat(e.amount || 0);
+
+          let deds = [];
+          if (e.workersTithe) deds.push(`Tithe: ₱${e.workersTithe}`);
+          if (e.sssDeduction) deds.push(`SSS: ₱${e.sssDeduction}`);
+          if (e.bopDeduction) deds.push(`BOP: ₱${e.bopDeduction}`);
+          if (e.deckerDeduction) deds.push(`Decker: ₱${e.deckerDeduction}`);
+
+          let subBadge = e.isBenefit ? `<span style="background:#8e44ad; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left: 4px;">Benefits</span>` : '';
+          let dedsHTML = deds.length > 0 ? `<div style="font-size:11px; color:#555; margin-top:4px;">(Ded: ${deds.join(' | ')})</div>` : '';
+          let noteText = e.sub || '';
+          let particularsDisplay = (!e.isPayrollGenerated && noteText)
+              ? `<div style="font-size:11px; color:#555; margin-top:4px;">Note: ${escapeHtml(noteText)}</div>`
+              : '';
+          let statusBadge = currentStatus === 'Paid'
+              ? `<span class="badge-paid">Paid</span>`
+              : `<span class="badge-pending">Pending</span> <button class="btn-mark-paid" onclick="markAsPaid('${e.id}')">Mark as Paid</button>`;
+
+          let accText = e.payment === 'cash-bank' ? 'Bank' : e.payment === 'petty-cash' ? 'Petty Cash' : e.payment === 'building' ? 'Building' : e.payment === 'mission' ? 'Mission' : e.payment === 'investment' ? 'Investment' : 'Cash Hand';
+          let receiptName = escapeHtml(e.receiptName || 'Receipt/Voucher');
+          let receiptHTML = e.receiptUrl
+              ? `<button type="button" class="btn-ledger view" onclick="openReceiptViewer('${e.id}')">View</button><div style="font-size:10px; color:#999; margin-top:4px;">${receiptName}</div>`
+              : '<span style="color:#aaa;">None</span>';
+          let receiptRemoveButton = e.receiptUrl
+              ? `<button class="btn-ledger danger" onclick="removeExpenseReceipt('${e.id}')" ${canManageExpenses() ? '' : 'disabled'}>Remove Receipt</button>`
+              : '';
+          let payrollTypeLabel = e.isPayrollGenerated && e.payrollParticulars
+              ? `<div style="font-size:10px; color:#bbb; margin-top:2px; font-style:italic;">${escapeHtml(e.payrollParticulars)}</div>`
+              : '';
+          let primaryText = escapeHtml(noteText || e.payrollParticulars || 'Expense');
+          let categoryText = escapeHtml(e.category || 'Uncategorized');
+          let payeeText = escapeHtml(e.payee || '-');
+          let amountText = Number(e.amount || 0).toLocaleString('en-PH');
+
+          html += `
+  <tr style="${currentStatus === 'Pending' ? 'background: #fdfaf0;' : ''}">
+    <td style="color: #666;">${escapeHtml(e.date || '')}<br>${statusBadge}</td>
+    <td>
+        ${noteText ? `<strong style="color:#333;">${primaryText}</strong> ` : ''}${subBadge}
+        <span style="font-size:${noteText ? '11px' : '13px'}; font-weight:${noteText ? '400' : '600'}; color:#c0392b;">${categoryText}</span>
+        ${payrollTypeLabel}
+        ${particularsDisplay}
+    </td>
+    <td>${payeeText}</td>
+    <td>${accText}</td>
+    <td>${receiptHTML}</td>
+    <td style="text-align: right;"><strong style="color: ${currentStatus === 'Paid' ? '#c0392b' : '#b7950b'}; font-size: 15px;">₱${amountText}</strong>${dedsHTML}</td>
+    <td>
+      <div class="ledger-actions">
+        <button class="btn-ledger edit" onclick="startExpenseEdit('${e.id}')" ${canManageExpenses() ? '' : 'disabled'}>Edit</button>
+        ${receiptRemoveButton}
+        <button class="btn-ledger danger" onclick="deleteExpense('${e.id}')" ${canManageExpenses() ? '' : 'disabled'}>Delete</button>
+      </div>
+    </td>
+  </tr>`;
+      });
+      document.getElementById('expenses-body').innerHTML = html;
+      document.getElementById('total-expenses').textContent = `₱${totalPaid.toLocaleString('en-PH', {minimumFractionDigits:2})}`;
+  }
+  function showSuccess() {
+      document.getElementById('success-msg').style.display = 'block';
+      setTimeout(() => document.getElementById('success-msg').style.display = 'none', 2500);
+  }
+
+  initApp();
+</script>
+</body>
+</html>
+
+
+
+

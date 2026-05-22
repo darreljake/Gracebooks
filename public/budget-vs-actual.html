@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Budget vs Actual — GraceBooks</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+
+  <style>
+ 
+    /* ── BASE & BACKGROUND WITH GRADIENT OVERLAY ── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body { 
+      font-family: 'Poppins', sans-serif; 
+      min-height: 100vh; 
+      padding-top: 70px; 
+      position: relative; /* Needed for the overlay */
+    } 
+
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: url('church.jpg') no-repeat center center fixed; 
+      background-size: cover;
+      background-image: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.6)), url('church.jpg');
+      z-index: -1; 
+    }
+    
+    .topbar {
+      background: #922b21; color: white;
+      padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center;
+      position: fixed; top: 0; left: 0; width: 100%;
+      z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn {
+      background: rgba(255,255,255,0.2); color: white; border: none; 
+      padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: 'Poppins', sans-serif;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    
+    .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; position: relative; z-index: 1; }
+    
+    .card {
+      background: rgba(255, 255, 255, 0.98); 
+      border-radius: 12px;
+      padding: 30px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2); margin-bottom: 24px;
+    }
+
+    .period-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
+    .period-bar select { padding: 9px 12px; border: 1px solid #ddd; font-family: 'Poppins', sans-serif; border-radius: 8px; font-size: 13px; background: white; }
+    
+    .year-adder-btn { 
+        background: #fdf2f0; color: #922b21; border: 1px dashed #922b21; 
+        padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600;
+    }
+    .year-adder-btn:hover { background: #922b21; color: white; border-style: solid; }
+
+    .period-btn { padding: 9px 18px; border-radius: 20px; font-family: 'Poppins', sans-serif; border: 2px solid #ddd; background: white; color: #555; font-size: 13px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+    .period-btn.active { background: #922b21; color: white; border-color: #922b21; }
+    .period-btn:hover:not(.active) { border-color: #922b21; color: #922b21; }
+
+    .alert-banner { border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; display: none; line-height: 1.8; }
+    .alert-exceeded { background: #fadbd8; border-left: 5px solid #c0392b; color: #922b21; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .kpi-card { border-radius: 12px; padding: 20px; text-align: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+    .kpi-income { background: linear-gradient(135deg, #1e8449, #27ae60); }
+    .kpi-surplus { background: linear-gradient(135deg, #1e8449, #27ae60); }
+    .kpi-deficit { background: linear-gradient(135deg, #922b21, #c0392b); }
+    .kpi-label { font-size: 13px; opacity: 0.9; margin-bottom: 8px; font-weight: 500; }
+    .kpi-value { font-size: 24px; font-weight: 700; }
+    .kpi-sub { font-size: 12px; opacity: 0.9; margin-top: 4px; font-weight: 500; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #eee; flex-wrap: wrap; }
+    .tab-btn { padding: 10px 18px; border: none; background: none; font-family: 'Poppins', sans-serif; font-size: 14px; cursor: pointer; color: #888; font-weight: 500; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: 0.2s; }
+    .tab-btn.active { color: #922b21; font-weight: 700; border-bottom-color: #922b21; }
+    #btn-tab-income.active { color: #1e8449; border-bottom-color: #1e8449; }
+    
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #922b21; color: white; padding: 12px; text-align: left; font-weight: 500; }
+    td { padding: 12px; border-bottom: 1px solid #eee; }
+    
+    .row-main { background: #fdedec; font-weight: 600; color: #922b21; cursor: pointer; transition: background 0.2s; }
+    .row-main:hover { background: #fadbd8; }
+    .row-sub { color: #555; }
+
+    #tab-income-bva th { background: #1e8449; }
+    #tab-income-bva .row-main { background: #e8f8f5; color: #117a65; }
+    #tab-income-bva .row-main:hover { background: #d1f2eb; }
+
+    .prog-bar { height: 8px; background: #eee; border-radius: 10px; overflow: hidden; }
+    .prog-fill { height: 100%; border-radius: 10px; transition: width 0.4s; }
+    .fill-green { background: #27ae60; }
+    .fill-red { background: #c0392b; }
+
+    .month-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+    .month-card { background: #fcf3f2; border-radius: 8px; padding: 14px; border-left: 4px solid #922b21; }
+
+    .budget-setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .budget-input-group { background: #fcf3f2; border-radius: 8px; padding: 16px; border: 1px solid #fadbd8; }
+    .budget-row { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; background: white; padding: 8px; border-radius: 6px; border: 1px solid #fadbd8; }
+    .budget-row label { flex: 1; font-size: 13px; color: #333; }
+    .budget-row input { width: 100px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-family: 'Poppins', sans-serif; }
+    
+    .btn-del { color: #c0392b; border: none; background: #fadbd8; cursor: pointer; font-weight: bold; font-size: 14px; padding: 4px 8px; border-radius: 4px; transition: 0.2s; }
+    .btn-move { background: #fadbd8; color: #922b21; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; font-weight: 600; }
+    .btn-edit { background: #e8f8f5; color: #117a65; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; font-weight: 600; }
+    
+    .btn-save-budget { width: 100%; padding: 14px; background: #922b21; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 15px; cursor: pointer; margin-top: 16px; font-family: 'Poppins', sans-serif; }
+    .save-success { background: #d5f5e3; color: #1e8449; padding: 12px; border-radius: 8px; text-align: center; display: none; margin-top: 12px; font-weight: 500; }
+
+    .cat-modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+    .cat-modal-content { background: white; padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; }
+    .cat-modal select, .cat-modal input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; font-family: 'Poppins', sans-serif; }
+
+    .scrollable-list { max-height: 550px; overflow-y: auto; padding-right: 6px; }
+    .scrollable-list::-webkit-scrollbar { width: 6px; }
+    .scrollable-list::-webkit-scrollbar-thumb { background: #922b21; border-radius: 4px; }
+    
+    .table-scroll-wrapper {
+      max-height: 50vh;
+      overflow-y: auto;
+      display: block;
+      border: 1px solid #eee;
+      border-radius: 8px;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar { width: 6px; }
+    .table-scroll-wrapper::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+    .table-scroll-wrapper table { width: 100%; border-collapse: collapse; }
+    .table-scroll-wrapper th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 2px -1px rgba(0,0,0,0.2);
+    }
+
+    /* WIZARD MODAL STYLES */
+    .wizard-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
+    .wizard-modal-overlay.active { display: flex; }
+    .wizard-modal-content { background: #fdf2f0; border-radius: 12px; box-shadow: 0 10px 60px rgba(0, 0, 0, 0.3); width: 100%; max-width: 1200px; max-height: 90vh; display: flex; flex-direction: column; animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    .wizard-header { background: #1a5276; color: white; padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; border-radius: 12px 12px 0 0; }
+    .wizard-header h2 { font-size: 20px; margin: 0; font-weight: 600; }
+    .wizard-close { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .wizard-close:hover { background: #c0392b; }
+    .wizard-toolbar { background: white; padding: 16px 24px; display: flex; gap: 20px; align-items: center; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+    .wizard-toolbar label { font-size: 13px; font-weight: 600; color: #555; }
+    .wizard-toolbar select, .wizard-toolbar input { padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; font-family: 'Poppins'; font-size: 13px; }
+    .wizard-body { flex: 1; overflow-y: auto; padding: 24px; }
+    .wizard-tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .wiz-btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-family: 'Poppins'; background: #eee; color: #555; transition: 0.2s; }
+    .wiz-btn.active { background: #1a5276; color: white; }
+    .wiz-btn:hover:not(.active) { background: #ddd; }
+    .wiz-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .wiz-table th { background: #eaf2f8; color: #1a5276; padding: 12px; font-size: 12px; font-weight: 600; text-align: left; }
+    .wiz-table td { padding: 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .wiz-input { width: 110px; padding: 8px; border: 2px solid #3498db; border-radius: 6px; text-align: right; font-weight: 600; font-family: 'Poppins'; color: #1a5276; background: white; }
+    .smart-btn { background: #fdf2f0; color: #1a5276; border: 1px solid #d4e6f1; padding: 6px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; margin: 2px; font-weight: 600; }
+    .smart-btn:hover { background: #1a5276; color: white; }
+    .prev-summary-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; margin-bottom: 20px; border-top: 5px solid #1e8449; }
+    .prev-summary-card h3 { color: #555; font-size: 14px; margin-bottom: 10px; }
+    .prev-summary-card h2 { margin: 10px 0; font-size: 28px; }
+    .wiz-footer { background: white; padding: 16px 24px; border-top: 1px solid #ddd; display: flex; gap: 10px; justify-content: flex-end; }
+    .wiz-footer-btn { padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; font-family: 'Poppins'; transition: 0.2s; }
+    .wiz-cancel-btn { background: #eee; color: #555; }
+    .wiz-cancel-btn:hover { background: #ddd; }
+    .wiz-finalize-btn { background: #1e8449; color: white; }
+    .wiz-finalize-btn:hover { background: #117a65; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <h2>📊 Budget vs Actual</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Dashboard</button>
+</div>
+
+<div class="container">
+  <div class="card">
+    <div class="period-bar">
+      <button class="period-btn active" id="btn-mo" onclick="setPeriod('monthly',this)">Monthly</button>
+      <button class="period-btn" id="btn-yr" onclick="setPeriod('annual',this)">Annual</button>
+      
+      <div style="display:flex; align-items:center; gap:5px;">
+          <select id="sel-year" onchange="changeYear()"></select>
+          <button class="year-adder-btn" onclick="addNewYear()">+ Year</button>
+      </div>
+      
+      <select id="sel-month" onchange="renderAll()"></select>
+    </div>
+  </div>
+
+  <div class="alert-banner alert-exceeded" id="alert-exceeded"></div>
+  <div class="kpi-grid" id="kpi-grid"></div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab-btn active" id="btn-tab-income" onclick="showTab('tab-income-bva',this)">💰 Income BvA</button>
+      <button class="tab-btn" onclick="showTab('tab-expense-bva',this)">🧾 Expense BvA</button>
+      <button class="tab-btn" onclick="showTab('tab-monthly-view',this)">📅 Monthly View</button>
+      <button class="tab-btn" onclick="showTab('tab-setup',this)">⚙️ Setup Budget</button>
+    </div>
+
+    <div class="tab-content active" id="tab-income-bva">
+      <div style="margin-bottom: 12px; font-size: 13px; color: #1e8449;">💡 <b>Tip:</b> Click a category row below to expand or collapse.</div>
+      <div class="table-scroll-wrapper">
+        <table>
+          <thead><tr><th>Category</th><th>Annual</th><th>Period</th><th>Actual</th><th>Variance</th><th>Progress</th></tr></thead>
+          <tbody id="income-bva-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-expense-bva">
+      <div style="margin-bottom: 12px; font-size: 13px; color: #922b21;">💡 <b>Tip:</b> Click a category row below to expand or collapse.</div>
+      <div class="table-scroll-wrapper">
+        <table>
+          <thead><tr><th>Category</th><th>Annual</th><th>Period</th><th>Actual</th><th>Remaining</th><th>Progress</th></tr></thead>
+          <tbody id="expense-bva-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-monthly-view"><div class="month-grid" id="month-grid"></div></div>
+
+    <div class="tab-content" id="tab-setup">
+      <div style="margin-bottom: 15px; font-size: 13px; color: #922b21; background: #fadbd8; padding: 12px; border-radius: 8px; font-weight: 500;">
+        💡 <b>Tip:</b> Auto-save na ang arrangement via arrows! Gamitin ang ✏️ para i-organize ang folders.
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h4 style="color: #333; margin-bottom: 4px;" id="setup-year-title">Setup Budget</h4>
+          <p style="font-size: 11px; color: #777;">Amounts are isolated per year. Modifying this won't affect past years.</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="period-btn" style="background: #e67e22; color: white; border-color: #e67e22;" onclick="migrateOldData()">⚠️ Restore Old Budget</button>
+          
+          <button class="period-btn" style="background: #fdf2f0; color: #922b21; border-color: #922b21;" onclick="importLastYearBudget()">📥 Import Last Year</button>
+          <button class="period-btn" style="background: #1a5276; color: white; border-color: #1a5276;" onclick="openBudgetWizard()">🪄 Budget Wizard</button>
+        </div>
+      </div>
+
+      <div class="budget-setup-grid">
+        <div class="budget-input-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h4 style="font-size:15px; color:#1e8449; font-weight:600;">💰 Income Accounts</h4>
+            <button class="period-btn" style="padding:4px 8px; font-size:11px;" onclick="openCatModal('income')">+ Add Income</button>
+          </div>
+          <div id="setup-income-list" class="scrollable-list"></div>
+        </div>
+        <div class="budget-input-group">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h4 style="font-size:15px; color:#922b21; font-weight:600;">🧾 Expense Accounts</h4>
+            <button class="period-btn" style="padding:4px 8px; font-size:11px;" onclick="openCatModal('expense')">+ Add Expense</button>
+          </div>
+          <div id="setup-expense-list" class="scrollable-list"></div>
+        </div>
+      </div>
+      <button class="btn-save-budget" onclick="saveBudget()">💾 Save Budget Amounts</button>
+      <div class="save-success" id="save-success">✅ Budget amounts and sequence saved!</div>
+    </div>
+  </div>
+</div>
+
+<div id="catModal" class="cat-modal">
+  <div class="cat-modal-content">
+    <h3 id="catModalTitle" style="color:#922b21; margin-bottom:10px; font-size:18px; font-weight:600;">Add Category</h3>
+    <p style="font-size:12px; color:#666; margin-bottom:4px;">Choose Main Folder (Optional):</p>
+    <select id="parentSelect"></select>
+    <p style="font-size:12px; color:#666; margin-top:12px; margin-bottom:4px;">Or type New Main Folder:</p>
+    <input type="text" id="newParentInput" placeholder="Main Category Name">
+    <p style="font-size:12px; color:#666; margin-top:12px; margin-bottom:4px;">Account Name:</p>
+    <input type="text" id="subNameInput" placeholder="e.g. Salary / Tithes">
+    <div style="display:flex; gap:10px; margin-top:20px;">
+      <button class="btn-save-budget" style="margin:0; flex:1; padding: 10px;" onclick="confirmSubAcc()">Add to List</button>
+      <button class="period-btn" style="flex:1;" onclick="closeCatModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="wizard-modal-overlay" id="wizardModal">
+  <div class="wizard-modal-content">
+    
+    <div class="wizard-header">
+      <h2 id="wizard-modal-title">🪄 Budget Wizard</h2>
+      <button class="wizard-close" onclick="closeBudgetWizard()">✖ Close</button>
+    </div>
+
+    <div class="wizard-toolbar">
+      <div>
+        <label>Basis Years:</label>
+        <select id="basisYears" onchange="updateWizardData()">
+          <option value="1">Last 1 Year</option>
+          <option value="2" selected>Last 2 Years</option>
+          <option value="3">Last 3 Years</option>
+        </select>
+      </div>
+      <div>
+        <label>Inflation Rate (%):</label>
+        <input type="number" id="inflationRate" value="5" onchange="updateWizardData()" style="width: 70px;">
+      </div>
+      <div style="margin-left: auto; font-size: 12px; color: #666; font-style: italic;">
+        * Changes applied when you click "Finalize"
+      </div>
+    </div>
+
+    <div class="wizard-body">
+      <div class="wizard-tabs">
+        <button class="wiz-btn active" id="btn-wiz-inc" onclick="showWizTab('wiz-inc')">💰 Income</button>
+        <button class="wiz-btn" id="btn-wiz-exp" onclick="showWizTab('wiz-exp')">🧾 Expense</button>
+        <button class="wiz-btn" id="btn-wiz-prev" onclick="showWizTab('wiz-prev')" style="background: #27ae60; color:white; margin-left: 20px;">👁️ Preview</button>
+      </div>
+
+      <div id="wiz-inc" style="display:block;">
+        <table class="wiz-table" id="wiz-income-table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th id="wiz-inc-y2">Year-2</th>
+              <th id="wiz-inc-y1">Year-1</th>
+              <th>Avg Actual</th>
+              <th colspan="3" style="text-align: center;">Smart Fill</th>
+              <th id="wiz-inc-prop" style="background:#d4e6f1;">Proposed</th>
+            </tr>
+          </thead>
+          <tbody id="income-wizard-body"></tbody>
+        </table>
+      </div>
+
+      <div id="wiz-exp" style="display:none;">
+        <table class="wiz-table" id="wiz-expense-table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th id="wiz-exp-y2">Year-2</th>
+              <th id="wiz-exp-y1">Year-1</th>
+              <th>Avg Actual</th>
+              <th colspan="3" style="text-align: center;">Smart Fill</th>
+              <th id="wiz-exp-prop" style="background:#fadbd8;">Proposed</th>
+            </tr>
+          </thead>
+          <tbody id="expense-wizard-body"></tbody>
+        </table>
+      </div>
+
+      <div id="wiz-prev" style="display:none;">
+        <h3 style="color: #1a5276; margin-bottom: 15px;">📋 Review your Proposed Budget</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+          <div class="prev-summary-card">
+            <h3>Total Proposed Income</h3>
+            <h2 id="preview-total-income" style="color: #1e8449;">₱0.00</h2>
+          </div>
+          <div class="prev-summary-card" style="border-top-color: #c0392b;">
+            <h3>Total Proposed Expense</h3>
+            <h2 id="preview-total-expense" style="color: #c0392b;">₱0.00</h2>
+          </div>
+          <div class="prev-summary-card" style="border-top-color: #1a5276;">
+            <h3>Net Position</h3>
+            <h2 id="preview-net" style="color: #1a5276;">₱0.00</h2>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wiz-footer">
+      <button class="wiz-footer-btn wiz-cancel-btn" onclick="closeBudgetWizard()">Cancel</button>
+      <button class="wiz-footer-btn wiz-finalize-btn" onclick="finalizeWizardBudget()">✅ Finalize & Apply</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+      apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+      authDomain: "gracebooks-7eebc.firebaseapp.com",
+      projectId: "gracebooks-7eebc",
+      storageBucket: "gracebooks-7eebc.firebasestorage.app",
+      messagingSenderId: "423871889231",
+      appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let budgets = { expense: {}, income: {} };
+  let accountOrder = { expense: [], income: [] };
+  let availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026]; 
+  let actualIncome = [];
+  let actualExpense = [];
+  let currentPeriod = 'monthly';
+  let collapsedGroups = { income: new Set(), expense: new Set() }; 
+  let collapsedBva = { income: new Set(), expense: new Set() }; 
+  let activeModalType = 'expense';
+  let isInitialLoad = true;
+  
+  let currentYear = new Date().getFullYear();
+
+  function init() {
+    db.collection("settings").doc("yearsConfig").get().then(doc => {
+        if(doc.exists) availableYears = doc.data().list;
+        populateYearSelector();
+    });
+
+    const mt = document.getElementById('sel-month');
+    ['January','February','March','April','May','June','July','August','September','October','November','December'].forEach((m,i)=> mt.innerHTML += `<option value="${i}">${m}</option>`);
+    mt.value = new Date().getMonth();
+
+    db.collection("settings").doc("accountStructure").get().then(doc => { 
+      if(doc.exists) {
+        accountOrder = doc.data(); 
+        renderAll(); 
+        renderSetupList();
+      }
+    });
+
+    // Exclude transfers and Building Fund from income/expenses - they're in separate collections/restricted funds
+    db.collection("income").get().then(s => { 
+      actualIncome = s.docs.map(d=>d.data()).filter(d => {
+        // Skip transfers
+        if (d.type === 'transfer') return false;
+        // Skip Building Fund
+        if ((d.type || '').toLowerCase().includes('building fund') || 
+            (d.budgetCategory || '').toLowerCase().includes('building fund')) return false;
+        return true;
+      });
+      renderAll(); 
+    });
+    db.collection("expenses").get().then(s => { 
+      actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer');
+      renderAll(); 
+    });
+  }
+
+  // ── MIGRATION SCRIPT PARA SA LUMANG AMOUNTS ──
+  async function migrateOldData() {
+    if(!confirm("Gusto mo bang i-restore ang mga dati mong na-set na budget amounts para ngayong " + currentYear + "?")) return;
+    try {
+        const oldDoc = await db.collection("settings").doc("budgets").get();
+        if(oldDoc.exists) {
+            await db.collection("budgets").doc(currentYear.toString()).set(oldDoc.data());
+            alert(`✅ Success! Na-restore na ang lumang budget data!`);
+            location.reload(); 
+        } else {
+            alert("❌ Walang nakitang lumang budget data sa database.");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error: Hindi ma-restore ang data. Tingnan ang internet connection.");
+    }
+  }
+
+  function changeYear() {
+    const yrSel = document.getElementById('sel-year');
+    if(!yrSel) return;
+    currentYear = parseInt(yrSel.value);
+    
+    const title = document.getElementById('setup-year-title');
+    if(title) title.innerText = `Setup Budget for ${currentYear}`;
+
+    db.collection("budgets").doc(currentYear.toString()).get().then(doc => {
+        if(doc.exists) {
+            budgets = doc.data();
+        } else {
+            budgets = { income: {}, expense: {} }; 
+        }
+        
+        if(isInitialLoad) {
+             ['income', 'expense'].forEach(t => {
+                 const mains = [...new Set(Object.keys(budgets[t] || {}).map(k => k.includes(' - ') ? k.split(' - ')[0] : k))];
+                 mains.forEach(m => {
+                     collapsedGroups[t].add(m);
+                     collapsedBva[t].add(m); 
+                 });
+             });
+             isInitialLoad = false;
+        }
+        
+        renderSetupList();
+        renderAll();
+    });
+  }
+
+  async function importLastYearBudget() {
+    const lastYear = currentYear - 1;
+    if(!confirm(`Are you sure you want to import the budget structure and amounts from ${lastYear}? This will overwrite current entries for ${currentYear}.`)) return;
+
+    try {
+        const lastYearDoc = await db.collection("budgets").doc(lastYear.toString()).get();
+        if(lastYearDoc.exists) {
+            const oldBudgets = lastYearDoc.data();
+            await db.collection("budgets").doc(currentYear.toString()).set(oldBudgets);
+            alert(`✅ Successfully imported budget data from ${lastYear}!`);
+        } else {
+            alert(`❌ No budget data found for ${lastYear}.`);
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Failed to import. Check connection.");
+    }
+  }
+
+  function toggleBvaGroup(type, gName) {
+      if(collapsedBva[type].has(gName)) collapsedBva[type].delete(gName);
+      else collapsedBva[type].add(gName);
+      renderAll();
+  }
+
+  function renderExpenseBva(fExp) {
+    const groups = getGroups('expense');
+    const budgetedKeys = Object.keys(budgets.expense || {});
+    const allKeys = (accountOrder.expense || []).concat(budgetedKeys.filter(k => !(accountOrder.expense||[]).includes(k)));
+
+    fExp.forEach(d => {
+      // Skip transfer entries
+      const origType = (d.type || '').toLowerCase();
+      const origBudgetCat = (d.budgetCategory || '').toLowerCase();
+      if (origType.includes('transfer') || origBudgetCat.includes('transfer')) return;
+      
+      const cat = d.budgetCategory || d.category || 'Uncategorized';
+      if (!budgetedKeys.includes(cat)) {
+        let main = getMainGroup(cat, allKeys);
+        let g = groups.find(x => x.main === main);
+        if (!g) { g = { main: main, items: [] }; groups.push(g); }
+        if (!g.items.includes(cat)) { g.items.push(cat); budgetedKeys.push(cat); }
+      }
+    });
+
+    let html = "";
+    let totalAnn = 0, totalBud = 0, totalAct = 0, totalRem = 0;
+    
+    groups.forEach(g => {
+      const isCollapsed = collapsedBva.expense.has(g.main);
+      const icon = isCollapsed ? '▶' : '▼';
+      const ann = g.items.reduce((s,k)=>s+(budgets.expense[k]||0),0);
+      const bud = currentPeriod === 'monthly' ? ann/12 : ann;
+      const act = fExp.filter(d => {
+        // Also skip transfers when calculating actual
+        const origType = (d.type || '').toLowerCase();
+        const origBudgetCat = (d.budgetCategory || '').toLowerCase();
+        if (origType.includes('transfer') || origBudgetCat.includes('transfer')) return false;
+        return g.items.includes(d.category) || g.items.includes(d.budgetCategory);
+      }).reduce((s,d)=>s+parseFloat(d.amount||0),0);
+      const rem = bud - act;
+      const pct = bud > 0 ? (act/bud*100) : (act > 0 ? 100 : 0);
+      
+      // Track totals
+      totalAnn += ann;
+      totalBud += bud;
+      totalAct += act;
+      totalRem += rem;
+      
+      html += `<tr class="row-main" onclick="toggleBvaGroup('expense', '${g.main}')">
+        <td><span style="display:inline-block; width:15px; font-size:11px;">${icon}</span> ${g.main} (Total)</td>
+        <td>₱${fmt(ann)}</td><td>₱${fmt(bud)}</td><td>₱${fmt(act)}</td>
+        <td style="color:${rem<0?'#c0392b':'#27ae60'}">${rem>=0?'+':'-'}₱${fmt(Math.abs(rem))}</td>
+        <td><div class="prog-bar"><div class="prog-fill ${pct>100?'fill-red':'fill-green'}" style="width:${Math.min(pct,100)}%"></div></div></td>
+      </tr>`;
+      
+     if (!isCollapsed) {
+    g.items.forEach(k => {
+      const label = k.startsWith(g.main + ' - ') ? k.slice(g.main.length + 3) : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ') : k);
+      const sAnn = budgets.expense[k] || 0;
+      const sBud = currentPeriod === 'monthly' ? sAnn/12 : sAnn;
+      const sAct = fExp.filter(d=>{
+        // Also skip transfers in sub-items
+        const origType = (d.type || '').toLowerCase();
+        const origBudgetCat = (d.budgetCategory || '').toLowerCase();
+        if (origType.includes('transfer') || origBudgetCat.includes('transfer')) return false;
+        return d.budgetCategory===k||d.category===k;
+      }).reduce((s,d)=>s+parseFloat(d.amount||0),0);
+      const sRem = sBud - sAct;
+      html += `<tr class="row-sub"><td style="padding-left:25px;">└ ${label}</td><td>₱${fmt(sAnn)}</td><td>₱${fmt(sBud)}</td><td>₱${fmt(sAct)}</td><td style="color:${sRem<0?'#c0392b':'#27ae60'}">₱${fmt(Math.abs(sRem))}</td><td></td></tr>`;
+    });
+}
+    });
+    
+    // Add total row if in annual period
+    if (currentPeriod === 'annual') {
+      html += `<tr class="row-main" style="background:#1a1a1a; color:white; font-weight:700;">
+        <td style="color:white;">TOTAL EXPENSE</td>
+        <td style="color:white;">₱${fmt(totalAnn)}</td>
+        <td style="color:white;">₱${fmt(totalBud)}</td>
+        <td style="color:white;">₱${fmt(totalAct)}</td>
+        <td style="color:${totalRem<0?'#ff6b6b':'#51cf66'}">${totalRem>=0?'+':'-'}₱${fmt(Math.abs(totalRem))}</td>
+        <td></td>
+      </tr>`;
+    }
+    
+    const body = document.getElementById('expense-bva-body');
+    if(body) body.innerHTML = html;
+  }
+
+  function renderIncomeBva(fInc) {
+  // Helper: Find matching budget category (exact, case-insensitive, or partial match)
+  const findMatchingBudgetCategory = (value, availableCategories) => {
+    if (!value) return null;
+    
+    // Exact match
+    if (availableCategories.includes(value)) return value;
+    
+    // Case-insensitive match
+    const lower = value.toLowerCase();
+    const caseMatch = availableCategories.find(cat => cat.toLowerCase() === lower);
+    if (caseMatch) return caseMatch;
+    
+    // Partial match: "Tithe" → "Source of Funds - Tithe"
+    // Match if value appears at end or as a sub-category name
+    const partialMatch = availableCategories.find(cat => {
+      const catLower = cat.toLowerCase();
+      return catLower.includes(lower) && value.length > 2;
+    });
+    if (partialMatch) return partialMatch;
+    
+    return null;
+  };
+
+  const groups = getGroups('income');
+  // Exclude Building Fund and Transfers from income BvA — Building Fund is restricted, Transfers are inter-account movements
+  const budgetedKeys = Object.keys(budgets.income || {}).filter(k => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'));
+  const allKeys = (accountOrder.income || []).filter(k => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer')).concat(budgetedKeys.filter(k => !(accountOrder.income||[]).includes(k)));
+  // Also filter groups to remove Building Fund and Transfers
+  const filteredGroups = groups.filter(g => !g.main.toLowerCase().includes('building fund') && !g.main.toLowerCase().includes('transfer'));
+
+  fInc.forEach(d => {
+    // First, check if the original source fields contain building fund or transfer
+    const origType = (d.type || '').toLowerCase();
+    const origBudgetCat = (d.budgetCategory || '').toLowerCase();
+    if (origType.includes('building fund') || origType.includes('transfer') || 
+        origBudgetCat.includes('building fund') || origBudgetCat.includes('transfer')) {
+      return; // Skip entirely if source data indicates building fund or transfer
+    }
+    
+    const rawCat = d.budgetCategory || d.type || 'Uncategorized';
+    // Try to find matching budget category
+    const matchedCat = findMatchingBudgetCategory(rawCat, budgetedKeys) || rawCat;
+    // Skip Building Fund and Transfer entries from appearing as unbudgeted lines
+    if (matchedCat.toLowerCase().includes('building fund') || matchedCat.toLowerCase().includes('transfer')) return;
+    if (!budgetedKeys.includes(matchedCat)) {
+      let main = getMainGroup(matchedCat, allKeys);
+      if (main.toLowerCase().includes('building fund') || main.toLowerCase().includes('transfer')) return;
+      let g = filteredGroups.find(x => x.main === main);
+      if (!g) { g = { main: main, items: [] }; filteredGroups.push(g); }
+      if (!g.items.includes(matchedCat)) { g.items.push(matchedCat); budgetedKeys.push(matchedCat); }
+    }
+  });
+
+  let html = "";
+  let totalAnn = 0, totalBud = 0, totalAct = 0, totalVr = 0;
+  
+  filteredGroups.forEach(g => {
+    const isCollapsed = collapsedBva.income.has(g.main);
+    const icon = isCollapsed ? '▶' : '▼';
+    const ann = g.items.reduce((s,k)=>s+(budgets.income[k]||0),0);
+    const bud = currentPeriod === 'monthly' ? ann/12 : ann;
+    const act = fInc.filter(d => {
+      const rawCat = d.budgetCategory || d.type || '';
+      const matchedCat = findMatchingBudgetCategory(rawCat, budgetedKeys) || rawCat;
+      return g.items.includes(matchedCat);
+    }).reduce((s,d)=>s+parseFloat(d.amount||0),0);
+    
+    const vr = act - bud;
+    const pct = bud > 0 ? (act/bud*100) : (act > 0 ? 100 : 0);
+    
+    // Track totals
+    totalAnn += ann;
+    totalBud += bud;
+    totalAct += act;
+    totalVr += vr;
+    
+    html += `<tr class="row-main" onclick="toggleBvaGroup('income', '${g.main}')">
+      <td><span style="display:inline-block; width:15px; font-size:11px;">${icon}</span> ${g.main} (Total)</td>
+      <td>₱${fmt(ann)}</td><td>₱${fmt(bud)}</td><td>₱${fmt(act)}</td>
+      <td style="color:${vr<0?'#c0392b':'#27ae60'}">${vr>=0?'+':'-'}₱${fmt(Math.abs(vr))}</td>
+      <td><div class="prog-bar"><div class="prog-fill ${pct>=100?'fill-green':'fill-red'}" style="width:${Math.min(pct,100)}%"></div></div></td>
+    </tr>`;
+    
+    if (!isCollapsed) {
+      g.items.forEach(k => {
+        const label = k.startsWith(g.main + ' - ') ? k.slice(g.main.length + 3) : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ') : k);
+        const sAnn = budgets.income[k]||0;
+        const sBud = currentPeriod === 'monthly' ? sAnn/12 : sAnn;
+        const sAct = fInc.filter(d=>{
+          const rawCat = d.budgetCategory || d.type || '';
+          const matchedCat = findMatchingBudgetCategory(rawCat, budgetedKeys) || rawCat;
+          return matchedCat === k;
+        }).reduce((s,d)=>s+parseFloat(d.amount||0),0);
+        html += `<tr class="row-sub"><td style="padding-left:25px;">└ ${label}</td><td>₱${fmt(sAnn)}</td><td>₱${fmt(sBud)}</td><td>₱${fmt(sAct)}</td><td>₱${fmt(Math.abs(sAct-sBud))}</td><td></td></tr>`;
+      });
+    }
+  });
+  
+  // Add total row if in annual period
+  if (currentPeriod === 'annual') {
+    html += `<tr class="row-main" style="background:#1a5276; color:white; font-weight:700;">
+      <td style="color:white;">TOTAL INCOME</td>
+      <td style="color:white;">₱${fmt(totalAnn)}</td>
+      <td style="color:white;">₱${fmt(totalBud)}</td>
+      <td style="color:white;">₱${fmt(totalAct)}</td>
+      <td style="color:${totalVr<0?'#ff6b6b':'#51cf66'}">${totalVr>=0?'+':'-'}₱${fmt(Math.abs(totalVr))}</td>
+      <td></td>
+    </tr>`;
+  }
+  
+  const body = document.getElementById('income-bva-body');
+  if(body) body.innerHTML = html;
+}
+
+  async function confirmSubAcc() {
+    const parent = document.getElementById('newParentInput').value.trim() || document.getElementById('parentSelect').value;
+    const subVal = document.getElementById('subNameInput').value.trim();
+    if (!subVal) return alert("Account Name is required.");
+    const k = parent ? `${parent} - ${subVal}` : subVal;
+    if(budgets[activeModalType][k] !== undefined) return alert("Account already exists!");
+
+    if (!budgets[activeModalType]) budgets[activeModalType] = {};
+    budgets[activeModalType][k] = 0;
+    if (!accountOrder[activeModalType]) accountOrder[activeModalType] = [];
+    if (!accountOrder[activeModalType].includes(k)) accountOrder[activeModalType].push(k);
+    
+    if(parent) collapsedGroups[activeModalType].delete(parent);
+
+    try {
+        await db.collection("budgets").doc(currentYear.toString()).set(budgets, {merge: true});
+        await db.collection("settings").doc("accountStructure").set(accountOrder, {merge: true});
+        closeCatModal();
+    } catch (err) { alert("Failed to save. Check connection."); }
+  }
+
+  function populateYearSelector() {
+    const yrSel = document.getElementById('sel-year');
+    const currentVal = yrSel.value; 
+    yrSel.innerHTML = "";
+    [...availableYears].sort((a,b)=>b-a).forEach(y => { yrSel.innerHTML += `<option value="${y}">${y}</option>`; });
+    yrSel.value = currentVal || new Date().getFullYear();
+    changeYear(); 
+  }
+
+  function addNewYear() {
+    const nextYear = Math.max(...availableYears) + 1;
+    const res = prompt("Enter new year to add:", nextYear);
+    if(res) {
+        const newYear = parseInt(res);
+        if(!isNaN(newYear) && !availableYears.includes(newYear)) {
+            availableYears.push(newYear);
+            db.collection("settings").doc("yearsConfig").set({list: availableYears}).then(() => populateYearSelector());
+        }
+    }
+  }
+
+  function getMainGroup(k, allKeys) {
+    // Find the longest prefix of k (split on ' - ') that is shared by at least
+    // one other key, so multi-part folder names like "OPEX - Nurture" are handled
+    // correctly when a key is "OPEX - Nurture - Annual and District Activities".
+    if (!k.includes(' - ')) return k;
+    const parts = k.split(' - ');
+    // Try progressively longer prefixes (from longest to shortest)
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const prefix = parts.slice(0, i).join(' - ');
+      const prefixDash = prefix + ' - ';
+      // If any OTHER key starts with this prefix, it's a valid folder name
+      const hasOthers = allKeys.some(other => other !== k && other.startsWith(prefixDash));
+      if (hasOthers) return prefix;
+    }
+    // Fallback: use first segment
+    return parts[0];
+  }
+
+  function getGroups(type) {
+    let keys = accountOrder[type] || [];
+    
+    const budgetKeys = Object.keys(budgets[type] || {});
+    budgetKeys.forEach(k => { 
+      if (!keys.includes(k)) {
+        keys.push(k); 
+      }
+    });
+
+    const groups = [];
+    const groupMap = {};
+
+    keys.forEach(k => {
+       let main = getMainGroup(k, keys);
+       
+       if (!groupMap[main]) {
+          groupMap[main] = { main: main, items: [] };
+          groups.push(groupMap[main]);
+       }
+       if (!groupMap[main].items.includes(k)) {
+          groupMap[main].items.push(k);
+       }
+    });
+
+    return groups;
+  }
+
+  function renderSetupList() {
+    ['income', 'expense'].forEach(type => {
+      const cont = document.getElementById(`setup-${type}-list`);
+      if(!cont) return;
+      const groups = getGroups(type);
+      let html = "";
+      let grandTotal = 0;
+      const themeColor = type === 'expense' ? '#c0392b' : '#1e8449';
+      const themeLight = type === 'expense' ? '#fadbd8' : '#d5f5e3';
+      const themeBorder = type === 'expense' ? '#e6b0aa' : '#a3e4d7';
+
+      groups.forEach((g, gIndex) => {
+        let groupTotal = g.items.reduce((sum, k) => sum + (budgets[type][k] || 0), 0);
+        grandTotal += groupTotal;
+        const isCollapsed = collapsedGroups[type].has(g.main);
+        html += `<div style="border: 1px solid ${themeBorder}; border-radius: 8px; margin-bottom: 12px; background: #fff; overflow:hidden;">
+          <div style="background: ${themeLight}; padding: 12px; border-bottom: ${isCollapsed ? 'none' : '1px solid '+themeBorder}; cursor: pointer;" onclick="toggleGroup('${type}','${g.main}')">
+            <div style="display: flex; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 12px; color: ${themeColor}; width: 15px; font-weight:700;">${isCollapsed ? '▶' : '▼'}</span>
+                <strong style="color: ${themeColor}; font-size: 15px; line-height: 1.2;">📁 ${g.main}</strong>
+              </div>
+              <div onclick="event.stopPropagation()">
+                <button class="btn-move" style="background:#fff; border:1px solid ${themeBorder};" onclick="shiftGroup('${type}', ${gIndex}, -1)">↑</button>
+                <button class="btn-move" style="background:#fff; border:1px solid ${themeBorder};" onclick="shiftGroup('${type}', ${gIndex}, 1)">↓</button>
+              </div>
+            </div>
+            <div style="margin-top: 5px; padding-left: 23px; font-weight: 700; color: ${themeColor};">Total: ₱${fmt(groupTotal)}</div>
+          </div>
+          <div style="padding: 10px; display: ${isCollapsed ? 'none' : 'block'};">`;
+        
+        g.items.forEach((k, iIndex) => {
+          const isSub = k.includes(' - ');
+          html += `<div class="budget-row" style="${isSub ? 'margin-left: 20px;' : ''}">
+              <button class="btn-del" onclick="delAcc('${type}','${k}')">×</button>
+              <button class="btn-edit" onclick="renameAccount('${type}','${k}')">✏️</button>
+              <button class="btn-move" onclick="shiftItem('${type}', ${gIndex}, ${iIndex}, -1)">↑</button>
+              <button class="btn-move" onclick="shiftItem('${type}', ${gIndex}, ${iIndex}, 1)">↓</button>
+              <label>${isSub ? '└ ' + k.slice(g.main.length + 3) : k}</label>
+              <input type="number" class="inp-${type==='expense'?'exp':'inc'}" data-key="${k}" value="${budgets[type][k]||0}" onchange="saveTempInputs(); renderSetupList();">
+            </div>`;
+        });
+        html += `</div></div>`;
+      });
+      cont.innerHTML = html + `<div style="text-align: right; padding: 12px; font-weight: 700; font-size: 16px; color: ${themeColor}; background: ${themeLight}; border-radius: 8px; margin-top: 15px; border: 1px solid ${themeBorder};">Grand Total: ₱${fmt(grandTotal)}</div>`;
+    });
+  }
+
+  // Building Fund is a restricted fund — excluded from all general income reporting
+  function isBuildingFund(d) {
+    const cat = (d.budgetCategory || d.type || d.category || '').toLowerCase();
+    return cat.includes('building fund');
+  }
+
+  // Transfers represent money movement between accounts, not real income
+  function isTransfer(d) {
+    const cat = (d.budgetCategory || d.type || d.category || '').toLowerCase();
+    return cat.includes('transfer');
+  }
+
+  function renderAll() {
+    const yrSel = document.getElementById('sel-year');
+    const moSel = document.getElementById('sel-month');
+    if(!yrSel || !moSel) return;
+    const yr = parseInt(yrSel.value);
+    const mo = parseInt(moSel.value);
+    
+    const filter = (arr) => arr.filter(d => {
+      const dt = new Date(d.date);
+      return dt.getFullYear() === yr && (currentPeriod === 'annual' || dt.getMonth() === mo);
+    });
+
+    const fIncAll = filter(actualIncome);
+    const fInc = fIncAll.filter(d => !isBuildingFund(d) && !isTransfer(d));
+    const fExp = filter(actualExpense);
+    const tInc = fInc.reduce((s,d)=>s+parseFloat(d.amount||0),0);
+    const tExp = fExp.reduce((s,d)=>s+parseFloat(d.amount||0),0);
+    const net = tInc - tExp;
+    const annualExpenseBudget = Object.values(budgets.expense || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+    const periodExpenseBudget = currentPeriod === 'annual' ? annualExpenseBudget : annualExpenseBudget / 12;
+    const budgetUtilization = periodExpenseBudget > 0 ? (tExp / periodExpenseBudget * 100) : 0;
+
+    const grid = document.getElementById('kpi-grid');
+    if(grid) {
+      grid.innerHTML = `
+        <div class="kpi-card kpi-income"><div class="kpi-label">Total Income</div><div class="kpi-value">₱${fmt(tInc)}</div></div>
+        <div class="kpi-card kpi-deficit"><div class="kpi-label">Total Expense</div><div class="kpi-value">₱${fmt(tExp)}</div></div>
+        <div class="kpi-card ${net>=0?'kpi-surplus':'kpi-deficit'}"><div class="kpi-label">Net Standing</div><div class="kpi-value">₱${fmt(Math.abs(net))}</div><div class="kpi-sub">${net>=0?'SURPLUS':'DEFICIT'}</div></div>
+        <div class="kpi-card ${budgetUtilization<=100?'kpi-surplus':'kpi-deficit'}"><div class="kpi-label">Budget Utilization</div><div class="kpi-value">${budgetUtilization.toFixed(1)}%</div><div class="kpi-sub">of expense budget used</div></div>
+      `;
+    }
+
+    renderIncomeBva(fInc);
+    renderExpenseBva(fExp);
+    renderMonthlyGrid(yr);
+  }
+
+  function renderMonthlyGrid(year) {
+    const buildingFundKeys = Object.keys(budgets.income || {}).filter(k => k.toLowerCase().includes('building fund'));
+    const targetInc = Object.entries(budgets.income || {}).filter(([k]) => !buildingFundKeys.includes(k)).reduce((s, [,v]) => s + v, 0) / 12;
+    const targetExp = Object.values(budgets.expense || {}).reduce((s, v) => s + v, 0) / 12;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const grid = document.getElementById('month-grid');
+    if(!grid) return;
+    
+    grid.innerHTML = months.map((m, i) => {
+      const mi = actualIncome.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i && !isBuildingFund(d) && !isTransfer(d)).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const me = actualExpense.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      
+      return `<div class="month-card">
+        <h4 style="color:#922b21; border-bottom:1px solid #fadbd8; margin-bottom:8px; padding-bottom:4px;">${m} ${year}</h4>
+        
+        <div style="margin-bottom: 8px;">
+          <p style="font-size:11px; color:#555;">🎯 Target Inc: ₱${fmt(targetInc)}</p>
+          <p style="font-size:11px; color:#1e8449; font-weight:600;">💰 Actual Inc: ₱${fmt(mi)}</p>
+        </div>
+        
+        <div>
+          <p style="font-size:11px; color:#555;">🎯 Target Exp: ₱${fmt(targetExp)}</p>
+          <p style="font-size:11px; color:#c0392b; font-weight:600;">🧾 Actual Exp: ₱${fmt(me)}</p>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function saveTempInputs() {
+    document.querySelectorAll('.inp-inc').forEach(i => budgets.income[i.dataset.key] = parseFloat(i.value)||0);
+    document.querySelectorAll('.inp-exp').forEach(i => budgets.expense[i.dataset.key] = parseFloat(i.value)||0);
+  }
+
+  function saveBudget() { 
+    saveTempInputs(); 
+    db.collection("budgets").doc(currentYear.toString()).set(budgets); 
+    renderAll(); 
+
+    const successMsg = document.getElementById('save-success');
+    if(successMsg) {
+      successMsg.style.display = 'block';
+      setTimeout(() => {
+        successMsg.style.display = 'none';
+      }, 3000);
+    }
+  }
+
+  function toggleGroup(type, gName) { saveTempInputs(); if(collapsedGroups[type].has(gName)) collapsedGroups[type].delete(gName); else collapsedGroups[type].add(gName); renderSetupList(); }
+  function showTab(t,b) { document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active')); document.getElementById(t).classList.add('active'); b.classList.add('active'); }
+  function setPeriod(p,b) { currentPeriod = p; document.querySelectorAll('.period-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderAll(); }
+  function fmt(n) { return (n||0).toLocaleString('en-PH',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function closeCatModal() { document.getElementById('catModal').style.display = 'none'; }
+  
+  function shiftGroup(type, idx, dir) {
+    saveTempInputs(); let groups = getGroups(type);
+    if(idx+dir >= 0 && idx+dir < groups.length) { [groups[idx], groups[idx+dir]] = [groups[idx+dir], groups[idx]]; accountOrder[type] = groups.flatMap(g => g.items); db.collection("settings").doc("accountStructure").set(accountOrder); }
+  }
+
+  function shiftItem(type, gIdx, iIdx, dir) {
+    saveTempInputs(); let groups = getGroups(type); let items = groups[gIdx].items;
+    if(iIdx+dir >= 0 && iIdx+dir < items.length) { [items[iIdx], items[iIdx+dir]] = [items[iIdx+dir], items[iIdx]]; accountOrder[type] = groups.flatMap(g => g.items); db.collection("settings").doc("accountStructure").set(accountOrder); }
+  }
+
+  async function delAcc(type, key) {
+    if (!confirm(`Sigurado ka bang gusto mong burahin ang "${key}"?`)) return;
+
+    if (budgets[type] && budgets[type][key] !== undefined) {
+      delete budgets[type][key];
+    }
+
+    if (accountOrder[type]) {
+      const idx = accountOrder[type].indexOf(key);
+      if (idx > -1) {
+        accountOrder[type].splice(idx, 1);
+      }
+    }
+
+    await db.collection("budgets").doc(currentYear.toString()).set(budgets);
+    await db.collection("settings").doc("accountStructure").set(accountOrder);
+
+    renderSetupList();
+    renderAll();
+  }
+
+  async function renameAccount(type, oldKey) {
+    const subName = oldKey.includes(' - ') ? oldKey.split(' - ')[1] : oldKey;
+    const currentFolder = oldKey.includes(' - ') ? oldKey.split(' - ')[0] : "";
+    const newMain = prompt(`Change Folder for "${subName}":`, currentFolder);
+    if(newMain === null) return;
+    const newKey = newMain.trim() !== "" ? `${newMain.trim()} - ${subName}` : subName;
+    budgets[type][newKey] = budgets[type][oldKey]; delete budgets[type][oldKey];
+    const idx = accountOrder[type].indexOf(oldKey); if(idx > -1) accountOrder[type][idx] = newKey;
+    
+    await db.collection("budgets").doc(currentYear.toString()).set(budgets); 
+    await db.collection("settings").doc("accountStructure").set(accountOrder);
+  }
+
+  function openCatModal(type) {
+    activeModalType = type;
+    const mains = [...new Set(Object.keys(budgets[type] || {}).map(k => k.includes(' - ') ? k.split(' - ')[0] : k))];
+    const sel = document.getElementById('parentSelect');
+    sel.innerHTML = `<option value="">-- No Folder --</option>` + mains.map(m=>`<option value="${m}">${m}</option>`).join('');
+    document.getElementById('newParentInput').value = ""; document.getElementById('subNameInput').value = "";
+    document.getElementById('catModal').style.display = 'flex';
+  }
+
+  let wizardProposedBudget = { income: {}, expense: {} };
+
+  function openBudgetWizard() {
+    document.getElementById('wizardModal').classList.add('active');
+    updateWizardData();
+  }
+
+  function closeBudgetWizard() {
+    document.getElementById('wizardModal').classList.remove('active');
+    wizardProposedBudget = { income: {}, expense: {} };
+  }
+
+  function showWizTab(tabId) {
+    document.querySelectorAll('[id^="wiz-"]').forEach(el => {
+      if (el.tagName === 'DIV' && (el.id === 'wiz-inc' || el.id === 'wiz-exp' || el.id === 'wiz-prev')) {
+        el.style.display = 'none';
+      }
+    });
+    document.getElementById(tabId).style.display = 'block';
+
+    document.querySelectorAll('.wiz-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('btn-wiz-' + tabId.slice(4)).classList.add('active');
+
+    if (tabId === 'wiz-prev') {
+      updatePreviewTab();
+    }
+  }
+
+  function getHistoricalActual(type, account, yearTarget) {
+    const dataList = type === 'income' ? actualIncome : actualExpense;
+    return dataList.filter(d => {
+        const dYear = new Date(d.date).getFullYear();
+        const cat = d.budgetCategory || d.category || d.type || '';
+        return dYear === yearTarget && cat === account;
+    }).reduce((sum, d) => sum + parseFloat(d.amount || 0), 0);
+  }
+
+  function updateWizardData() {
+    renderWizardIncomeTable();
+    renderWizardExpenseTable();
+  }
+
+  function renderWizardIncomeTable() {
+    const tbody = document.getElementById('income-wizard-body');
+    tbody.innerHTML = '';
+    
+    const y1 = currentYear - 1;
+    const y2 = currentYear - 2;
+    const basis = parseInt(document.getElementById('basisYears').value);
+
+    document.getElementById('wizard-modal-title').innerText = `🪄 Budget Wizard for ${currentYear}`;
+    document.getElementById('wiz-inc-y2').innerText = `${y2} Actual`;
+    document.getElementById('wiz-inc-y1').innerText = `${y1} Actual`;
+    document.getElementById('wiz-inc-prop').innerText = `${currentYear} Proposed`;
+
+    (accountOrder.income || []).forEach(acc => {
+      const actY1 = getHistoricalActual('income', acc, y1);
+      const actY2 = getHistoricalActual('income', acc, y2);
+      
+      let avg = actY1; 
+      if (basis === 2) avg = (actY1 + actY2) / 2;
+      if (basis === 3) avg = (actY1 + actY2 + getHistoricalActual('income', acc, currentYear - 3)) / 3;
+
+      const inflation = parseFloat(document.getElementById('inflationRate').value) || 0;
+      const proposed = Math.round(avg * (1 + inflation / 100));
+
+      if (!wizardProposedBudget.income[acc]) {
+        wizardProposedBudget.income[acc] = proposed;
+      }
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${acc}</strong></td>
+        <td>₱${fmt(actY2)}</td>
+        <td>₱${fmt(actY1)}</td>
+        <td>₱${fmt(avg)}</td>
+        <td><button class="smart-btn" onclick="smartFill('income', '${acc}', 'avg', ${avg})">📊 Avg</button></td>
+        <td><button class="smart-btn" onclick="smartFill('income', '${acc}', 'inf', ${proposed})">📈 +Inf</button></td>
+        <td><button class="smart-btn" onclick="document.getElementById('inc-${acc}').focus()">✏️ Edit</button></td>
+        <td><input type="number" class="wiz-input" id="inc-${acc}" value="${proposed}" onchange="wizardProposedBudget.income['${acc}'] = parseFloat(this.value)"></td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    if ((accountOrder.income || []).length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#888;">No income accounts set up</td></tr>';
+    }
+  }
+
+  function renderWizardExpenseTable() {
+    const tbody = document.getElementById('expense-wizard-body');
+    tbody.innerHTML = '';
+
+    const y1 = currentYear - 1;
+    const y2 = currentYear - 2;
+    const basis = parseInt(document.getElementById('basisYears').value);
+
+    document.getElementById('wiz-exp-y2').innerText = `${y2} Actual`;
+    document.getElementById('wiz-exp-y1').innerText = `${y1} Actual`;
+    document.getElementById('wiz-exp-prop').innerText = `${currentYear} Proposed`;
+
+    (accountOrder.expense || []).forEach(acc => {
+      const actY1 = getHistoricalActual('expense', acc, y1);
+      const actY2 = getHistoricalActual('expense', acc, y2);
+      
+      let avg = actY1; 
+      if (basis === 2) avg = (actY1 + actY2) / 2;
+      if (basis === 3) avg = (actY1 + actY2 + getHistoricalActual('expense', acc, currentYear - 3)) / 3;
+
+      const inflation = parseFloat(document.getElementById('inflationRate').value) || 0;
+      const proposed = Math.round(avg * (1 + inflation / 100));
+
+      if (!wizardProposedBudget.expense[acc]) {
+        wizardProposedBudget.expense[acc] = proposed;
+      }
+
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td><strong>${acc}</strong></td>
+        <td>₱${fmt(actY2)}</td>
+        <td>₱${fmt(actY1)}</td>
+        <td>₱${fmt(avg)}</td>
+        <td><button class="smart-btn" onclick="smartFill('expense', '${acc}', 'avg', ${avg})">📊 Avg</button></td>
+        <td><button class="smart-btn" onclick="smartFill('expense', '${acc}', 'inf', ${proposed})">📈 +Inf</button></td>
+        <td><button class="smart-btn" onclick="document.getElementById('exp-${acc}').focus()">✏️ Edit</button></td>
+        <td><input type="number" class="wiz-input" id="exp-${acc}" value="${proposed}" onchange="wizardProposedBudget.expense['${acc}'] = parseFloat(this.value)"></td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    if ((accountOrder.expense || []).length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#888;">No expense accounts set up</td></tr>';
+    }
+  }
+
+  function smartFill(type, account, method, value) {
+    const inputId = type === 'income' ? `inc-${account}` : `exp-${account}`;
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.value = Math.round(value);
+      wizardProposedBudget[type][account] = Math.round(value);
+    }
+  }
+
+  function updatePreviewTab() {
+    const totalInc = Object.values(wizardProposedBudget.income || {}).reduce((s, v) => s + v, 0);
+    const totalExp = Object.values(wizardProposedBudget.expense || {}).reduce((s, v) => s + v, 0);
+    const net = totalInc - totalExp;
+
+    document.getElementById('preview-total-income').textContent = '₱' + fmt(totalInc);
+    document.getElementById('preview-total-expense').textContent = '₱' + fmt(totalExp);
+    document.getElementById('preview-net').textContent = '₱' + fmt(Math.abs(net));
+    document.getElementById('preview-net').style.color = net >= 0 ? '#1e8449' : '#c0392b';
+  }
+
+  function finalizeWizardBudget() {
+    budgets.income = { ...budgets.income, ...wizardProposedBudget.income };
+    budgets.expense = { ...budgets.expense, ...wizardProposedBudget.expense };
+    
+    Object.keys(wizardProposedBudget.income).forEach(acc => {
+      if (!accountOrder.income.includes(acc)) {
+        accountOrder.income.push(acc);
+      }
+    });
+    Object.keys(wizardProposedBudget.expense).forEach(acc => {
+      if (!accountOrder.expense.includes(acc)) {
+        accountOrder.expense.push(acc);
+      }
+    });
+
+    db.collection("budgets").doc(currentYear.toString()).set(budgets);
+    db.collection("settings").doc("accountStructure").set(accountOrder);
+
+    closeBudgetWizard();
+    renderAll();
+    alert(`✅ ${currentYear} Budget finalized and applied!`);
+  }
+
+  init();
+</script>
+</body>
+</html>
+
+
