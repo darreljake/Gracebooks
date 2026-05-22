@@ -257,6 +257,11 @@
     /* ── SIGNATURES ──────────────────────────────────────────── */
     .sig-section { margin-top: 60px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
     .sig-box { text-align: center; flex: 1 1 145px; max-width: 180px; }
+    .workflow-sig-space { height: 48px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 3px; }
+    .workflow-sig-img { max-width: 155px; max-height: 46px; object-fit: contain; display: block; }
+    .workflow-sig-line { border-top: 1px solid var(--dark); margin-bottom: 2px; }
+    .workflow-sig-manual { font-size: 9px; color: #777; padding-bottom: 5px; }
+    .workflow-sig-unavailable { font-size: 9px; color: #777; padding-bottom: 5px; }
     
     /* ── FOOTER ──────────────────────────────────────────────── */
     .rpt-footer {
@@ -858,14 +863,14 @@
     const sig = workflowSignatures[key] || {};
     const name = sig.signedAt ? (sig.name || fallbackName || '') : '';
     const image = sig.signedAt && sig.mode === 'electronic' && sig.signatureUrl
-      ? `<img src="${escapeAttr(sig.signatureUrl)}" alt="Signature" style="max-width:135px;height:34px;object-fit:contain;display:block;margin:0 auto -3px;">`
+      ? `<div class="workflow-sig-space"><img class="workflow-sig-img" src="${escapeAttr(sig.signatureUrl)}" alt="Signature" onerror="this.parentElement.innerHTML='<span class=&quot;workflow-sig-unavailable&quot;>Signature image unavailable</span>';"></div>`
       : '';
     const manual = sig.signedAt && sig.mode === 'manual'
-      ? '<div style="height:31px;font-size:9px;color:#777;display:flex;align-items:end;justify-content:center;">Manual signature</div>'
-      : '<div style="height:31px;"></div>';
+      ? '<div class="workflow-sig-space"><span class="workflow-sig-manual">Manual signature</span></div>'
+      : '<div class="workflow-sig-space"></div>';
     return `
       ${image || manual}
-      <div style="border-top:1px solid var(--dark); margin-bottom:2px;"></div>
+      <div class="workflow-sig-line"></div>
       <div style="font-weight:700; font-size:12px;">${escapeHtml(name)}</div>
       <div style="font-size:11px; color:var(--gray);">${escapeHtml(fallbackTitle || '')}</div>
     `;
