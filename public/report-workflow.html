@@ -601,7 +601,21 @@
       if (canvas.toDataURL() === blank.toDataURL()) {
         return showMessage('Draw your signature before saving the pad.', 'err');
       }
-      canvas.toBlob(async blob => {
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const exportCtx = exportCanvas.getContext('2d');
+      exportCtx.drawImage(canvas, 0, 0);
+      const pixels = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        if (pixels.data[i + 3] > 0) {
+          pixels.data[i] = 17;
+          pixels.data[i + 1] = 17;
+          pixels.data[i + 2] = 17;
+        }
+      }
+      exportCtx.putImageData(pixels, 0, 0);
+      exportCanvas.toBlob(async blob => {
         await uploadSignatureBlob(blob, 'image/png');
       }, 'image/png');
     }
