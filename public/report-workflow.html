@@ -66,6 +66,14 @@
     .pill.ready, .pill.final { background: #d5f5e3; color: #196f3d; }
     .pill.returned { background: #fdecea; color: #a93226; }
     .pill.pending { background: #fef5e7; color: #9a5b00; }
+    .return-note-banner {
+      display: none; background: #fdecea; border: 1px solid #f5c6c0; border-left: 5px solid #a93226;
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; color: #7a1f15;
+    }
+    .return-note-banner.show { display: block; }
+    .return-note-banner .rn-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+    .return-note-banner .rn-meta { font-size: 12px; color: #a93226; margin-bottom: 6px; }
+    .return-note-banner .rn-text { font-size: 13px; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
     .card { padding: 18px; margin-bottom: 18px; }
     .card h2 { font-size: 16px; color: #8B0000; margin-bottom: 12px; }
@@ -115,6 +123,11 @@
 
   <div class="container">
     <div id="message" class="message"></div>
+    <div id="return-note-banner" class="return-note-banner">
+      <div class="rn-title"><i class="fa-solid fa-triangle-exclamation"></i> Latest Return Note</div>
+      <div class="rn-meta" id="return-note-meta"></div>
+      <div class="rn-text" id="return-note-text"></div>
+    </div>
 
     <div class="controls">
       <div class="field">
@@ -342,8 +355,32 @@
         </div>
       ` : '<div class="muted">Your role is not a signer in this workflow.</div>';
 
+      renderReturnNoteBanner(status, data);
       renderHistory(data.history || []);
       renderActions(status);
+    }
+
+    function renderReturnNoteBanner(status, data) {
+      const banner = document.getElementById('return-note-banner');
+      const isReturned = status === 'returned_by_auditor' || status === 'returned_by_finance';
+      if (!isReturned) {
+        banner.classList.remove('show');
+        return;
+      }
+      const history = data.history || [];
+      const lastEntry = history.length ? history[history.length - 1] : null;
+      const note = (lastEntry && lastEntry.notes) || data.returnNotes || '';
+      if (!note) {
+        banner.classList.remove('show');
+        return;
+      }
+      const returnedByRole = lastEntry ? lastEntry.actorRole : (status === 'returned_by_auditor' ? 'Auditor' : 'Finance Chair');
+      const returnedByName = lastEntry ? lastEntry.actorName : '';
+      const when = lastEntry ? formatDateTime(lastEntry.createdAt) : '';
+      document.getElementById('return-note-meta').textContent =
+        `Returned by ${returnedByName ? returnedByName + ' (' + returnedByRole + ')' : returnedByRole}${when ? ' - ' + when : ''}`;
+      document.getElementById('return-note-text').textContent = note;
+      banner.classList.add('show');
     }
 
     function statusSummary(status) {

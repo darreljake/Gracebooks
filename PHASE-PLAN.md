@@ -159,9 +159,7 @@ Status: Started.
 - Finalized report locking:
   - Lock a report after Pastor finalization.
   - Require Treasurer/admin reopen action before any finalized workflow can be edited again.
-- Better return notes:
-  - Show the latest return note prominently to the Treasurer.
-  - Keep return-note history visible in the workflow timeline for Auditor and Finance Chair returns.
+- Better return notes: Done. `report-workflow.html` shows a prominent latest-return-note banner (who returned it, when, and the note text) whenever a report is in `returned_by_auditor` or `returned_by_finance` status. Return-note history was already visible per entry in the Routing History timeline.
 
 ## Phase 6 - Role and Access Enhancements
 
