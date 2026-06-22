@@ -57,7 +57,69 @@
     .hero-stat .h-value { font-size:15px; font-weight:600; }
     .hero-stat.income .h-value { color:#a8f0c6; }
     .hero-stat.expense .h-value { color:#ffa8a8; }
+    .hero-stat.payable .h-value { color:#ffd98a; }
+    .payable-btn {
+      margin-top:6px; padding:6px 10px; border:1px solid rgba(255,255,255,0.38);
+      background:rgba(255,255,255,0.14); color:white; border-radius:8px;
+      font-size:11px; font-weight:600; cursor:pointer; font-family:'Poppins',sans-serif;
+    }
+    .payable-btn:hover { background:rgba(255,255,255,0.24); }
+    .hero-note { font-size:11px; margin-top:10px; color:#ffe9b5; }
     .hero-date { font-size:11px; opacity:0.6; margin-top:14px; text-align:right; }
+    .cash-control-card {
+      background:white; border-radius:16px; margin-bottom:0; overflow:hidden;
+      box-shadow:0 2px 12px rgba(0,0,0,0.06); border-left:6px solid #1e8449;
+      position:fixed; left:18px; top:86px; width:320px; max-height:calc(100vh - 110px);
+      z-index:50; display:flex; flex-direction:column;
+    }
+    .cash-control-card.green { border-left-color:#1e8449; }
+    .cash-control-card.yellow { border-left-color:#d4ac0d; }
+    .cash-control-card.orange { border-left-color:#d35400; }
+    .cash-control-card.red { border-left-color:#c0392b; }
+    .cash-control-card.purple { border-left-color:#7d3c98; }
+    .cash-control-card.black { border-left-color:#111; }
+    .cash-control-head {
+      display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap;
+      padding:16px 18px; border-bottom:1px solid #f0f0f0;
+    }
+    .cash-control-title { font-size:14px; font-weight:700; color:#333; }
+    .cash-control-sub { font-size:11px; color:#888; margin-top:3px; line-height:1.4; }
+    .cash-level-badge {
+      border-radius:999px; padding:8px 12px; color:white; font-size:12px; font-weight:700; white-space:nowrap;
+      background:#1e8449;
+    }
+    .cash-level-badge.green { background:#1e8449; }
+    .cash-level-badge.yellow { background:#d4ac0d; color:#3b2c00; }
+    .cash-level-badge.orange { background:#d35400; }
+    .cash-level-badge.red { background:#c0392b; }
+    .cash-level-badge.purple { background:#7d3c98; }
+    .cash-level-badge.black { background:#111; }
+    .cash-control-body { padding:16px 18px; overflow:auto; }
+    .cash-metrics {
+      display:grid; grid-template-columns:1fr; gap:10px; margin-bottom:14px;
+    }
+    .cash-metric { background:#fafafa; border:1px solid #eee; border-radius:10px; padding:12px; }
+    .cash-metric .m-label { font-size:10px; color:#888; text-transform:uppercase; font-weight:700; line-height:1.25; }
+    .cash-metric .m-value { font-size:16px; color:#222; font-weight:700; margin-top:5px; }
+    .cash-control-rules {
+      background:#fff8f8; border:1px solid #f2d7d5; border-radius:10px; padding:12px;
+      color:#555; font-size:12px; line-height:1.5;
+    }
+    .cash-control-rules strong { color:#8B0000; }
+    .cash-control-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .cash-control-actions button {
+      padding:8px 12px; border:none; border-radius:8px; background:#8B0000; color:white;
+      font-size:12px; font-weight:700; cursor:pointer; font-family:'Poppins',sans-serif;
+    }
+    .cash-control-actions button.secondary { background:#1a5276; }
+    @media (max-width: 1180px) {
+      .cash-control-card {
+        position:static; width:auto; max-height:none; display:block; margin-bottom:20px;
+      }
+      .cash-control-body { overflow:visible; }
+      .cash-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width: 520px) { .cash-metrics { grid-template-columns:1fr; } }
 
     /* ACCOUNTS - FIXED SCROLL FUNCTION */
     .section-title { font-size:14px; font-weight:600; color:#333; margin-bottom:12px; }
@@ -171,6 +233,7 @@
     }
     .trans-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
     .trans-header h4 { font-size:14px; font-weight:600; color:#333; }
+    .trans-title-sub { font-size:11px; color:#999; margin-top:2px; }
     .filter-tabs { display:flex; gap:6px; }
     .filter-tab {
       padding:4px 12px; border-radius:20px;
@@ -179,6 +242,11 @@
       font-family:'Poppins',sans-serif;
     }
     .filter-tab.active { background:#8B0000; color:white; font-weight:600; }
+    .statement-btn {
+      padding:6px 12px; border-radius:8px; border:none; background:#1a5276; color:white;
+      font-size:11px; font-weight:600; cursor:pointer; font-family:'Poppins',sans-serif;
+    }
+    .statement-controls { display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
     .trans-item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #f5f5f5; }
     .trans-item:last-child { border-bottom:none; }
     .trans-icon {
@@ -201,6 +269,8 @@
     .trans-date { font-size:11px; color:#bbb; margin-top:2px; }
     .empty-trans { text-align:center; padding:30px; color:#ccc; font-size:13px; }
     .empty-trans .e-icon { font-size:40px; margin-bottom:8px; }
+    .statement-summary { background:#f8fafc; border:1px solid #eef2f7; border-radius:12px; padding:12px; margin:10px 0; font-size:12px; color:#555; }
+    .statement-list { max-height:45vh; overflow:auto; margin-top:12px; }
 
     /* MODALS */
     .modal-overlay {
@@ -245,6 +315,12 @@
     .begin-item input {
       width:130px; padding:8px 10px; border:1px solid #ddd; border-radius:8px; font-size:13px; text-align:right; font-family:'Poppins',sans-serif;
     }
+    .begin-item .b-check {
+      display:flex; align-items:center; gap:6px; color:#666; font-size:11px; font-weight:600; white-space:nowrap;
+    }
+    .begin-item .b-check input {
+      width:16px; height:16px; padding:0; accent-color:#8B0000;
+    }
 
     /* TOAST */
     .toast {
@@ -288,8 +364,37 @@
         <div class="h-label">↓ Total Out</div>
         <div class="h-value" id="hero-expense">₱0.00</div>
       </div>
+      <div class="hero-stat payable">
+        <div class="h-label" id="hero-payroll-payable-label">Deductions Payable</div>
+        <div class="h-value" id="hero-payroll-payable">&#8369;0.00</div>
+        <button class="payable-btn" onclick="openModal('deduction-payment-modal')">Record Payment</button>
+      </div>
     </div>
+    <div class="hero-note" id="hero-cash-after-payable">Cash Hand + Bank after May payable: &#8369;0.00</div>
     <div class="hero-date" id="hero-date"></div>
+  </div>
+
+  <div class="cash-control-card green" id="cash-control-card">
+    <div class="cash-control-head">
+      <div>
+        <div class="cash-control-title">Cash Level Monitoring and Control SOP</div>
+        <div class="cash-control-sub">Available Operating Cash = General Fund Cash + General Fund Bank - Restricted/Designated Funds - Approved Payables.</div>
+      </div>
+      <div class="cash-level-badge green" id="cash-level-badge">Green · Stable</div>
+    </div>
+    <div class="cash-control-body">
+      <div class="cash-metrics">
+        <div class="cash-metric"><div class="m-label">Available Operating Cash</div><div class="m-value" id="cash-available">₱0.00</div></div>
+        <div class="cash-metric"><div class="m-label">Cash Survival</div><div class="m-value" id="cash-survival">Set monthly expense</div></div>
+        <div class="cash-metric"><div class="m-label">Restricted / Designated</div><div class="m-value" id="cash-restricted">₱0.00</div></div>
+        <div class="cash-metric"><div class="m-label">Approved Payables</div><div class="m-value" id="cash-payables">₱0.00</div></div>
+      </div>
+      <div class="cash-control-rules" id="cash-control-rules"></div>
+      <div class="cash-control-actions">
+        <button onclick="openModal('cash-control-modal')">Set Cash Controls</button>
+        <button class="secondary" onclick="openModal('begin-modal')">Set Restricted Accounts</button>
+      </div>
+    </div>
   </div>
 
   <!-- ACCOUNTS -->
@@ -350,17 +455,55 @@
   <!-- ALL TRANSACTIONS -->
   <div class="transactions-card">
     <div class="trans-header">
-      <h4>All Transactions</h4>
-      <div class="filter-tabs">
-  <button class="filter-tab active" onclick="filterTransactions('all', this)">All</button>
-<button class="filter-tab" onclick="filterTransactions('income', this)">In</button>
-<button class="filter-tab" onclick="filterTransactions('expense', this)">Out</button>
-<button class="filter-tab" onclick="filterTransactions('transfer', this)">Move</button>
-</div>
+      <div>
+        <h4>Recent Transactions</h4>
+        <div class="trans-title-sub">Grouped view, last 15 days only</div>
+      </div>
+      <div class="statement-controls">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="filterTransactions('all', this)">All</button>
+          <button class="filter-tab" onclick="filterTransactions('income', this)">In</button>
+          <button class="filter-tab" onclick="filterTransactions('expense', this)">Out</button>
+          <button class="filter-tab" onclick="filterTransactions('transfer', this)">Move</button>
+        </div>
+        <button class="statement-btn" onclick="openStatementModal()">Statement</button>
+      </div>
     </div>
     <div id="trans-list"></div>
   </div>
 
+</div>
+
+<!-- STATEMENT MODAL -->
+<div class="modal-overlay" id="statement-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>Statement Request</h3>
+    <div class="modal-form-group">
+      <label>Start Date</label>
+      <input type="date" id="statement-start" />
+    </div>
+    <div class="modal-form-group">
+      <label>End Date</label>
+      <input type="date" id="statement-end" />
+    </div>
+    <div class="modal-form-group">
+      <label>Account</label>
+      <select id="statement-account"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>Type</label>
+      <select id="statement-type">
+        <option value="all">All</option>
+        <option value="income">In</option>
+        <option value="expense">Out</option>
+        <option value="transfer">Move</option>
+      </select>
+    </div>
+    <button class="modal-btn" onclick="generateStatement()">Generate Statement</button>
+    <div id="statement-output"></div>
+    <button class="modal-cancel" onclick="closeModal('statement-modal')">Close</button>
+  </div>
 </div>
 
 <!-- ADD FUNDS MODAL -->
@@ -438,21 +581,86 @@
   </div>
 </div>
 
+<!-- DEDUCTION PAYMENT MODAL -->
+<div class="modal-overlay" id="deduction-payment-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>Record Deduction Payment</h3>
+    <div class="modal-form-group">
+      <label>Source Account</label>
+      <select id="deduction-account"></select>
+    </div>
+    <div class="modal-form-group">
+      <label>Deduction Type</label>
+      <select id="deduction-kind">
+        <option value="SSS">SSS</option>
+        <option value="Workers Tithe">Workers Tithe</option>
+        <option value="BOP">BOP</option>
+        <option value="Decker">Decker</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-form-group">
+      <label>Payroll Month</label>
+      <input type="month" id="deduction-month" />
+    </div>
+    <div class="modal-form-group">
+      <label>Payment Date</label>
+      <input type="date" id="deduction-date" />
+    </div>
+    <div class="modal-form-group">
+      <label>Amount (&#8369;)</label>
+      <input type="number" id="deduction-amount" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="modal-form-group">
+      <label>Description</label>
+      <input type="text" id="deduction-desc" placeholder="e.g. SSS remittance" />
+    </div>
+    <button class="modal-btn red" onclick="recordDeductionPayment()">Confirm Payment</button>
+    <button class="modal-cancel" onclick="closeModal('deduction-payment-modal')">Cancel</button>
+  </div>
+</div>
+
 <!-- BEGINNING BALANCE MODAL -->
 <div class="modal-overlay" id="begin-modal">
   <div class="modal-box">
     <div class="modal-handle"></div>
     <h3>⚙️ Set Beginning Balance</h3>
     <p style="font-size:13px;color:#888;margin-bottom:16px;">
-      Enter the starting balance for each account.
-      This is a one-time setup — it will appear as the
-      first transaction in each account's history.
+      Enter the starting balance for each account and check the accounts included
+      in the General Fund beginning balance for the print report.
     </p>
     <div class="begin-list" id="begin-list"></div>
     <button class="modal-btn" onclick="saveBeginningBalances()">
       💾 Save Beginning Balances
     </button>
     <button class="modal-cancel" onclick="closeModal('begin-modal')">Cancel</button>
+  </div>
+</div>
+
+<!-- CASH CONTROL SOP MODAL -->
+<div class="modal-overlay" id="cash-control-modal">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <h3>Cash Level Control Settings</h3>
+    <p style="font-size:13px;color:#888;margin-bottom:16px;line-height:1.45;">
+      Set the church's essential monthly operating expense and already approved payables.
+      Payroll deductions payable are added automatically when applicable.
+    </p>
+    <div class="modal-form-group">
+      <label>Essential Monthly Operating Expense (&#8369;)</label>
+      <input type="number" id="cash-essential-monthly" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="modal-form-group">
+      <label>Already Approved Payables (&#8369;)</label>
+      <input type="number" id="cash-approved-payables" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="modal-form-group">
+      <label>Notes</label>
+      <input type="text" id="cash-control-notes" placeholder="e.g. updated after Finance Committee review" />
+    </div>
+    <button class="modal-btn" onclick="saveCashControlSettings()">Save Cash Controls</button>
+    <button class="modal-cancel" onclick="closeModal('cash-control-modal')">Cancel</button>
   </div>
 </div>
 
@@ -483,17 +691,22 @@
 
   // 3. ORIGINAL ACCOUNTS ARRAY
   const ACCOUNTS = [
-    { id:'cash-hand',  name:'Cash on Hand',    icon:'💵', cls:'cash-hand',  balance:0, beginning:0 },
-    { id:'cash-bank',  name:'Cash in Bank',     icon:'🏦', cls:'cash-bank',  balance:0, beginning:0 },
-    { id:'petty-cash', name:'Petty Cash Fund',  icon:'💰', cls:'petty-cash', balance:0, beginning:0 },
-    { id:'building',   name:'Building Fund',    icon:'⛪', cls:'building',   balance:0, beginning:0 },
-    { id:'mission',    name:'Mission Fund',     icon:'✈️', cls:'mission',    balance:0, beginning:0 },
-    { id:'investment', name:'Investments/TD',   icon:'📈', cls:'investment', balance:0, beginning:0 },
+    { id:'cash-hand',  name:'Cash on Hand',    icon:'💵', cls:'cash-hand',  balance:0, beginning:0, includedInGeneralFund:true },
+    { id:'cash-bank',  name:'Cash in Bank',     icon:'🏦', cls:'cash-bank',  balance:0, beginning:0, includedInGeneralFund:true },
+    { id:'petty-cash', name:'Petty Cash Fund',  icon:'💰', cls:'petty-cash', balance:0, beginning:0, includedInGeneralFund:true },
+    { id:'building',   name:'Building Fund',    icon:'⛪', cls:'building',   balance:0, beginning:0, includedInGeneralFund:true },
+    { id:'mission',    name:'Mission Fund',     icon:'✈️', cls:'mission',    balance:0, beginning:0, includedInGeneralFund:true },
+    { id:'investment', name:'Investments/TD',   icon:'📈', cls:'investment', balance:0, beginning:0, includedInGeneralFund:true },
   ];
 
   let transactions = [];
   let currentFilter = 'all';
   let selectedAccountId = null;
+  let cashControlSettings = {
+    essentialMonthlyExpense: 0,
+    approvedPayables: 0,
+    notes: ''
+  };
 
   let fbIncome = [];
 let fbExpenses = [];
@@ -504,6 +717,7 @@ function setupFinancialListeners() {
     fbIncome = [];
     snapshot.forEach((doc) => {
       const data = doc.data();
+      if (data.isSpecialProject) return;
       let resolvedTargetAccId = data.targetAccount; 
       
       if (data.type === 'Building Fund') resolvedTargetAccId = 'building';
@@ -525,7 +739,12 @@ function setupFinancialListeners() {
         amount: parseFloat(data.amount) || 0,
         desc: data.type === 'transfer' ? data.member : `${data.type}: ${data.member || 'Anonymous'}`,
         date: data.date || "2026-01-01",
-        targetAccId: resolvedTargetAccId 
+        targetAccId: resolvedTargetAccId,
+        rawType: data.type || 'Income',
+        budgetCategory: data.budgetCategory || data.category || '',
+        budgetDetails: data.budgetDetails || data.notes || '',
+        member: data.member || '',
+        postedAt: data.postedAt || data.timestamp || ''
       });
     });
     combineAndRender();
@@ -545,15 +764,46 @@ function setupFinancialListeners() {
         'mission': 'Mission Fund', 'investment': 'Investments/TD'
       };
 
+      const grossAmount = parseFloat(data.amount) || 0;
+      const netPay = parseFloat(data.netPay);
+      const payrollMonth = data.payrollMonth || String(data.date || '').slice(0, 7);
+      const isDeductionPayment = data.type === 'deduction-payment';
+      // Net-pay cash impact applies for the life of the payroll record, not just the
+      // calendar month it was created in - otherwise once the month rolls over this
+      // flips to grossAmount while the deduction-payment record keeps subtracting the
+      // deduction separately, double-counting the same cash outflow every month after.
+      const hasNetPayroll = data.isPayrollGenerated
+        && !data.isBenefit
+        && Number.isFinite(netPay);
+      const payrollDeductions = hasNetPayroll ? Math.max(0, grossAmount - netPay) : 0;
+      const cashImpactAmount = hasNetPayroll ? Math.max(0, netPay) : grossAmount;
+
       fbExpenses.push({
         id: doc.id,
         type: data.type === 'transfer' ? 'transfer' : 'expense',
         isExpenseTransfer: data.type === 'transfer', // Flag to properly SUBTRACT balance
         account: accountMap[targetId] || 'Cash on Hand',
-        amount: parseFloat(data.amount) || 0,
-        desc: data.sub || data.category || "Expense",
+        amount: cashImpactAmount,
+        grossAmount,
+        payrollDeductions,
+        deductionPaymentAmount: isDeductionPayment ? grossAmount : 0,
+        isDeductionPayment,
+        deductionKind: data.deductionKind || '',
+        desc: isDeductionPayment
+          ? data.sub || `${data.deductionKind || "Deduction"} payment`
+          : hasNetPayroll
+          ? `${data.payrollParticulars || data.sub || data.category || "Payroll"} (net cash paid)`
+          : data.sub || data.payrollParticulars || data.category || "Expense",
         date: data.date || "2026-01-01",
-        targetAccId: targetId
+        targetAccId: targetId,
+        category: data.category || data.budgetCategory || '',
+        sub: data.sub || data.payrollParticulars || '',
+        payee: data.payee || '',
+        isPayrollGenerated: !!data.isPayrollGenerated,
+        isAllowance: !!data.isAllowance,
+        payrollMonth,
+        payrollWeek: String(data.payrollWeek || ''),
+        postedAt: data.postedAt || ''
       });
     });
     combineAndRender();
@@ -564,11 +814,25 @@ function setupFinancialListeners() {
 db.collection("settings").doc("beginningBalances").onSnapshot((doc) => {
   if (doc.exists) {
     const data = doc.data().accounts || {};
+    const included = doc.data().generalFundAccounts || {};
     ACCOUNTS.forEach(a => {
       a.beginning = parseFloat(data[a.id]) || 0;
+      a.includedInGeneralFund = included[a.id] !== false;
     });
     combineAndRender();
   }
+});
+
+db.collection("settings").doc("cashControlSettings").onSnapshot((doc) => {
+  if (doc.exists) {
+    const data = doc.data();
+    cashControlSettings = {
+      essentialMonthlyExpense: parseFloat(data.essentialMonthlyExpense || 0) || 0,
+      approvedPayables: parseFloat(data.approvedPayables || 0) || 0,
+      notes: data.notes || ''
+    };
+  }
+  if (typeof renderCashControl === 'function') renderCashControl();
 });
 
 // ITO ANG MAGSASAMA NG DATA AT MAG-A-ADD NG TAMANG BALANCES
@@ -592,7 +856,7 @@ function combineAndRender() {
     ACCOUNTS.forEach(a => a.balance = a.beginning || 0);
     
     // Wala nang hardcoded na "cash-hand". Susundin na niya ang targetAccId!
-   transactions.forEach(t => {
+   transactions.filter(isEffectiveAsOfToday).forEach(t => {
         const amount = parseFloat(t.amount) || 0;
         const targetId = t.targetAccId || (t.payment || 'cash-hand'); 
         const acc = ACCOUNTS.find(a => a.id === targetId);
@@ -637,19 +901,111 @@ setupFinancialListeners();
 
   function render() {
     renderHero();
+    renderCashControl();
     renderAccounts();
     renderTransactions();
     populateSelects();
     if (selectedAccountId) renderAccountDetail(selectedAccountId);
   }
 
+  function getCurrentPayrollPayable() {
+    // Running liability across all payroll months: total deductions ever withheld
+    // minus total deduction payments ever remitted. Scoping either side to "this
+    // calendar month" caused last month's unpaid (or already-paid) deductions to
+    // silently drop out of the payable as soon as the month changed.
+    const asOfTransactions = transactions.filter(isEffectiveAsOfToday);
+    const grossPayrollDeductions = asOfTransactions.reduce((s,t)=>s+(parseFloat(t.payrollDeductions || 0) || 0),0);
+    const paidDeductionPayments = asOfTransactions
+      .filter(t => t.isDeductionPayment)
+      .reduce((s,t)=>s+(parseFloat(t.deductionPaymentAmount || t.amount || 0) || 0),0);
+    return Math.max(0, grossPayrollDeductions - paidDeductionPayments);
+  }
+
+  function getCashLevel(months) {
+    if (!Number.isFinite(months)) {
+      return {
+        color: 'yellow',
+        level: 'Needs Setup',
+        control: 'Set essential monthly operating expense to activate SOP monitoring.'
+      };
+    }
+    if (months >= 3) return { color:'green', level:'Stable', control:'Normal operations; ordinary controls continue.' };
+    if (months >= 2) return { color:'yellow', level:'Caution', control:'Treasurer informs Finance Chair; closer review of non-routine spending.' };
+    if (months >= 1) return { color:'orange', level:'Restricted', control:'Finance Committee and Auditor notified; 30-60 day cash forecast required.' };
+    if (months >= 0.5) return { color:'red', level:'Critical', control:'Critical cash control; essential obligations only unless approved.' };
+    if (months >= 0.25) return { color:'purple', level:'Severe', control:'Severe cash preservation; 14-day cash survival report required.' };
+    return { color:'black', level:'Emergency / Survival Mode', control:'Emergency spending freeze; emergency Finance/Council action required.' };
+  }
+
+  function getCashControlSnapshot() {
+    const generalCash = ACCOUNTS
+      .filter(a => a.id === 'cash-hand' || a.id === 'cash-bank')
+      .reduce((s,a)=>s+(parseFloat(a.balance) || 0),0);
+    const restrictedDesignated = ACCOUNTS
+      .filter(a => !['cash-hand','cash-bank'].includes(a.id) && a.includedInGeneralFund === false)
+      .reduce((s,a)=>s+(parseFloat(a.balance) || 0),0);
+    const payrollPayable = getCurrentPayrollPayable();
+    const approvedPayables = (parseFloat(cashControlSettings.approvedPayables) || 0) + payrollPayable;
+    const availableOperatingCash = generalCash - restrictedDesignated - approvedPayables;
+    const essentialMonthlyExpense = parseFloat(cashControlSettings.essentialMonthlyExpense) || 0;
+    const survivalMonths = essentialMonthlyExpense > 0 ? availableOperatingCash / essentialMonthlyExpense : NaN;
+    const level = getCashLevel(survivalMonths);
+    return {
+      generalCash,
+      restrictedDesignated,
+      payrollPayable,
+      approvedPayables,
+      availableOperatingCash,
+      essentialMonthlyExpense,
+      survivalMonths,
+      level
+    };
+  }
+
+  function renderCashControl() {
+    const card = document.getElementById('cash-control-card');
+    if (!card) return;
+    const snap = getCashControlSnapshot();
+    const level = snap.level;
+    card.className = `cash-control-card ${level.color}`;
+    document.getElementById('cash-level-badge').className = `cash-level-badge ${level.color}`;
+    document.getElementById('cash-level-badge').textContent = `${level.color.charAt(0).toUpperCase() + level.color.slice(1)} · ${level.level}`;
+    document.getElementById('cash-available').textContent = '\u20b1' + fmt(snap.availableOperatingCash);
+    document.getElementById('cash-survival').textContent = Number.isFinite(snap.survivalMonths)
+      ? `${Math.max(0, snap.survivalMonths).toFixed(2)} months`
+      : 'Set monthly expense';
+    document.getElementById('cash-restricted').textContent = '\u20b1' + fmt(snap.restrictedDesignated);
+    document.getElementById('cash-payables').textContent = '\u20b1' + fmt(snap.approvedPayables);
+    document.getElementById('cash-control-rules').innerHTML = `
+      <strong>Required Control:</strong> ${level.control}<br>
+      <strong>Payment Priority During Low Cash:</strong> utilities, salaries and approved compensation, safety/security/urgent repairs,
+      essential worship operations, required obligations, essential cleaning and sanitation supplies, critical Finance Committee-approved
+      payables, complete pre-approved reimbursements, and other expenses only if specially approved.<br>
+      <span style="color:#777;">Computation: General Fund cash/bank \u20b1${fmt(snap.generalCash)} - restricted/designated \u20b1${fmt(snap.restrictedDesignated)}
+      - approved payables \u20b1${fmt(snap.approvedPayables)} = \u20b1${fmt(snap.availableOperatingCash)} available operating cash.</span>`;
+  }
+
   function renderHero() {
+    const asOfTransactions = transactions.filter(isEffectiveAsOfToday);
     const total   = ACCOUNTS.reduce((s,a) => s+a.balance, 0);
-    const income  = transactions.filter(t=>t.type==='income' && !t.isIncomeTransfer).reduce((s,t)=>s+t.amount,0);
-    const expense = transactions.filter(t=>t.type==='expense' && !t.isExpenseTransfer).reduce((s,t)=>s+t.amount,0);
+    const income  = asOfTransactions.filter(t=>t.type==='income' && !t.isIncomeTransfer).reduce((s,t)=>s+t.amount,0);
+    const expense = asOfTransactions.filter(t=>t.type==='expense' && !t.isExpenseTransfer).reduce((s,t)=>s+t.amount,0);
+    const currentPayrollMonth = new Date().toISOString().slice(0, 7);
+    const payrollMonthDate = new Date(`${currentPayrollMonth}-01T00:00:00`);
+    const payrollMonthLabel = payrollMonthDate.toLocaleDateString('en-PH', { month:'long' });
+    const payrollPayable = getCurrentPayrollPayable();
+    const cashHandBank = ACCOUNTS
+      .filter(a => a.id === 'cash-hand' || a.id === 'cash-bank')
+      .reduce((s,a)=>s+a.balance,0);
+    const generalFundBeginning = ACCOUNTS
+      .filter(a => a.includedInGeneralFund)
+      .reduce((s,a)=>s+(parseFloat(a.beginning) || 0),0);
     document.getElementById('hero-total').textContent   = '₱'+fmt(total);
     document.getElementById('hero-income').textContent  = '₱'+fmt(income);
     document.getElementById('hero-expense').textContent = '₱'+fmt(expense);
+    document.getElementById('hero-payroll-payable-label').textContent = 'Outstanding Deductions Payable';
+    document.getElementById('hero-payroll-payable').textContent = '\u20b1'+fmt(payrollPayable);
+    document.getElementById('hero-cash-after-payable').textContent = `General Fund print beginning: \u20b1${fmt(generalFundBeginning)} · Cash Hand + Bank after ${payrollMonthLabel} payable: \u20b1${fmt(cashHandBank - payrollPayable)}`;
     document.getElementById('hero-date').textContent    = 'As of '+new Date().toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'});
   }
 
@@ -686,7 +1042,7 @@ setupFinancialListeners();
     document.getElementById('d-balance').textContent   = '₱' + fmt(acc.balance);
     document.getElementById('d-beginning').textContent = 'Beginning Balance: ₱' + fmt(acc.beginning);
 
-    const accTrans = getAccountTransactions(acc);
+    const accTrans = getAccountTransactions(acc).filter(isEffectiveAsOfToday);
     const totalIn  = accTrans.filter(t => t.type==='income' || t.isIncomeTransfer).reduce((s,t)=>s+t.amount,0);
     const totalOut = accTrans.filter(t => t.type==='expense' || t.isExpenseTransfer).reduce((s,t)=>s+t.amount,0);
 
@@ -695,23 +1051,30 @@ setupFinancialListeners();
     document.getElementById('ds-out').textContent   = '₱'+fmt(totalOut);
 
     const list = document.getElementById('detail-trans-list');
-    if (accTrans.length === 0) {
-      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No transactions yet.</div>`;
+    const recentAccGroups = getGroupedTransactions(transactions, {
+      type: 'all',
+      account: acc.id,
+      start: getRecentStartDate(15),
+      end: new Date()
+    });
+    if (recentAccGroups.length === 0) {
+      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No account transactions in the last 15 days.</div>`;
       return;
     }
     let html = '';
     if (acc.beginning > 0) {
       html += `<div class="trans-item"><div class="trans-icon begin">🏁</div><div class="trans-details"><div class="trans-name">Beginning</div></div><div class="trans-right"><div class="trans-amount begin">+₱${fmt(acc.beginning)}</div></div></div>`;
     }
-    [...accTrans].reverse().forEach(t => {
-      const isIn = t.type==='income' || t.isIncomeTransfer;
-      const icon = isIn ? '⬆️' : '⬇️';
-      html += `<div class="trans-item"><div class="trans-icon">${icon}</div><div class="trans-details"><div class="trans-name">${t.desc}</div></div><div class="trans-right"><div class="trans-amount">${fmt(t.amount)}</div></div></div>`;
-    });
+    html += renderTransactionGroups(recentAccGroups);
     list.innerHTML = html;
   }
 
- function getAccountTransactions(acc) {
+  function getCashBasisNote(t) {
+    if (!t || !t.grossAmount || t.grossAmount === t.amount) return '';
+    return `Gross \u20b1${fmt(t.grossAmount)} less deductions \u20b1${fmt(t.payrollDeductions || 0)}`;
+  }
+
+	 function getAccountTransactions(acc) {
     return transactions
       .filter(t => t.targetAccId === acc.id)
       .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -724,64 +1087,198 @@ setupFinancialListeners();
   }
 
   function renderTransactions() {
-    // I-sort muna ang main list (Newest to Oldest) bago i-render
-    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
     const list = document.getElementById('trans-list');
-    
-    // 1. FILTER LOGIC
-    let filtered = transactions.filter(t => {
-      if (currentFilter === 'all') return true;
-      if (currentFilter === 'income' && t.type === 'income') return true;
-      if (currentFilter === 'expense' && t.type === 'expense') return true;
-      if (currentFilter === 'transfer' && t.type === 'transfer') return true;
-      return false;
+    const grouped = getGroupedTransactions(transactions, {
+      type: currentFilter,
+      start: getRecentStartDate(15),
+      end: new Date()
     });
 
-    // 2. SORTING (Latest first)
-    filtered.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-    if (filtered.length === 0) {
-      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No transactions yet.</div>`;
+    if (grouped.length === 0) {
+      list.innerHTML = `<div class="empty-trans"><div class="e-icon">📭</div>No transactions in the last 15 days.</div>`;
       return;
     }
 
+    list.innerHTML = renderTransactionGroups(grouped);
+  }
+
+  function parseLocalDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    const parts = String(value).slice(0, 10).split('-').map(Number);
+    if (parts.length === 3 && parts.every(Boolean)) return new Date(parts[0], parts[1] - 1, parts[2]);
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+
+  function isEffectiveAsOfToday(t) {
+    const dt = parseLocalDate(t && t.date);
+    if (!dt) return false;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return dt <= today;
+  }
+
+  function getRecentStartDate(days) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+    return start;
+  }
+
+  function formatDateKey(date) {
+    const d = parseLocalDate(date);
+    if (!d) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function getWeekEndDate(dateValue) {
+    const d = parseLocalDate(dateValue);
+    if (!d) return null;
+    const result = new Date(d);
+    const day = result.getDay();
+    if (day !== 0) result.setDate(result.getDate() + (7 - day));
+    return result;
+  }
+
+  function normalizeLabel(value, fallback) {
+    return String(value || fallback || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function getIncomeGroupLabel(t) {
+    const rawType = normalizeLabel(t.rawType, 'Income');
+    const category = normalizeLabel(t.budgetCategory, '');
+    const categoryText = category.toLowerCase();
+    let base = rawType;
+    if (categoryText.includes('tithe') && !categoryText.includes('loose')) {
+      base = 'Tithes';
+    } else if (categoryText.includes('loose')) {
+      base = 'Loose Offering';
+    } else if (rawType === 'Source of Funds' && category) {
+      base = category;
+    }
+    const detail = normalizeLabel(t.budgetDetails, '');
+    const member = normalizeLabel(t.member, '');
+    if (detail && (!member || member === 'Anonymous' || member === 'General Collection' || member === 'Loose Offering')) {
+      return `${base} - ${detail}`;
+    }
+    return base;
+  }
+
+  function getExpenseGroupLabel(t) {
+    const category = normalizeLabel(t.category, '');
+    const sub = normalizeLabel(t.sub || t.desc, 'Expense');
+    if (t.isPayrollGenerated && t.isAllowance) {
+      return `Allowances${t.payrollWeek ? ' - Week ' + t.payrollWeek : ''}`;
+    }
+    if (t.isPayrollGenerated) {
+      return sub;
+    }
+    return category || sub;
+  }
+
+  function getTransactionGroupMeta(t) {
+    const isIncome = t.type === 'income' || t.isIncomeTransfer;
+    const isExpense = t.type === 'expense' || t.isExpenseTransfer;
+    if (isIncome && !t.isIncomeTransfer) {
+      const weekEnd = getWeekEndDate(t.date);
+      const label = getIncomeGroupLabel(t);
+      const dateKey = formatDateKey(weekEnd || t.date);
+      return {
+        key: `income|${t.targetAccId}|${dateKey}|${label}`,
+        label,
+        date: dateKey,
+        period: weekEnd ? `Week ending ${weekEnd.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })}` : ''
+      };
+    }
+    if (isExpense && !t.isExpenseTransfer) {
+      const label = getExpenseGroupLabel(t);
+      const dateKey = formatDateKey(t.date);
+      return {
+        key: `expense|${t.targetAccId}|${dateKey}|${label}`,
+        label,
+        date: dateKey,
+        period: dateKey
+      };
+    }
+    return {
+      key: `${t.type}|${t.id}`,
+      label: t.desc || 'Transfer',
+      date: formatDateKey(t.date),
+      period: formatDateKey(t.date)
+    };
+  }
+
+  function matchesTransactionFilter(t, type) {
+    if (type === 'all') return true;
+    if (type === 'income') return t.type === 'income';
+    if (type === 'expense') return t.type === 'expense';
+    if (type === 'transfer') return t.type === 'transfer';
+    return true;
+  }
+
+  function getGroupedTransactions(source, opts = {}) {
+    const start = parseLocalDate(opts.start);
+    const end = parseLocalDate(opts.end);
+    if (end) end.setHours(23, 59, 59, 999);
+    const map = {};
+
+    source.forEach(t => {
+      const dt = parseLocalDate(t.date);
+      if (!dt) return;
+      if (start && dt < start) return;
+      if (end && dt > end) return;
+      if (opts.account && opts.account !== 'all' && t.targetAccId !== opts.account) return;
+      if (!matchesTransactionFilter(t, opts.type || 'all')) return;
+
+      const meta = getTransactionGroupMeta(t);
+      if (!map[meta.key]) {
+        map[meta.key] = {
+          ...meta,
+          type: t.type,
+          isIncome: t.type === 'income' || t.isIncomeTransfer,
+          account: t.account || '',
+          amount: 0,
+          grossAmount: 0,
+          payrollDeductions: 0,
+          count: 0
+        };
+      }
+      map[meta.key].amount += parseFloat(t.amount || 0);
+      map[meta.key].grossAmount += parseFloat(t.grossAmount || t.amount || 0);
+      map[meta.key].payrollDeductions += parseFloat(t.payrollDeductions || 0);
+      map[meta.key].count++;
+    });
+
+    return Object.values(map).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  }
+
+  function renderTransactionGroups(groups) {
     let html = '';
     let lastDate = '';
-
-    filtered.forEach(t => {
-      // 3. DATE GROUPING
-      const d = new Date(t.date);
-      const dateLabel = d.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
-
+    groups.forEach(g => {
+      const dateLabel = g.period || g.date || 'No date';
       if (dateLabel !== lastDate) {
         html += `<div style="font-size: 11px; font-weight: 700; color: #8B0000; padding: 18px 0 8px; border-bottom: 1px solid #f0f0f0; margin-top: 5px;">${dateLabel}</div>`;
         lastDate = dateLabel;
       }
-
-      let icon = '🔄'; 
-      if (t.type === 'income') icon = '📥';
-      if (t.type === 'expense') icon = '📤';
-
-     const isIncomeEntry = t.type === 'income' || t.isIncomeTransfer;
-
+      const icon = g.type === 'income' ? '📥' : g.type === 'expense' ? '📤' : '🔄';
+      const sign = g.isIncome ? '+' : '-';
+      const countText = g.count > 1 ? ` · ${g.count} entries` : '';
+      const payableText = g.payrollDeductions > 0 ? ` · Gross \u20b1${fmt(g.grossAmount)} less deductions \u20b1${fmt(g.payrollDeductions)}` : '';
       html += `
         <div class="trans-item">
-          <div class="trans-icon ${t.type}" style="width: 35px; height: 35px; font-size: 16px;">${icon}</div>
+          <div class="trans-icon ${g.type}" style="width: 35px; height: 35px; font-size: 16px;">${icon}</div>
           <div class="trans-details">
-            <div class="trans-name">${t.desc}</div>
-            <div class="trans-sub">${t.account || ''} ${t.toAccount ? '→ ' + t.toAccount : ''}</div>
+            <div class="trans-name">${escapeHtml(g.label)}</div>
+            <div class="trans-sub">${escapeHtml(g.account)}${countText}${payableText}</div>
           </div>
           <div class="trans-right">
-            <div class="trans-amount ${t.type}">
-               ${isIncomeEntry ? '+' : '-'}₱${fmt(t.amount)}
-            </div>
-            <div class="trans-date" style="font-size: 9px; opacity: 0.6;">
-              ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-            </div>
+            <div class="trans-amount ${g.type}">${sign}\u20b1${fmt(g.amount)}</div>
           </div>
         </div>`;
     });
-    list.innerHTML = html;
+    return html;
   }
 
   function filterTransactions(type, element) {
@@ -802,15 +1299,72 @@ setupFinancialListeners();
     renderTransactions();
   }
 
-  function openModal(id) { if (id==='begin-modal') openBeginModal(); populateSelects(); document.getElementById(id).classList.add('active'); }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function openStatementModal() {
+    populateSelects();
+    const end = new Date();
+    const start = getRecentStartDate(30);
+    document.getElementById('statement-start').value = formatDateKey(start);
+    document.getElementById('statement-end').value = formatDateKey(end);
+    document.getElementById('statement-type').value = currentFilter || 'all';
+    document.getElementById('statement-output').innerHTML = '';
+    openModal('statement-modal');
+  }
+
+  function generateStatement() {
+    const startValue = document.getElementById('statement-start').value;
+    const endValue = document.getElementById('statement-end').value;
+    const account = document.getElementById('statement-account').value;
+    const type = document.getElementById('statement-type').value;
+    const start = parseLocalDate(startValue);
+    const end = parseLocalDate(endValue);
+    const output = document.getElementById('statement-output');
+
+    if (!start || !end || start > end) {
+      output.innerHTML = `<div class="empty-trans">Select a valid date range.</div>`;
+      return;
+    }
+
+    const grouped = getGroupedTransactions(transactions, { start, end, account, type });
+    const totalIn = grouped.filter(g => g.isIncome).reduce((s, g) => s + g.amount, 0);
+    const totalOut = grouped.filter(g => !g.isIncome).reduce((s, g) => s + g.amount, 0);
+    const accountLabel = account === 'all'
+      ? 'All accounts'
+      : (ACCOUNTS.find(a => a.id === account)?.name || account);
+
+    output.innerHTML = `
+      <div class="statement-summary">
+        <strong>${escapeHtml(accountLabel)}</strong><br>
+        ${escapeHtml(startValue)} to ${escapeHtml(endValue)} · ${grouped.length} grouped lines<br>
+        In: \u20b1${fmt(totalIn)} · Out: \u20b1${fmt(totalOut)} · Net: \u20b1${fmt(totalIn - totalOut)}
+      </div>
+      <div class="statement-list">
+        ${grouped.length ? renderTransactionGroups(grouped) : '<div class="empty-trans">No transactions found for this range.</div>'}
+      </div>`;
+  }
+
+  function openModal(id) {
+    if (id==='begin-modal') openBeginModal();
+    if (id==='deduction-payment-modal') prepareDeductionPaymentModal();
+    if (id==='cash-control-modal') prepareCashControlModal();
+    populateSelects();
+    document.getElementById(id).classList.add('active');
+  }
   function closeModal(id) { document.getElementById(id).classList.remove('active'); }
   
   function populateSelects() {
     const opts = ACCOUNTS.map(a=>`<option value="${a.id}">${a.icon} ${a.name}</option>`).join('');
-    ['add-account','transfer-from','transfer-to','withdraw-account'].forEach(id=>{ 
+    ['add-account','transfer-from','transfer-to','withdraw-account','deduction-account'].forEach(id=>{ 
         const el = document.getElementById(id);
         if(el) el.innerHTML=opts; 
     });
+    const statementAccount = document.getElementById('statement-account');
+    if (statementAccount) statementAccount.innerHTML = `<option value="all">All Accounts</option>${opts}`;
   }
 function openBeginModal() {
     const list = document.getElementById('begin-list');
@@ -820,6 +1374,10 @@ function openBeginModal() {
           <div class="b-icon">${a.icon}</div>
           <div class="b-name">${a.name}</div>
           <input type="number" id="beg-${a.id}" value="${a.beginning || 0}" step="0.01">
+          <label class="b-check" title="Include in General Fund beginning balance on Print Report">
+            <input type="checkbox" id="beg-inc-${a.id}" ${a.includedInGeneralFund !== false ? 'checked' : ''}>
+            Print
+          </label>
         </div>
       `).join('');
     }
@@ -828,18 +1386,23 @@ function openBeginModal() {
   async function saveBeginningBalances() {
     let totalBeginning = 0;
     let begData = {};
+    let generalFundAccounts = {};
 
     // Kunin lahat ng nilagay sa input fields
     ACCOUNTS.forEach(a => {
       const val = parseFloat(document.getElementById(`beg-${a.id}`).value) || 0;
+      const included = document.getElementById(`beg-inc-${a.id}`).checked;
       a.beginning = val;
+      a.includedInGeneralFund = included;
       begData[a.id] = val;
-      totalBeginning += val; // I-total lahat ng beginning balances
+      generalFundAccounts[a.id] = included;
+      if (included) totalBeginning += val;
     });
 
     // I-save sa Firebase Settings para mabasa ng Print Report
     await db.collection('settings').doc('beginningBalances').set({
       accounts: begData,
+      generalFundAccounts,
       total: totalBeginning
     });
 
@@ -847,12 +1410,96 @@ function openBeginModal() {
     closeModal('begin-modal');
     combineAndRender();
   }
+
+  function prepareCashControlModal() {
+    const monthly = document.getElementById('cash-essential-monthly');
+    const payables = document.getElementById('cash-approved-payables');
+    const notes = document.getElementById('cash-control-notes');
+    if (monthly) monthly.value = cashControlSettings.essentialMonthlyExpense || '';
+    if (payables) payables.value = cashControlSettings.approvedPayables || '';
+    if (notes) notes.value = cashControlSettings.notes || '';
+  }
+
+  async function saveCashControlSettings() {
+    const essentialMonthlyExpense = parseFloat(document.getElementById('cash-essential-monthly').value) || 0;
+    const approvedPayables = parseFloat(document.getElementById('cash-approved-payables').value) || 0;
+    const notes = document.getElementById('cash-control-notes').value.trim();
+    cashControlSettings = { essentialMonthlyExpense, approvedPayables, notes };
+    await db.collection('settings').doc('cashControlSettings').set({
+      essentialMonthlyExpense,
+      approvedPayables,
+      notes,
+      updatedAt: new Date().toISOString()
+    });
+    showToast('Cash control settings saved.');
+    closeModal('cash-control-modal');
+    renderCashControl();
+  }
   function fmt(n) { return (n||0).toLocaleString('en-PH',{minimumFractionDigits:2}); }
   function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 3000); }
   function today() { return new Date().toLocaleDateString('en-PH'); }
 
+  function prepareDeductionPaymentModal() {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentDate = new Date().toISOString().slice(0, 10);
+    const monthEl = document.getElementById('deduction-month');
+    const dateEl = document.getElementById('deduction-date');
+    if (monthEl && !monthEl.value) monthEl.value = currentMonth;
+    if (dateEl && !dateEl.value) dateEl.value = currentDate;
+  }
+
+  async function recordDeductionPayment() {
+    const accountId = document.getElementById('deduction-account').value;
+    const deductionKind = document.getElementById('deduction-kind').value;
+    const payrollMonth = document.getElementById('deduction-month').value;
+    const date = document.getElementById('deduction-date').value;
+    const amount = parseFloat(document.getElementById('deduction-amount').value) || 0;
+    const desc = document.getElementById('deduction-desc').value || `${deductionKind} remittance`;
+    const btn = document.querySelector('#deduction-payment-modal .modal-btn');
+
+    if (!accountId || !payrollMonth || !date || amount <= 0) {
+      showToast('Please complete the deduction payment details.');
+      return;
+    }
+
+    const account = ACCOUNTS.find(a => a.id === accountId);
+    if (account && account.balance < amount) {
+      showToast('Insufficient balance in source account.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      await db.collection("expenses").add({
+        amount,
+        category: "Payroll Deductions Payment",
+        sub: desc,
+        payment: accountId,
+        targetAccId: accountId,
+        type: 'deduction-payment',
+        deductionKind,
+        payrollMonth,
+        date,
+        status: 'Paid',
+        postedAt: new Date().toISOString()
+      });
+
+      closeModal('deduction-payment-modal');
+      document.getElementById('deduction-amount').value = '';
+      document.getElementById('deduction-desc').value = '';
+      showToast('Deduction payment recorded.');
+    } catch (error) {
+      console.error('Deduction payment error:', error);
+      showToast('Error saving deduction payment.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirm Payment';
+    }
+  }
+
   loadData();
-  setupFirebaseListener(); 
+  if (typeof setupFirebaseListener === 'function') setupFirebaseListener(); 
   render();
   async function transferFunds() {
     // 1. Safety lock para hindi ma-double click

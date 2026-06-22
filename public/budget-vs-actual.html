@@ -73,14 +73,38 @@
     .alert-banner { border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; display: none; line-height: 1.8; }
     .alert-exceeded { background: #fadbd8; border-left: 5px solid #c0392b; color: #922b21; }
 
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .kpi-card { border-radius: 12px; padding: 20px; text-align: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .kpi-card { border-radius: 12px; padding: 20px; text-align: center; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.2); position: relative; cursor: help; }
+    .kpi-card[data-help]::after {
+      content: attr(data-help);
+      display: none;
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: calc(100% + 8px);
+      background: rgba(20,24,28,0.96);
+      color: white;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      z-index: 30;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+    }
+    .kpi-card[data-help]:hover::after,
+    .kpi-card[data-help]:focus::after,
+    .kpi-card[data-help].help-open::after { display: block; }
     .kpi-income { background: linear-gradient(135deg, #1e8449, #27ae60); }
     .kpi-surplus { background: linear-gradient(135deg, #1e8449, #27ae60); }
     .kpi-deficit { background: linear-gradient(135deg, #922b21, #c0392b); }
     .kpi-label { font-size: 13px; opacity: 0.9; margin-bottom: 8px; font-weight: 500; }
     .kpi-value { font-size: 24px; font-weight: 700; }
     .kpi-sub { font-size: 12px; opacity: 0.9; margin-top: 4px; font-weight: 500; }
+    .kpi-toggle-wrap { text-align: center; margin: -2px 0 24px; }
+    .kpi-toggle-btn { background: white; color: #922b21; border: 1px solid #e6b0aa; border-radius: 20px; padding: 9px 16px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; }
+    .kpi-toggle-btn:hover { background: #fdf2f0; }
+    .extra-kpis { display: none; }
+    .extra-kpis.show { display: grid; }
 
     .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #eee; flex-wrap: wrap; }
     .tab-btn { padding: 10px 18px; border: none; background: none; font-family: 'Poppins', sans-serif; font-size: 14px; cursor: pointer; color: #888; font-weight: 500; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: 0.2s; }
@@ -204,7 +228,11 @@
   </div>
 
   <div class="alert-banner alert-exceeded" id="alert-exceeded"></div>
-  <div class="kpi-grid" id="kpi-grid"></div>
+  <div class="kpi-grid" id="kpi-core-grid"></div>
+  <div class="kpi-toggle-wrap">
+    <button class="kpi-toggle-btn" id="bva-kpi-toggle-btn" onclick="toggleBvaExtraKpis()">Show other KPI Cards</button>
+  </div>
+  <div class="kpi-grid extra-kpis" id="kpi-extra-grid"></div>
 
   <div class="card">
     <div class="tabs">
@@ -432,6 +460,8 @@
       actualIncome = s.docs.map(d=>d.data()).filter(d => {
         // Skip transfers
         if (d.type === 'transfer') return false;
+        // Skip Special Project funding; project transparency is handled in the project ledger.
+        if (d.isSpecialProject) return false;
         // Skip Building Fund
         if ((d.type || '').toLowerCase().includes('building fund') || 
             (d.budgetCategory || '').toLowerCase().includes('building fund')) return false;
@@ -439,9 +469,12 @@
       });
       renderAll(); 
     });
-    db.collection("expenses").get().then(s => { 
-      actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer');
-      renderAll(); 
+    db.collection("expenses").get().then(s => {
+      // Deduction-payment settlements are excluded alongside transfers: the withheld
+      // amount is already expensed at gross on the originating payroll record, so
+      // counting the remittance again here would double-count the same expense.
+      actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment');
+      renderAll();
     });
   }
 
@@ -518,6 +551,23 @@
       else collapsedBva[type].add(gName);
       renderAll();
   }
+
+  function toggleBvaExtraKpis() {
+    const grid = document.getElementById('kpi-extra-grid');
+    const btn = document.getElementById('bva-kpi-toggle-btn');
+    const isOpen = grid.classList.toggle('show');
+    btn.textContent = isOpen ? 'Hide other KPI Cards' : 'Show other KPI Cards';
+  }
+
+  document.addEventListener('click', event => {
+    const card = event.target.closest('.kpi-card[data-help]');
+    document.querySelectorAll('.kpi-card.help-open').forEach(openCard => {
+      if (openCard !== card) openCard.classList.remove('help-open');
+    });
+    if (card && window.matchMedia('(hover: none)').matches) {
+      card.classList.toggle('help-open');
+    }
+  });
 
   function renderExpenseBva(fExp) {
     const groups = getGroups('expense');
@@ -886,16 +936,38 @@
     const tExp = fExp.reduce((s,d)=>s+parseFloat(d.amount||0),0);
     const net = tInc - tExp;
     const annualExpenseBudget = Object.values(budgets.expense || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-    const periodExpenseBudget = currentPeriod === 'annual' ? annualExpenseBudget : annualExpenseBudget / 12;
-    const budgetUtilization = periodExpenseBudget > 0 ? (tExp / periodExpenseBudget * 100) : 0;
+    const annualIncomeBudget = Object.entries(budgets.income || {})
+      .filter(([k]) => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'))
+      .reduce((s, [,v]) => s + (parseFloat(v) || 0), 0);
+    const elapsedMonths = currentPeriod === 'annual' ? 12 : mo + 1;
+    const accumulatedExpenseBudget = annualExpenseBudget / 12 * elapsedMonths;
+    const accumulatedIncomeBudget = annualIncomeBudget / 12 * elapsedMonths;
+    const ytdFilter = (arr) => arr.filter(d => {
+      const dt = new Date(d.date);
+      return dt.getFullYear() === yr && dt.getMonth() <= mo;
+    });
+    const ytdInc = ytdFilter(actualIncome)
+      .filter(d => !isBuildingFund(d) && !isTransfer(d))
+      .reduce((s,d)=>s+parseFloat(d.amount||0),0);
+    const ytdExp = ytdFilter(actualExpense).reduce((s,d)=>s+parseFloat(d.amount||0),0);
+    const budgetUtilization = accumulatedExpenseBudget > 0 ? (ytdExp / accumulatedExpenseBudget * 100) : 0;
+    const expenseEfficiency = accumulatedExpenseBudget > 0 ? ((accumulatedExpenseBudget - ytdExp) / accumulatedExpenseBudget * 100) : 0;
+    const incomeEfficiency = accumulatedIncomeBudget > 0 ? (ytdInc / accumulatedIncomeBudget * 100) : 0;
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const accumulatedLabel = currentPeriod === 'annual' ? `${yr} full year` : `Jan-${monthShort[mo]} ${yr}`;
 
-    const grid = document.getElementById('kpi-grid');
-    if(grid) {
-      grid.innerHTML = `
-        <div class="kpi-card kpi-income"><div class="kpi-label">Total Income</div><div class="kpi-value">₱${fmt(tInc)}</div></div>
-        <div class="kpi-card kpi-deficit"><div class="kpi-label">Total Expense</div><div class="kpi-value">₱${fmt(tExp)}</div></div>
-        <div class="kpi-card ${net>=0?'kpi-surplus':'kpi-deficit'}"><div class="kpi-label">Net Standing</div><div class="kpi-value">₱${fmt(Math.abs(net))}</div><div class="kpi-sub">${net>=0?'SURPLUS':'DEFICIT'}</div></div>
-        <div class="kpi-card ${budgetUtilization<=100?'kpi-surplus':'kpi-deficit'}"><div class="kpi-label">Budget Utilization</div><div class="kpi-value">${budgetUtilization.toFixed(1)}%</div><div class="kpi-sub">of expense budget used</div></div>
+    const coreGrid = document.getElementById('kpi-core-grid');
+    const extraGrid = document.getElementById('kpi-extra-grid');
+    if(coreGrid && extraGrid) {
+      coreGrid.innerHTML = `
+        <div class="kpi-card kpi-income" tabindex="0" data-help="Total income received in the selected period."><div class="kpi-label">Total Income</div><div class="kpi-value">₱${fmt(tInc)}</div></div>
+        <div class="kpi-card kpi-deficit" tabindex="0" data-help="Total expenses recorded in the selected period."><div class="kpi-label">Total Expense</div><div class="kpi-value">₱${fmt(tExp)}</div></div>
+        <div class="kpi-card ${net>=0?'kpi-surplus':'kpi-deficit'}" tabindex="0" data-help="Income minus expenses for the selected period."><div class="kpi-label">Net Standing</div><div class="kpi-value">₱${fmt(Math.abs(net))}</div><div class="kpi-sub">${net>=0?'SURPLUS':'DEFICIT'}</div></div>
+      `;
+      extraGrid.innerHTML = `
+        <div class="kpi-card ${budgetUtilization<=100?'kpi-surplus':'kpi-deficit'}" tabindex="0" data-help="Shows how much of the accumulated expense budget has already been used. For May, it compares Jan-May expenses to Jan-May budget."><div class="kpi-label">Budget Utilization</div><div class="kpi-value">${budgetUtilization.toFixed(1)}%</div><div class="kpi-sub">${accumulatedLabel} expense budget used</div></div>
+        <div class="kpi-card ${expenseEfficiency>=0?'kpi-surplus':'kpi-deficit'}" tabindex="0" data-help="Shows whether expenses are still within the accumulated budget. Positive means budget remains; red means over budget."><div class="kpi-label">Expense Budget Efficiency</div><div class="kpi-value">${Math.abs(expenseEfficiency).toFixed(1)}%</div><div class="kpi-sub">${expenseEfficiency>=0?'remaining vs YTD budget':'over YTD budget'}</div></div>
+        <div class="kpi-card ${incomeEfficiency>=100?'kpi-surplus':'kpi-deficit'}" tabindex="0" data-help="Shows how much income has been received compared with the accumulated income target. 100% means target met."><div class="kpi-label">Income Budget Efficiency</div><div class="kpi-value">${incomeEfficiency.toFixed(1)}%</div><div class="kpi-sub">of ${accumulatedLabel} income target</div></div>
       `;
     }
 

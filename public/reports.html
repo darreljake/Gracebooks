@@ -70,7 +70,30 @@
     .kpi-card {
       border-radius: 12px; padding: 20px;
       text-align: center; color: white;
+      position: relative;
+      cursor: help;
     }
+    .kpi-card[data-help]::after {
+      content: attr(data-help);
+      display: none;
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: calc(100% + 8px);
+      background: rgba(20, 24, 28, 0.96);
+      color: white;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      text-transform: none;
+      letter-spacing: 0;
+      z-index: 30;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+    }
+    .kpi-card[data-help]:hover::after,
+    .kpi-card[data-help]:focus::after,
+    .kpi-card[data-help].help-open::after { display: block; }
     .kpi-card.tithe   { background: linear-gradient(135deg, #8e6f1f, #c9a84c); }
     .kpi-card.income  { background: linear-gradient(135deg, #1e8449, #27ae60); }
     .kpi-card.expense { background: linear-gradient(135deg, #c0392b, #e74c3c); }
@@ -215,17 +238,17 @@
   </div>
 
   <div class="kpi-grid">
-    <div class="kpi-card income">
+    <div class="kpi-card income" tabindex="0" data-help="All receipts recorded for the selected period, excluding restricted funds handled separately.">
       <div class="kpi-label">Total Income</div>
       <div class="kpi-amount" id="kpi-income">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-income-sub">Actual Funds</div>
     </div>
-    <div class="kpi-card expense">
+    <div class="kpi-card expense" tabindex="0" data-help="All expenses recorded for the selected period.">
       <div class="kpi-label">Total Expenses</div>
       <div class="kpi-amount" id="kpi-expense">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-expense-sub">Actual Spent</div>
     </div>
-    <div class="kpi-card balance">
+    <div class="kpi-card balance" tabindex="0" data-help="Income minus expenses for the selected period. Green means surplus, red means deficit.">
       <div class="kpi-label">Net Balance</div>
       <div class="kpi-amount" id="kpi-balance">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-balance-sub">Status</div>
@@ -237,72 +260,72 @@
   </div>
 
   <div class="kpi-grid extra-kpis" id="extra-kpis">
-    <div class="kpi-card tithe">
+    <div class="kpi-card tithe" tabindex="0" data-help="Total giving categorized as tithes for the selected period.">
       <div class="kpi-label">Total Tithes</div>
       <div class="kpi-amount" id="kpi-tithes">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-tithes-sub">Tithes only</div>
     </div>
-    <div class="kpi-card income">
+    <div class="kpi-card income" tabindex="0" data-help="Loose/general offering total for the selected period.">
       <div class="kpi-label">Loose Offering</div>
       <div class="kpi-amount" id="kpi-loose">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-loose-sub">Loose only</div>
     </div>
-    <div class="kpi-card members">
+    <div class="kpi-card members" tabindex="0" data-help="Number of unique members with tithe entries in the selected period.">
       <div class="kpi-label">Tithe Participants</div>
       <div class="kpi-amount" id="kpi-participants">0</div>
       <div class="kpi-sub" id="kpi-participants-sub">unique tithers</div>
     </div>
-    <div class="kpi-card ratio">
+    <div class="kpi-card ratio" tabindex="0" data-help="Average tithe amount per unique tither in the selected period.">
       <div class="kpi-label">Average Tithe</div>
       <div class="kpi-amount" id="kpi-avg-tithe">&#8369;0.00</div>
       <div class="kpi-sub">per tither</div>
     </div>
-    <div class="kpi-card expense">
+    <div class="kpi-card expense" tabindex="0" data-help="How much of received income was spent in the selected period.">
       <div class="kpi-label">Expense Ratio</div>
       <div class="kpi-amount" id="kpi-expense-ratio">0%</div>
       <div class="kpi-sub">expenses / receipts</div>
     </div>
-    <div class="kpi-card ratio">
+    <div class="kpi-card ratio" tabindex="0" data-help="Compares this period's net result against the previous similar period.">
       <div class="kpi-label" id="kpi-period-change-label">MoM Net Change</div>
       <div class="kpi-amount" id="kpi-mom">0%</div>
       <div class="kpi-sub" id="kpi-mom-sub">vs previous period</div>
     </div>
-    <div class="kpi-card ratio">
+    <div class="kpi-card ratio" tabindex="0" data-help="Share of expenses used for Nurture, Outreach, and Witness ministries.">
       <div class="kpi-label">Ministry Spending</div>
       <div class="kpi-amount" id="kpi-ministry-ratio">0%</div>
       <div class="kpi-sub">NOW ministries / expenses</div>
     </div>
-    <div class="kpi-card expense" title="Shows what percent of all expenses went to salaries and personnel support.">
+    <div class="kpi-card expense" tabindex="0" data-help="Percent of expenses used for salaries and personnel support.">
       <div class="kpi-label">Salaries & Personnel</div>
       <div class="kpi-amount" id="kpi-salaries-ratio">0%</div>
       <div class="kpi-sub" id="kpi-salaries-sub">of expenses</div>
     </div>
-    <div class="kpi-card ratio" title="Shows what percent of all expenses went to repairs and maintenance.">
+    <div class="kpi-card ratio" tabindex="0" data-help="Percent of expenses used for repairs and maintenance.">
       <div class="kpi-label">Repairs & Maintenance</div>
       <div class="kpi-amount" id="kpi-repairs-ratio">0%</div>
       <div class="kpi-sub" id="kpi-repairs-sub">of expenses</div>
     </div>
-    <div class="kpi-card ratio" title="Shows what percent of all expenses went to connectional ministries.">
+    <div class="kpi-card ratio" tabindex="0" data-help="Percent of expenses used for connectional ministries.">
       <div class="kpi-label">Connectional Ministries</div>
       <div class="kpi-amount" id="kpi-connectional-ratio">0%</div>
       <div class="kpi-sub" id="kpi-connectional-sub">of expenses</div>
     </div>
-    <div class="kpi-card members" title="Shows what percent of all expenses were categorized as Others.">
+    <div class="kpi-card members" tabindex="0" data-help="Percent of expenses categorized as Others.">
       <div class="kpi-label">Others</div>
       <div class="kpi-amount" id="kpi-others-ratio">0%</div>
       <div class="kpi-sub" id="kpi-others-sub">of expenses</div>
     </div>
-    <div class="kpi-card members" title="Shows what percent of all expenses were uncategorized or miscellaneous.">
+    <div class="kpi-card members" tabindex="0" data-help="Percent of expenses that were miscellaneous, unbudgeted, or uncategorized.">
       <div class="kpi-label">Miscellaneous</div>
       <div class="kpi-amount" id="kpi-misc-ratio">0%</div>
       <div class="kpi-sub" id="kpi-misc-sub">of expenses</div>
     </div>
-    <div class="kpi-card ytd">
+    <div class="kpi-card ytd" tabindex="0" data-help="Year-to-date income minus expenses up to the selected period.">
       <div class="kpi-label">YTD Net</div>
       <div class="kpi-amount" id="kpi-ytd">&#8369;0.00</div>
       <div class="kpi-sub" id="kpi-ytd-sub">vs prior year</div>
     </div>
-    <div class="kpi-card members">
+    <div class="kpi-card members" tabindex="0" data-help="Unique tithers divided by attendance. Shows giving participation, not worship attendance itself.">
       <div class="kpi-label">Tithe Participation</div>
       <div class="kpi-amount" id="kpi-participation-rate">0%</div>
       <div class="kpi-sub" id="kpi-attendance-sub">attendance not set</div>
@@ -376,7 +399,7 @@
       <button class="tab-btn" onclick="showTab('expense-tab', this)">Expense Breakdown</button>
       <button class="tab-btn" onclick="showTab('monthly-tab', this)">Monthly Growth</button>
       <button class="tab-btn" onclick="showTab('members-tab', this)">Member Giving</button>
-      <button class="tab-btn" onclick="showTab('weekly-tithers-tab', this)">Weekly Tithers</button>
+      <button class="tab-btn" onclick="showTab('weekly-tithers-tab', this)">Weekly Collection</button>
       <button class="tab-btn" onclick="showTab('trends-tab', this)">Trends</button>
     </div>
 
@@ -521,6 +544,10 @@
   for (let y = 2030; y >= 2023; y--) {
     yearSel.innerHTML += `<option value="${y}">${y}</option>`;
   }
+  const today = new Date();
+  yearSel.value = String(today.getFullYear());
+  document.getElementById('period-month').value = String(today.getMonth());
+  document.getElementById('period-quarter').value = String(Math.floor(today.getMonth() / 3) + 1);
 
   function parseDate(d) {
     if (!d) return null;
@@ -615,6 +642,8 @@
         const d = doc.data();
         // Skip transfers - they're in separate transfers collection
         if (d.type === 'transfer') return null;
+        // Skip Special Project funding - transparency is handled inside the project ledger.
+        if (d.isSpecialProject) return null;
         // Skip Building Fund - restricted fund, not real income
         if ((d.type || '').toLowerCase().includes('building fund') || 
             (d.budgetCategory || '').toLowerCase().includes('building fund') ||
@@ -629,6 +658,8 @@
             type: d.type || d.contributionType || d.Category || 'Other Income',
             budgetCategory: d.budgetCategory || d.category || "",
             category: d.category || d.budgetCategory || "",
+            budgetDetails: d.budgetDetails || d.details || "",
+            notes: d.notes || "",
             member: resolveMemberName(d)
         };
     }).filter(item => item !== null);
@@ -652,6 +683,10 @@
         const d = doc.data();
         // Skip transfers - they're in separate transfers collection
         if (d.type === 'transfer') return null;
+        // Skip deduction-payment settlements - the withheld amount was already
+        // expensed at gross when the payroll record was created, so counting the
+        // remittance again here would double-count the same expense.
+        if (d.type === 'deduction-payment') return null;
         return {
             id: doc.id,
             date: d.date || d.Date || "",
@@ -851,6 +886,27 @@
     return category.includes('loose');
   }
 
+  function getCollectionDetail(d) {
+    const detail = (d.budgetDetails || d.notes || '').trim();
+    if (!detail) return '';
+    return detail.replace(/\s+/g, ' ');
+  }
+
+  function isGeneralCollectionRecord(d) {
+    const member = (d.member || '').trim().toLowerCase();
+    return !member || member === 'anonymous' || member === 'general collection' || member === 'loose offering';
+  }
+
+  function getIncomeGroupKey(d) {
+    const base = d.type || 'Other Income';
+    const detail = getCollectionDetail(d);
+    const isOffering = `${base} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase().includes('offering');
+    if (detail && (isGeneralCollectionRecord(d) || isOffering)) {
+      return `${base} - ${detail}`;
+    }
+    return base;
+  }
+
   function isNamedTither(d) {
     return isTitheRecord(d)
       && d.member
@@ -942,6 +998,16 @@
     btn.textContent = isOpen ? 'Hide other KPI Cards' : 'Show other KPI Cards';
   }
 
+  document.addEventListener('click', event => {
+    const card = event.target.closest('.kpi-card[data-help]');
+    document.querySelectorAll('.kpi-card.help-open').forEach(openCard => {
+      if (openCard !== card) openCard.classList.remove('help-open');
+    });
+    if (card && window.matchMedia('(hover: none)').matches) {
+      card.classList.toggle('help-open');
+    }
+  });
+
   // --- WEEKLY TITHERS LOGIC ---
   function getWeekNumber(date) {
     const day = date.getDate();
@@ -989,7 +1055,7 @@
       d.member !== 'General Collection' && d.member.toLowerCase() !== 'loose offering'
     );
     
-    const looseTithes = monthTithes.filter(d => 
+    const collectionRecords = monthTithes.filter(d =>
       !d.member || d.member === 'Anonymous' || d.member.trim() === '' || 
       d.member === 'General Collection' || d.member.toLowerCase() === 'loose offering'
     );
@@ -1007,19 +1073,22 @@
       tithersMap[member][`w${week}`] += tithe.amount;
     });
 
-    const looseMap = { w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, total: 0 };
-    looseTithes.forEach(tithe => {
-      const reporting = getReportingWeek(tithe.date);
+    const collectionMap = {};
+    collectionRecords.forEach(record => {
+      const reporting = getReportingWeek(record.date);
       if (!reporting || reporting.year !== year || reporting.month !== month) return;
 
       const week = reporting.week;
-      looseMap[`w${week}`] += tithe.amount;
-      looseMap.total += tithe.amount;
+      const label = getIncomeGroupKey(record);
+      if (!collectionMap[label]) collectionMap[label] = { w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, total: 0 };
+      collectionMap[label][`w${week}`] += record.amount;
+      collectionMap[label].total += record.amount;
     });
 
     const sortedMembers = Object.keys(tithersMap).sort();
+    const sortedCollections = Object.entries(collectionMap).sort((a, b) => b[1].total - a[1].total);
     const headerRow = document.getElementById('weekly-header');
-    headerRow.innerHTML = `<th>Member Name</th><th>1st Week</th><th>2nd Week</th><th>3rd Week</th><th>4th Week</th><th>5th Week</th><th>Total</th>`;
+    headerRow.innerHTML = `<th>Collection / Member</th><th>1st Week</th><th>2nd Week</th><th>3rd Week</th><th>4th Week</th><th>5th Week</th><th>Total</th>`;
 
     const tbody = document.getElementById('weekly-tithers-body');
     let totalByWeek = { w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, total: 0 };
@@ -1044,9 +1113,9 @@
         </tr>`;
     });
 
-    if (looseMap.total > 0) {
+    if (sortedMembers.length > 0 && sortedCollections.length > 0) {
       rows.push(`<tr style="background: #fff5f5; border-top: 2px solid #c0392b;">
-          <td style="text-align: left; font-weight: bold; color: #c0392b;">Tithes Total</td>
+          <td style="text-align: left; font-weight: bold; color: #c0392b;">Member Giving Total</td>
           <td><strong>&#8369;${fmt(totalByWeek.w1)}</strong></td>
           <td><strong>&#8369;${fmt(totalByWeek.w2)}</strong></td>
           <td><strong>&#8369;${fmt(totalByWeek.w3)}</strong></td>
@@ -1054,24 +1123,26 @@
           <td><strong>&#8369;${fmt(totalByWeek.w5)}</strong></td>
           <td><strong>&#8369;${fmt(totalByWeek.total)}</strong></td>
         </tr>`);
-
-      totalByWeek.w1 += looseMap.w1; totalByWeek.w2 += looseMap.w2; totalByWeek.w3 += looseMap.w3;
-      totalByWeek.w4 += looseMap.w4; totalByWeek.w5 += looseMap.w5; totalByWeek.total += looseMap.total;
-      rows.push(`<tr style="background: #f9f5f5; border-top: 2px solid #e8dede;">
-          <td style="text-align: left; font-weight: bold; color: #888;">Loose Offerings</td>
-          <td>${looseMap.w1 > 0 ? `<span class="weekly-amount">₱${fmt(looseMap.w1)}</span>` : '-'}</td>
-          <td>${looseMap.w2 > 0 ? `<span class="weekly-amount">₱${fmt(looseMap.w2)}</span>` : '-'}</td>
-          <td>${looseMap.w3 > 0 ? `<span class="weekly-amount">₱${fmt(looseMap.w3)}</span>` : '-'}</td>
-          <td>${looseMap.w4 > 0 ? `<span class="weekly-amount">₱${fmt(looseMap.w4)}</span>` : '-'}</td>
-          <td>${looseMap.w5 > 0 ? `<span class="weekly-amount">₱${fmt(looseMap.w5)}</span>` : '-'}</td>
-          <td><strong>₱${fmt(looseMap.total)}</strong></td>
-        </tr>`);
     }
+
+    sortedCollections.forEach(([label, weekly]) => {
+      totalByWeek.w1 += weekly.w1; totalByWeek.w2 += weekly.w2; totalByWeek.w3 += weekly.w3;
+      totalByWeek.w4 += weekly.w4; totalByWeek.w5 += weekly.w5; totalByWeek.total += weekly.total;
+      rows.push(`<tr style="background: #f9f5f5; border-top: 2px solid #e8dede;">
+          <td style="text-align: left; font-weight: bold; color: #555;">${escapeHtml(label)}</td>
+          <td>${weekly.w1 > 0 ? `<span class="weekly-amount">₱${fmt(weekly.w1)}</span>` : '-'}</td>
+          <td>${weekly.w2 > 0 ? `<span class="weekly-amount">₱${fmt(weekly.w2)}</span>` : '-'}</td>
+          <td>${weekly.w3 > 0 ? `<span class="weekly-amount">₱${fmt(weekly.w3)}</span>` : '-'}</td>
+          <td>${weekly.w4 > 0 ? `<span class="weekly-amount">₱${fmt(weekly.w4)}</span>` : '-'}</td>
+          <td>${weekly.w5 > 0 ? `<span class="weekly-amount">₱${fmt(weekly.w5)}</span>` : '-'}</td>
+          <td><strong>₱${fmt(weekly.total)}</strong></td>
+        </tr>`);
+    });
 
     tbody.innerHTML = rows.length > 0 ? rows.join('') : '<tr><td colspan="7" class="empty">No records for this period.</td></tr>';
 
     const tfoot = document.getElementById('weekly-tithers-foot');
-    if (sortedMembers.length > 0 || looseMap.total > 0) {
+    if (sortedMembers.length > 0 || sortedCollections.length > 0) {
       tfoot.innerHTML = `<tr>
           <td><strong>Grand Totals</strong></td>
           <td><strong>₱${fmt(totalByWeek.w1)}</strong></td>
@@ -1301,9 +1372,8 @@
 
   function renderGroupedTable(type, data, total) {
     const map = {};
-    const field = type === 'income' ? 'type' : 'category';
     data.forEach(d => {
-      const key = d[field];
+      const key = type === 'income' ? getIncomeGroupKey(d) : d.category;
       if (!map[key]) map[key] = { count: 0, sum: 0 };
       map[key].count++;
       map[key].sum += d.amount;

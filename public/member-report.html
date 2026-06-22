@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Year-to-Date Member Report - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Poppins', sans-serif;
+      color: #1f2933;
+      background: linear-gradient(rgba(0, 0, 0, 0.56), rgba(0, 0, 0, 0.56)), url('church.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      min-height: 100vh;
+    }
+    .topbar {
+      background: #8B0000;
+      color: white;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand img { width: 38px; height: 38px; object-fit: contain; background: white; border-radius: 50%; padding: 3px; }
+    .brand h1 { font-family: 'Playfair Display', serif; font-size: 22px; line-height: 1; }
+    .brand span { display: block; font-family: 'Poppins', sans-serif; font-size: 11px; font-weight: 500; opacity: .86; margin-top: 2px; }
+    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    select, button {
+      border: 1px solid rgba(255,255,255,.36);
+      border-radius: 8px;
+      padding: 9px 11px;
+      font: inherit;
+      background: white;
+      color: #222;
+    }
+    button { cursor: pointer; font-weight: 700; color: #8B0000; }
+    .page { max-width: 1240px; margin: 22px auto; padding: 0 16px 40px; }
+    .panel {
+      background: rgba(255,255,255,.96);
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.22);
+      overflow: hidden;
+    }
+    .report-head {
+      padding: 26px 28px 20px;
+      border-bottom: 4px solid #8B0000;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .church { font-size: 21px; font-weight: 800; color: #8B0000; }
+    .address { font-size: 12px; color: #667085; margin-top: 3px; }
+    .title { margin-top: 11px; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: .3px; }
+    .period { color: #475467; font-size: 13px; margin-top: 2px; }
+    .asof { text-align: right; color: #667085; font-size: 12px; }
+    .content { padding: 22px 28px 30px; }
+    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .kpi {
+      border: 1px solid #e5e7eb;
+      border-left: 5px solid #8B0000;
+      border-radius: 8px;
+      background: #fff;
+      padding: 13px 14px;
+      min-height: 92px;
+    }
+    .kpi.green { border-left-color: #1e8449; }
+    .kpi.blue { border-left-color: #1a5276; }
+    .kpi.gold { border-left-color: #b7950b; }
+    .kpi.gray { border-left-color: #566573; }
+    .kpi .label { color: #667085; font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: .45px; }
+    .kpi .value { margin-top: 7px; font-size: 20px; font-weight: 800; color: #111827; }
+    .kpi .sub { margin-top: 3px; font-size: 11px; color: #667085; }
+    .kpi-pages .kpi-page { display: contents; }
+    .kpi-pager {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .kpi-pager button {
+      border-color: #f0c7c3;
+      color: #8B0000;
+      min-width: 92px;
+    }
+    .kpi-pager span { color: #667085; font-size: 12px; font-weight: 800; }
+    .section { margin-top: 24px; }
+    .report-section {
+      border: 1px solid #eceff3;
+      border-radius: 12px;
+      padding: 16px;
+      background: rgba(255,255,255,.92);
+    }
+    .report-section + .report-section { margin-top: 18px; }
+    .section-action {
+      border: 1px solid #f0c7c3;
+      background: #fff;
+      color: #8B0000;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .section-controls { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+    .section-nav {
+      display: none;
+      border: 1px solid #f0c7c3;
+      background: #fff;
+      color: #8B0000;
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 800;
+      min-width: 72px;
+    }
+    .report-section:fullscreen {
+      background: #fff;
+      padding: 28px;
+      overflow: auto;
+    }
+    .report-section:fullscreen .section-action { display: none; }
+    .report-section:fullscreen .section-nav { display: inline-flex; justify-content: center; }
+    .report-section:fullscreen .section-title {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(255,255,255,.96);
+      padding-bottom: 12px;
+      border-bottom: 1px solid #edf0f3;
+    }
+    .report-section:fullscreen .section-title h2 { font-size: clamp(22px, 2.5vw, 34px); }
+    .report-section:fullscreen .section-title p { font-size: clamp(14px, 1.4vw, 18px); }
+    .report-section:fullscreen .kpis { grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 18px; }
+    .report-section:fullscreen .kpi-pages { display: block; }
+    .report-section:fullscreen .kpi {
+      min-height: 170px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .report-section:fullscreen .kpi .label { font-size: 15px; }
+    .report-section:fullscreen .kpi .value { font-size: clamp(34px, 5vw, 72px); line-height: 1.05; }
+    .report-section:fullscreen .kpi .sub { font-size: 16px; }
+    .report-section:fullscreen .kpi-pages .kpi-page { display: none; }
+    .report-section:fullscreen .kpi-pages .kpi-page.active { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 18px; }
+    .report-section:fullscreen .kpi-pager { display: flex; }
+    .report-section:fullscreen .month-grid {
+      grid-template-columns: repeat(12, minmax(260px, 1fr));
+      gap: 18px;
+      scroll-behavior: smooth;
+    }
+    .report-section:fullscreen .month-card {
+      min-width: 260px;
+      min-height: 210px;
+      padding: 22px;
+    }
+    .report-section:fullscreen .month-name { font-size: 22px; margin-bottom: 16px; }
+    .report-section:fullscreen .month-row { font-size: 17px; padding: 8px 0; }
+    .report-section:fullscreen .month-row strong { font-size: 18px; }
+    .report-section:fullscreen .table-wrap {
+      scroll-behavior: smooth;
+      max-height: calc(100vh - 190px);
+    }
+    .report-section:fullscreen table {
+      font-size: clamp(16px, 1.5vw, 22px);
+      min-width: 1500px;
+    }
+    .report-section:fullscreen th,
+    .report-section:fullscreen td { padding: 15px 18px; }
+    .report-section:fullscreen th { font-size: clamp(13px, 1.1vw, 17px); }
+    .report-section:fullscreen .two-col { grid-template-columns: 1fr; gap: 24px; }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .section-title h2 { color: #8B0000; font-size: 15px; }
+    .section-title p { color: #667085; font-size: 12px; }
+    .month-grid { display: grid; grid-template-columns: repeat(12, minmax(130px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+    .month-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      min-width: 130px;
+    }
+    .month-name { font-weight: 800; color: #8B0000; font-size: 12px; margin-bottom: 7px; }
+    .month-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; padding: 3px 0; color: #475467; }
+    .month-row strong { color: #111827; white-space: nowrap; }
+    .surplus { color: #1e8449 !important; }
+    .deficit { color: #c0392b !important; }
+    .table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: white; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 960px; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid #edf0f3; text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: inherit; z-index: 1; }
+    th { background: #fff4f4; color: #7a1111; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+    td:first-child { font-weight: 700; color: #344054; background: white; }
+    tbody tr:nth-child(even) td { background: #fcfcfd; }
+    tbody tr:nth-child(even) td:first-child { background: #fcfcfd; }
+    tfoot td { font-weight: 800; background: #fdf2f2; border-top: 2px solid #8B0000; color: #7a1111; }
+    .summary-table td:first-child { position: static; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .note { margin-top: 18px; color: #667085; font-size: 12px; line-height: 1.55; }
+    .empty { color: #98a2b3; padding: 14px; border: 1px solid #edf0f3; border-radius: 8px; background: white; }
+    .graph-controls {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .graph-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+      padding: 9px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #344054;
+    }
+    .graph-check input { accent-color: #8B0000; }
+    .graph-grid { display: grid; grid-template-columns: 1.45fr .9fr; gap: 14px; }
+    .graph-main { display: grid; gap: 14px; }
+    .chart-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+      padding: 12px;
+      min-height: 260px;
+      position: relative;
+    }
+    .chart-stack { display: grid; gap: 14px; }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .chart-title { color: #8B0000; font-weight: 800; font-size: 12px; }
+    .chart-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chart-actions button {
+      border: 1px solid #f0c7c3;
+      border-radius: 7px;
+      padding: 5px 8px;
+      color: #8B0000;
+      font-size: 10px;
+      background: white;
+    }
+    .chart-card.annotating { outline: 3px solid rgba(139,0,0,.18); }
+    .chart-card.annotating::after {
+      content: 'Click the chart to add highlight';
+      position: absolute;
+      right: 12px;
+      bottom: 10px;
+      background: #8B0000;
+      color: white;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 10px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+    .chart-card svg { width: 100%; height: 260px; display: block; }
+    .chart-card:fullscreen {
+      background: white;
+      padding: 24px;
+      overflow: auto;
+    }
+    .chart-card:fullscreen svg { height: min(72vh, 760px); }
+    .annotation-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+    .annotation-marker {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      max-width: 220px;
+      background: rgba(139, 0, 0, .92);
+      color: white;
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-size: 11px;
+      font-weight: 800;
+      box-shadow: 0 8px 20px rgba(0,0,0,.18);
+    }
+    .annotation-marker::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 16px;
+      height: 16px;
+      border: 3px solid #f4d03f;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      margin-left: -18px;
+      background: rgba(244,208,63,.18);
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; font-size: 10px; color: #667085; font-weight: 700; }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--c);
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+    @media (max-width: 920px) {
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .two-col { grid-template-columns: 1fr; }
+      .graph-controls { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .graph-grid { grid-template-columns: 1fr; }
+      .report-head, .content { padding-left: 18px; padding-right: 18px; }
+      .asof { text-align: left; }
+    }
+    @media (max-width: 560px) {
+      .kpis { grid-template-columns: 1fr; }
+      .report-section:fullscreen .kpis,
+      .report-section:fullscreen .kpi-pages .kpi-page { grid-template-columns: 1fr; }
+      .graph-controls { grid-template-columns: 1fr; }
+      .brand h1 { font-size: 18px; }
+      .topbar { padding: 11px 14px; }
+    }
+    @media print {
+      body { background: white; }
+      .topbar { display: none; }
+      .section-action { display: none; }
+      .page { max-width: none; margin: 0; padding: 0; }
+      .panel { box-shadow: none; border-radius: 0; }
+      .month-grid { grid-template-columns: repeat(4, 1fr); overflow: visible; }
+      .month-card { min-width: 0; }
+      .table-wrap { overflow: visible; }
+      table { min-width: 0; font-size: 10px; }
+      th, td { padding: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+      <div>
+        <h1>GraceBooks</h1>
+        <span>Year-to-Date Member Reporting View</span>
+      </div>
+    </div>
+    <div class="actions">
+      <select id="report-year"></select>
+      <button onclick="renderReport()">Refresh</button>
+      <button onclick="window.print()">Print</button>
+      <button onclick="window.location.href='index.html'">Back</button>
+    </div>
+  </div>
+
+  <main class="page">
+    <div class="panel">
+      <div class="report-head">
+        <div>
+          <div class="church">Tagaytay United Methodist Church</div>
+          <div class="address">Maglabe Drive, Asisan, Tagaytay City</div>
+          <div class="title">Year-to-Date Finance Report for Members</div>
+          <div class="period" id="period-label">Loading...</div>
+        </div>
+        <div class="asof" id="asof-label"></div>
+      </div>
+      <div class="content" id="report-content">
+        <div class="empty">Loading report data...</div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+      authDomain: "gracebooks-7eebc.firebaseapp.com",
+      projectId: "gracebooks-7eebc",
+      storageBucket: "gracebooks-7eebc.firebasestorage.app",
+      messagingSenderId: "423871889231",
+      appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const FULL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const FINANCIAL_ACCOUNTS = [
+      { id:'cash-hand', name:'Cash on Hand' },
+      { id:'cash-bank', name:'Cash in Bank' },
+      { id:'petty-cash', name:'Petty Cash Fund' },
+      { id:'building', name:'Building Fund' },
+      { id:'mission', name:'Mission Fund' },
+      { id:'investment', name:'Investments/TD' }
+    ];
+    let incomeData = [], expenseData = [], allIncomeData = [], allExpenseData = [], obligationsData = [], attendanceData = [];
+    let beginningAccounts = {}, generalFundAccounts = {};
+
+    function fmt(n) { return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function shortMoney(n) {
+      const value = Number(n || 0);
+      if (Math.abs(value) >= 1000000) return '&#8369;' + (value / 1000000).toFixed(1) + 'M';
+      if (Math.abs(value) >= 1000) return '&#8369;' + (value / 1000).toFixed(1) + 'K';
+      return '&#8369;' + fmt(value);
+    }
+    function peso(n) { return '&#8369; ' + fmt(n); }
+    function pct(part, whole) { return whole > 0 ? (part / whole * 100).toFixed(1) + '%' : '0.0%'; }
+    function escapeHtml(v) {
+      return String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function parseDate(value) {
+      if (!value) return null;
+      if (value.seconds) return new Date(value.seconds * 1000);
+      const dt = new Date(value);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    function getMemberId(d) {
+      return String(d.memberId || d.memberID || d.memberCode || '').trim();
+    }
+    function getTitherKey(d) {
+      const id = getMemberId(d).trim();
+      const member = String(d.member || d.name || '').trim();
+      const memberLower = member.toLowerCase();
+      const idUpper = id.toUpperCase();
+      if (idUpper === 'GENERAL' || ['anonymous','general collection','loose offering'].includes(memberLower)) return '';
+      return id || member;
+    }
+    function isNamedMember(d) {
+      return !!getTitherKey(d);
+    }
+    function normalizeAccountId(value) {
+      const raw = String(value || '').trim();
+      return FINANCIAL_ACCOUNTS.some(a => a.id === raw) ? raw : '';
+    }
+    function isGeneralFundAccount(id) { return generalFundAccounts[id] !== false; }
+    function getIncomeAccountId(d) {
+      const explicit = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
+      if (explicit) return explicit;
+      if (d.type === 'Building Fund') return 'building';
+      if (d.type === 'Mission Fund') return 'mission';
+      if (d.type === 'Investment Income') return 'investment';
+      return d.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+    }
+    function getExpenseAccountId(d) {
+      const explicit = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
+      if (explicit) return explicit;
+      if (d.payment === 'Bank Transfer') return 'cash-bank';
+      if (d.payment === 'Petty Cash') return 'petty-cash';
+      return 'cash-hand';
+    }
+    function getGeneralFundBeginningBalance() {
+      return FINANCIAL_ACCOUNTS
+        .filter(a => isGeneralFundAccount(a.id))
+        .reduce((sum, a) => sum + (parseFloat(beginningAccounts[a.id]) || 0), 0);
+    }
+    function isTitheRecord(d) {
+      const text = `${d.type || ''} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase();
+      return text.includes('tithe') && !text.includes('loose');
+    }
+    function isLooseOfferingRecord(d) {
+      const text = `${d.type || ''} ${d.budgetCategory || ''} ${d.category || ''} ${d.member || ''}`.toLowerCase();
+      return text.includes('loose');
+    }
+    function isOccasionalOfferingRecord(d) {
+      const text = `${d.type || ''} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase();
+      return text.includes('occasional');
+    }
+    function getExpenseCategoryText(d) {
+      return `${d.category || ''} ${d.budgetCategory || ''}`.toLowerCase();
+    }
+    function isNowMinistryExpense(d) {
+      const category = getExpenseCategoryText(d);
+      return category.includes('nurture') || category.includes('outreach') || category.includes('witness');
+    }
+    function isSalaryPersonnelExpense(d) {
+      const category = getExpenseCategoryText(d);
+      return category.includes('admin pastor')
+        || category.includes('administrative pastor')
+        || category.includes('deaconess')
+        || category.includes('mission support')
+        || category.includes('paid personnel');
+    }
+    function isRepairsMaintenanceExpense(d) {
+      return getExpenseCategoryText(d).includes('repairs and maintenance');
+    }
+    function isConnectionalMinistriesExpense(d) {
+      return getExpenseCategoryText(d).includes('connectional ministries');
+    }
+    function isOthersExpense(d) {
+      const category = getExpenseCategoryText(d);
+      return /\bothers?\b/.test(category) && !category.includes('not in');
+    }
+    function isMiscellaneousExpense(d) {
+      const category = getExpenseCategoryText(d);
+      return category.includes('miscellaneous') || category.includes('not in') || category.includes('unbudgeted');
+    }
+    function incomeGroup(d) { return d.budgetCategory || d.category || d.type || 'Income'; }
+    function expenseGroup(d) { return d.category || d.budgetCategory || 'Expense'; }
+    function monthRowsFor(data, year, predicate) {
+      return Array.from({ length: 12 }, (_, month) => data.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() === month && (!predicate || predicate(d));
+      }));
+    }
+    function sumRows(rows) { return rows.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0); }
+    function uniqueTithers(rows) {
+      return new Set(rows.filter(isTitheRecord).map(getTitherKey).filter(Boolean)).size;
+    }
+    function attendanceFor(year, month) {
+      const found = attendanceData.find(a => Number(a.year) === year && Number(a.month) === month + 1);
+      return found ? Number(found.attendance || 0) : 0;
+    }
+    function getWeekKey(dt) {
+      const first = new Date(dt.getFullYear(), 0, 1);
+      const dayOffset = Math.floor((dt - first) / 86400000);
+      const week = Math.floor((dayOffset + first.getDay()) / 7) + 1;
+      return `${dt.getFullYear()} W${String(week).padStart(2, '0')}`;
+    }
+    function totalForYear(data, year, predicate) {
+      return data.reduce((sum, d) => {
+        const dt = parseDate(d.date);
+        if (!dt || dt.getFullYear() !== year || (predicate && !predicate(d))) return sum;
+        return sum + (parseFloat(d.amount) || 0);
+      }, 0);
+    }
+    function getExpenseCashImpact(d) {
+      // Payroll is recognized at gross, but the withheld portion (tithe/SSS/other
+      // deductions) only actually leaves cash later via a separate deduction-payment
+      // record. Using the gross amount here for payroll would double-subtract that
+      // withheld portion once the deduction is remitted - match financial-overview.html.
+      const netPay = parseFloat(d.netPay);
+      const hasNetPayroll = d.isPayrollGenerated && !d.isBenefit && Number.isFinite(netPay);
+      return hasNetPayroll ? Math.max(0, netPay) : (parseFloat(d.amount) || 0);
+    }
+    function getAccountBalancesThrough(endDate) {
+      const balances = {};
+      FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
+      allIncomeData.forEach(d => {
+        const dt = parseDate(d.date);
+        if (!dt || dt > endDate) return;
+        const id = getIncomeAccountId(d);
+        balances[id] = (balances[id] || 0) + (parseFloat(d.amount) || 0);
+      });
+      allExpenseData.forEach(d => {
+        const dt = parseDate(d.date);
+        if (!dt || dt > endDate) return;
+        const id = getExpenseAccountId(d);
+        balances[id] = (balances[id] || 0) - getExpenseCashImpact(d);
+      });
+      return balances;
+    }
+    function matrixRows(data, year, groupFn, limit, monthCount = 12) {
+      const groups = {};
+      data.forEach(d => {
+        const dt = parseDate(d.date);
+        if (!dt || dt.getFullYear() !== year || dt.getMonth() >= monthCount) return;
+        const key = groupFn(d);
+        if (!groups[key]) groups[key] = Array(monthCount).fill(0);
+        groups[key][dt.getMonth()] += parseFloat(d.amount || 0);
+      });
+      return Object.entries(groups)
+        .map(([name, months]) => ({ name, months, total: months.reduce((s, v) => s + v, 0) }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, limit);
+    }
+    function renderMatrix(data, emptyText, visibleMonths) {
+      if (!data.length) return `<div class="empty">${emptyText}</div>`;
+      const body = data.map(row => `
+        <tr>
+          <td>${escapeHtml(row.name)}</td>
+          ${row.months.map(v => `<td>${v ? shortMoney(v) : '-'}</td>`).join('')}
+          <td>${peso(row.total)}</td>
+        </tr>`).join('');
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Category</th>${visibleMonths.map(m => `<th>${m}</th>`).join('')}<th>Total</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderFinancialOverviewMatrix(monthlyAccountBalances, visibleMonths) {
+      const body = FINANCIAL_ACCOUNTS.map(account => {
+        const months = monthlyAccountBalances.map(balances => balances[account.id] || 0);
+        const endingBalance = months[months.length - 1] || 0;
+        return `
+          <tr>
+            <td>${account.name}</td>
+            ${months.map(value => `<td>${value ? shortMoney(value) : '-'}</td>`).join('')}
+            <td>${peso(endingBalance)}</td>
+          </tr>`;
+      }).join('');
+      const monthlyTotals = monthlyAccountBalances.map(balances => {
+        return FINANCIAL_ACCOUNTS.reduce((sum, account) => sum + (balances[account.id] || 0), 0);
+      });
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Account</th>${visibleMonths.map(m => `<th>${m}</th>`).join('')}<th>YTD End</th></tr></thead>
+            <tbody>${body}</tbody>
+            <tfoot>
+              <tr>
+                <td>Total Financial Overview</td>
+                ${monthlyTotals.map(value => `<td>${shortMoney(value)}</td>`).join('')}
+                <td>${peso(monthlyTotals[monthlyTotals.length - 1] || 0)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+    }
+
+    const GRAPH_SERIES = [
+      { key:'income', label:'Income', color:'#1e8449', money:true, checked:true },
+      { key:'ytdIncome', label:'YTD Income', color:'#1a5276', money:true, checked:true },
+      { key:'weeklyIncome', label:'Weekly Income', color:'#148f77', money:true, checked:true },
+      { key:'yearlyIncome', label:'Yearly Income', color:'#7d3c98', money:true, checked:true },
+      { key:'tithers', label:'Tither Count', color:'#566573', money:false, checked:true },
+      { key:'loose', label:'Loose Offering', color:'#b7950b', money:true, checked:true },
+      { key:'tithes', label:'Tithes', color:'#8B0000', money:true, checked:true },
+      { key:'occasional', label:'Occasional Offering', color:'#d35400', money:true, checked:false },
+      { key:'expenses', label:'Expenses', color:'#c0392b', money:true, checked:true },
+      { key:'attendance', label:'Recorded Attendance', color:'#5b4b8a', money:false, checked:true }
+    ];
+
+    function chartSvg(labels, series, emptyText, ariaLabel = 'Trend chart') {
+      const visibleSeries = series.filter(s => s.values.some(v => Number(v) > 0));
+      if (!visibleSeries.length || !labels.length) return `<div class="empty">${emptyText}</div>`;
+      const width = 980, height = 320, padL = 62, padR = 24, padT = 26, padB = 52;
+      const max = Math.max(1, ...visibleSeries.flatMap(s => s.values.map(v => Math.abs(Number(v) || 0))));
+      const usesMoney = visibleSeries.some(s => s.money);
+      const axisFmt = value => usesMoney ? shortMoney(value) : Number(value || 0).toFixed(0);
+      const x = i => labels.length === 1 ? (padL + width - padR) / 2 : padL + i * ((width - padL - padR) / (labels.length - 1));
+      const y = v => height - padB - ((Number(v) || 0) / max) * (height - padT - padB);
+      const axisLabels = [0, .25, .5, .75, 1].map(r => {
+        const value = max * r;
+        const yy = y(value);
+        return `<line x1="${padL}" y1="${yy}" x2="${width - padR}" y2="${yy}" stroke="#edf0f3" />
+          <text x="${padL - 10}" y="${yy + 4}" text-anchor="end" font-size="10" fill="#98a2b3">${axisFmt(value)}</text>`;
+      }).join('');
+      const lines = visibleSeries.map(s => {
+        const points = s.values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+        const dots = s.values.map((v, i) => `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${s.color}"><title>${labels[i]} ${s.label}: ${s.money ? 'P' + fmt(v) : Number(v || 0).toFixed(0)}</title></circle>`).join('');
+        return `<polyline points="${points}" fill="none" stroke="${s.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />${dots}`;
+      }).join('');
+      const labelStep = labels.length > 16 ? 3 : labels.length > 10 ? 2 : 1;
+      return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel)}">
+          <rect x="0" y="0" width="${width}" height="${height}" fill="#fff" />
+          ${axisLabels}
+          <line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="#d0d5dd" />
+          <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="#d0d5dd" />
+          ${lines}
+          ${labels.map((label, i) => i % labelStep === 0 ? `<text x="${x(i)}" y="${height - 22}" text-anchor="middle" font-size="11" fill="#667085">${escapeHtml(label)}</text>` : '').join('')}
+        </svg>
+        <div class="legend">${visibleSeries.map(s => `<span style="--c:${s.color}">${s.label}</span>`).join('')}</div>`;
+    }
+
+    function chartCard(id, title, innerId) {
+      return `
+        <div class="chart-card" id="${id}" onclick="handleChartAnnotationClick(event, '${id}')">
+          <div class="chart-head">
+            <div class="chart-title">${title}</div>
+            <div class="chart-actions">
+              <button onclick="event.stopPropagation(); enlargeChart('${id}')">Full Screen</button>
+              <button onclick="event.stopPropagation(); toggleAnnotateChart('${id}')">Highlight</button>
+              <button onclick="event.stopPropagation(); clearChartAnnotations('${id}')">Clear</button>
+            </div>
+          </div>
+          <div id="${innerId}"></div>
+          <div class="annotation-layer"></div>
+        </div>`;
+    }
+
+    function renderGraphSection(monthly, year, monthCount) {
+      const controls = GRAPH_SERIES.map(s => `
+        <label class="graph-check">
+          <input type="checkbox" data-graph-series="${s.key}" ${s.checked ? 'checked' : ''} onchange="renderSelectedGraphs()">
+          ${s.label}
+        </label>`).join('');
+      const monthlyLabels = monthly.map(m => MONTHS[m.month]);
+      const ytdIncome = [];
+      monthly.reduce((sum, m, i) => {
+        ytdIncome[i] = sum + m.income;
+        return ytdIncome[i];
+      }, 0);
+      const monthlySeriesMap = {
+        income: monthly.map(m => m.income),
+        ytdIncome,
+        tithers: monthly.map(m => m.tithers),
+        loose: monthly.map(m => m.loose),
+        tithes: monthly.map(m => m.tithes),
+        occasional: monthly.map(m => m.occasional),
+        expenses: monthly.map(m => m.expense),
+        attendance: monthly.map(m => m.attendance)
+      };
+      const weekMap = {};
+      incomeData.forEach(d => {
+        const dt = parseDate(d.date);
+        if (!dt || dt.getFullYear() !== year || dt.getMonth() >= monthCount) return;
+        const key = getWeekKey(dt);
+        weekMap[key] = (weekMap[key] || 0) + (parseFloat(d.amount) || 0);
+      });
+      const weekLabels = Object.keys(weekMap).sort();
+      const yearStart = Math.max(2023, year - 3);
+      const yearlyLabels = [];
+      for (let y = yearStart; y <= year; y++) yearlyLabels.push(String(y));
+      const graphState = {
+        monthlyLabels,
+        monthlySeriesMap,
+        weekLabels,
+        weekValues: weekLabels.map(label => weekMap[label] || 0),
+        yearlyLabels,
+        yearlyIncome: yearlyLabels.map(label => totalForYear(incomeData, Number(label))),
+        yearlyExpenses: yearlyLabels.map(label => totalForYear(expenseData, Number(label)))
+      };
+      window.memberReportGraphState = graphState;
+      return `
+        <div class="graph-controls">${controls}</div>
+        <div class="graph-grid">
+          <div class="graph-main">
+            ${chartCard('chart-card-monthly', 'Monthly Money Overlay and YTD Movement', 'chart-monthly')}
+            ${chartCard('chart-card-people', 'Monthly Tither Count and Recorded Attendance', 'chart-people')}
+          </div>
+          <div class="chart-stack">
+            ${chartCard('chart-card-weekly', 'Weekly Receipts', 'chart-weekly')}
+            ${chartCard('chart-card-yearly', 'Yearly Receipts and Disbursements', 'chart-yearly')}
+          </div>
+        </div>`;
+    }
+
+    function renderSelectedGraphs() {
+      const state = window.memberReportGraphState;
+      if (!state) return;
+      const checked = new Set([...document.querySelectorAll('[data-graph-series]:checked')].map(input => input.dataset.graphSeries));
+      const seriesMeta = GRAPH_SERIES.filter(s => checked.has(s.key));
+      const monthlySeries = seriesMeta
+        .filter(s => s.money && state.monthlySeriesMap[s.key])
+        .map(s => ({ ...s, values: state.monthlySeriesMap[s.key] }));
+      const peopleSeries = seriesMeta
+        .filter(s => !s.money && state.monthlySeriesMap[s.key])
+        .map(s => ({ ...s, values: state.monthlySeriesMap[s.key] }));
+      const weeklySeries = checked.has('weeklyIncome')
+        ? [{ key:'weeklyIncome', label:'Weekly Income', color:'#148f77', money:true, values: state.weekValues }]
+        : [];
+      const yearlySeries = [
+        checked.has('yearlyIncome') ? { key:'yearlyIncome', label:'Yearly Income', color:'#7d3c98', money:true, values: state.yearlyIncome } : null,
+        checked.has('expenses') ? { key:'yearlyExpenses', label:'Yearly Expenses', color:'#c0392b', money:true, values: state.yearlyExpenses } : null
+      ].filter(Boolean);
+      const monthlyEl = document.getElementById('chart-monthly');
+      const peopleEl = document.getElementById('chart-people');
+      const weeklyEl = document.getElementById('chart-weekly');
+      const yearlyEl = document.getElementById('chart-yearly');
+      if (monthlyEl) monthlyEl.innerHTML = chartSvg(state.monthlyLabels, monthlySeries, 'Check at least one money metric to show the monthly chart.', 'Monthly financial trend chart');
+      if (peopleEl) peopleEl.innerHTML = chartSvg(state.monthlyLabels, peopleSeries, 'Check Tither Count or Avg Attendance to show people movement.', 'Monthly tither and attendance trend chart');
+      if (weeklyEl) weeklyEl.innerHTML = chartSvg(state.weekLabels, weeklySeries, 'Check Weekly Income to show weekly movement.', 'Weekly receipts chart');
+      if (yearlyEl) yearlyEl.innerHTML = chartSvg(state.yearlyLabels, yearlySeries, 'Check Yearly Income or Expenses to show yearly movement.', 'Yearly receipts and disbursements chart');
+    }
+    window.renderSelectedGraphs = renderSelectedGraphs;
+
+    function enlargeChart(id) {
+      const el = document.getElementById(id);
+      if (el && el.requestFullscreen) el.requestFullscreen();
+    }
+    function toggleAnnotateChart(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      document.querySelectorAll('.chart-card.annotating').forEach(card => {
+        if (card !== el) card.classList.remove('annotating');
+      });
+      el.classList.toggle('annotating');
+    }
+    function handleChartAnnotationClick(event, id) {
+      const el = document.getElementById(id);
+      if (!el || !el.classList.contains('annotating')) return;
+      const rect = el.getBoundingClientRect();
+      const text = prompt('Highlight note:', 'Important point');
+      if (!text) return;
+      const layer = el.querySelector('.annotation-layer');
+      const marker = document.createElement('div');
+      marker.className = 'annotation-marker';
+      marker.textContent = text;
+      marker.style.left = ((event.clientX - rect.left) / rect.width * 100).toFixed(2) + '%';
+      marker.style.top = ((event.clientY - rect.top) / rect.height * 100).toFixed(2) + '%';
+      layer.appendChild(marker);
+      el.classList.remove('annotating');
+    }
+    function clearChartAnnotations(id) {
+      const layer = document.querySelector(`#${id} .annotation-layer`);
+      if (layer) layer.innerHTML = '';
+    }
+    window.enlargeChart = enlargeChart;
+    window.toggleAnnotateChart = toggleAnnotateChart;
+    window.handleChartAnnotationClick = handleChartAnnotationClick;
+    window.clearChartAnnotations = clearChartAnnotations;
+
+    function sectionHtml(id, title, subtitle, body) {
+      return `
+        <section class="report-section section" id="${id}">
+          <div class="section-title">
+            <div><h2>${title}</h2><p>${subtitle}</p></div>
+            <div class="section-controls">
+              <button class="section-nav" onclick="moveSectionPage('${id}', -1)">Left</button>
+              <button class="section-nav" onclick="moveSectionPage('${id}', 1)">Right</button>
+              <button class="section-action" onclick="openSectionFullscreen('${id}')">Full Screen</button>
+            </div>
+          </div>
+          ${body}
+        </section>`;
+    }
+
+    function openSectionFullscreen(id) {
+      const el = document.getElementById(id);
+      if (el && el.requestFullscreen) el.requestFullscreen();
+    }
+
+    function moveSectionPage(id, direction) {
+      if (id === 'section-kpis') {
+        setKpiPage(direction);
+        return;
+      }
+      const section = document.getElementById(id);
+      if (!section) return;
+      const target = section.querySelector('.kpi-pages .kpi-page.active')
+        || section.querySelector('.month-grid')
+        || section.querySelector('.table-wrap')
+        || section.querySelector('.chart-card')
+        || section;
+      if (target.scrollWidth > target.clientWidth + 8) {
+        target.scrollBy({ left: direction * target.clientWidth * 0.86, behavior: 'smooth' });
+        return;
+      }
+      const tables = [...section.querySelectorAll('.table-wrap')];
+      const currentIndex = Math.max(0, tables.findIndex(table => {
+        const rect = table.getBoundingClientRect();
+        return rect.top >= 0 && rect.top < window.innerHeight * 0.65;
+      }));
+      if (tables.length > 1) {
+        const next = Math.min(tables.length - 1, Math.max(0, currentIndex + direction));
+        tables[next].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      section.scrollBy({ top: direction * window.innerHeight * 0.72, behavior: 'smooth' });
+    }
+    window.moveSectionPage = moveSectionPage;
+
+    function setKpiPage(direction) {
+      const section = document.getElementById('section-kpis');
+      if (!section) return;
+      const pages = [...section.querySelectorAll('.kpi-page')];
+      if (!pages.length) return;
+      let current = pages.findIndex(page => page.classList.contains('active'));
+      if (current < 0) current = 0;
+      const next = (current + direction + pages.length) % pages.length;
+      pages.forEach((page, index) => page.classList.toggle('active', index === next));
+      const label = document.getElementById('kpi-page-label');
+      if (label) label.textContent = `Page ${next + 1} of ${pages.length}`;
+    }
+    window.setKpiPage = setKpiPage;
+
+    async function loadData() {
+      const [settingsSnap, incomeSnap, expenseSnap, obligationSnap, attendanceSnap] = await Promise.all([
+        db.collection('settings').doc('beginningBalances').get(),
+        db.collection('income').get(),
+        db.collection('expenses').get(),
+        db.collection('churchObligations').get(),
+        db.collection('attendance').get()
+      ]);
+      if (settingsSnap.exists) {
+        beginningAccounts = settingsSnap.data().accounts || {};
+        generalFundAccounts = settingsSnap.data().generalFundAccounts || {};
+      }
+      allIncomeData = incomeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(d => !d.isSpecialProject);
+      incomeData = allIncomeData.filter(d => {
+        const text = `${d.type || ''} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase();
+        return d.type !== 'transfer' && !text.includes('building fund');
+      });
+      allExpenseData = expenseSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Deduction-payment settlements are excluded alongside transfers: the withheld
+      // amount is already expensed at gross on the originating payroll record, so
+      // counting the remittance again here would double-count the same expense.
+      expenseData = allExpenseData.filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment');
+      obligationsData = obligationSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      attendanceData = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      renderReport();
+    }
+
+    function renderReport() {
+      const year = parseInt(document.getElementById('report-year').value, 10);
+      const now = new Date();
+      const monthCount = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+      const visibleMonths = MONTHS.slice(0, monthCount);
+      const visibleFullMonths = FULL_MONTHS.slice(0, monthCount);
+      const incomeMonths = monthRowsFor(incomeData, year).slice(0, monthCount);
+      const expenseMonths = monthRowsFor(expenseData, year).slice(0, monthCount);
+      const monthly = Array.from({ length: monthCount }, (_, month) => {
+        const income = sumRows(incomeMonths[month]);
+        const expense = sumRows(expenseMonths[month]);
+        const tithes = sumRows(incomeMonths[month].filter(isTitheRecord));
+        const loose = sumRows(incomeMonths[month].filter(isLooseOfferingRecord));
+        const occasional = sumRows(incomeMonths[month].filter(isOccasionalOfferingRecord));
+        const tithers = uniqueTithers(incomeMonths[month]);
+        const attendance = attendanceFor(year, month);
+        const net = income - expense;
+        return { month, income, expense, net, tithes, loose, occasional, tithers, attendance };
+      });
+      const annualIncome = monthly.reduce((s, m) => s + m.income, 0);
+      const annualExpense = monthly.reduce((s, m) => s + m.expense, 0);
+      const annualNet = annualIncome - annualExpense;
+      const annualTithes = monthly.reduce((s, m) => s + m.tithes, 0);
+      const annualLoose = monthly.reduce((s, m) => s + m.loose, 0);
+      const annualOccasional = monthly.reduce((s, m) => s + m.occasional, 0);
+      const totalAttendance = monthly.reduce((s, m) => s + m.attendance, 0);
+      const avgMonthlyIncome = monthCount > 0 ? annualIncome / monthCount : 0;
+      const avgMonthlyExpense = monthCount > 0 ? annualExpense / monthCount : 0;
+      const activeTithers = new Set(incomeData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isTitheRecord(d) && isNamedMember(d);
+      }).map(getTitherKey).filter(Boolean)).size;
+      const totalMonthlyTitherCount = monthly.reduce((s, m) => s + m.tithers, 0);
+      const avgTithe = activeTithers > 0 ? annualTithes / activeTithers : 0;
+      const avgAttendance = monthCount > 0 ? totalAttendance / monthCount : 0;
+      const participation = totalAttendance > 0 ? totalMonthlyTitherCount / totalAttendance * 100 : 0;
+      const endDate = new Date(year, monthCount, 0, 23, 59, 59);
+      const monthlyAccountBalances = Array.from({ length: monthCount }, (_, month) => {
+        return getAccountBalancesThrough(new Date(year, month + 1, 0, 23, 59, 59));
+      });
+      const accountBalances = getAccountBalancesThrough(endDate);
+      const accountTotal = FINANCIAL_ACCOUNTS.reduce((s, a) => s + (accountBalances[a.id] || 0), 0);
+      const outstandingObligations = obligationsData.reduce((sum, o) => {
+        const amount = parseFloat(o.amount || 0) || 0;
+        const paid = parseFloat(o.paidAmount || 0) || 0;
+        return sum + Math.max(0, amount - paid);
+      }, 0);
+      let beginning = getGeneralFundBeginningBalance();
+      incomeData.forEach(d => {
+        const dt = parseDate(d.date);
+        if (dt && dt < new Date(year, 0, 1) && isGeneralFundAccount(getIncomeAccountId(d))) beginning += parseFloat(d.amount || 0);
+      });
+      expenseData.forEach(d => {
+        const dt = parseDate(d.date);
+        if (dt && dt < new Date(year, 0, 1) && isGeneralFundAccount(getExpenseAccountId(d))) beginning -= parseFloat(d.amount || 0);
+      });
+      const ending = beginning + annualIncome - annualExpense;
+      const previousYearEnd = year - 1;
+      const priorYtdIncome = incomeData.reduce((sum, d) => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === previousYearEnd && dt.getMonth() < monthCount ? sum + (parseFloat(d.amount) || 0) : sum;
+      }, 0);
+      const priorYtdExpense = expenseData.reduce((sum, d) => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === previousYearEnd && dt.getMonth() < monthCount ? sum + (parseFloat(d.amount) || 0) : sum;
+      }, 0);
+      const ytdChange = annualNet - (priorYtdIncome - priorYtdExpense);
+      const ministrySpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isNowMinistryExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const salarySpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isSalaryPersonnelExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const repairsSpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isRepairsMaintenanceExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const connectionalSpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isConnectionalMinistriesExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const othersSpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isOthersExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const miscSpending = expenseData.filter(d => {
+        const dt = parseDate(d.date);
+        return dt && dt.getFullYear() === year && dt.getMonth() < monthCount && isMiscellaneousExpense(d);
+      }).reduce((s, d) => s + (parseFloat(d.amount) || 0), 0);
+      const incomeMatrix = matrixRows(incomeData, year, incomeGroup, 12, monthCount);
+      const expenseMatrix = matrixRows(expenseData, year, expenseGroup, 12, monthCount);
+
+      document.getElementById('period-label').textContent = `January to ${visibleFullMonths[visibleFullMonths.length - 1]} ${year}`;
+      document.getElementById('asof-label').innerHTML = `Generated ${new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' })}<br>Read-only presentation view`;
+
+      const monthlyCards = monthly.map(m => `
+        <div class="month-card">
+          <div class="month-name">${FULL_MONTHS[m.month]}</div>
+          <div class="month-row"><span>Receipts</span><strong>${shortMoney(m.income)}</strong></div>
+          <div class="month-row"><span>Spent</span><strong>${shortMoney(m.expense)}</strong></div>
+          <div class="month-row"><span>Net</span><strong class="${m.net >= 0 ? 'surplus' : 'deficit'}">${shortMoney(Math.abs(m.net))}</strong></div>
+          <div class="month-row"><span>Tithers</span><strong>${m.tithers}</strong></div>
+        </div>`).join('');
+
+      const summaryRows = monthly.map(m => `
+        <tr>
+          <td>${FULL_MONTHS[m.month]}</td>
+          <td>${peso(m.income)}</td>
+          <td>${peso(m.expense)}</td>
+          <td class="${m.net >= 0 ? 'surplus' : 'deficit'}">${m.net >= 0 ? peso(m.net) : '(' + peso(Math.abs(m.net)) + ')'}</td>
+          <td>${peso(m.tithes)}</td>
+          <td>${peso(m.loose)}</td>
+          <td>${m.tithers}</td>
+          <td>${m.attendance || '-'}</td>
+          <td>${pct(m.expense, m.income)}</td>
+        </tr>`).join('');
+
+      const kpiCards = [
+        `<div class="kpi green"><div class="label">YTD Receipts</div><div class="value">${peso(annualIncome)}</div><div class="sub">Avg monthly: ${peso(avgMonthlyIncome)}</div></div>`,
+        `<div class="kpi"><div class="label">YTD Disbursements</div><div class="value">${peso(annualExpense)}</div><div class="sub">Expense ratio: ${pct(annualExpense, annualIncome)}</div></div>`,
+        `<div class="kpi ${annualNet >= 0 ? 'blue' : ''}"><div class="label">YTD ${annualNet >= 0 ? 'Surplus' : 'Deficit'}</div><div class="value">${peso(Math.abs(annualNet))}</div><div class="sub">Beginning ${peso(beginning)} to YTD ending ${peso(ending)}</div></div>`,
+        `<div class="kpi gold"><div class="label">Tithes</div><div class="value">${peso(annualTithes)}</div><div class="sub">Average tithe: ${peso(avgTithe)}</div></div>`,
+        `<div class="kpi gold"><div class="label">Loose Offering</div><div class="value">${peso(annualLoose)}</div><div class="sub">Occasional offering: ${peso(annualOccasional)}</div></div>`,
+        `<div class="kpi gray"><div class="label">Active Tithers</div><div class="value">${activeTithers}</div><div class="sub">Unique members with tithe records</div></div>`,
+        `<div class="kpi blue"><div class="label">Tither Participation</div><div class="value">${participation.toFixed(1)}%</div><div class="sub">${totalMonthlyTitherCount} monthly tither counts / ${totalAttendance || 0} attendance total</div></div>`,
+        `<div class="kpi"><div class="label">Average Attendance</div><div class="value">${avgAttendance.toFixed(0)}</div><div class="sub">Average recorded attendance per month</div></div>`,
+        `<div class="kpi"><div class="label">Financial Overview Total</div><div class="value">${peso(accountTotal)}</div><div class="sub">All account balances as of ${visibleFullMonths[visibleFullMonths.length - 1]} end</div></div>`,
+        `<div class="kpi"><div class="label">Outstanding Obligations</div><div class="value">${peso(outstandingObligations)}</div><div class="sub">Unsettled church obligations</div></div>`,
+        `<div class="kpi ${ytdChange >= 0 ? 'blue' : ''}"><div class="label">YTD Net vs Prior Year</div><div class="value">${ytdChange >= 0 ? '+' : '-'}${peso(Math.abs(ytdChange))}</div><div class="sub">Compared with Jan-${visibleMonths[visibleMonths.length - 1]} ${previousYearEnd}</div></div>`,
+        `<div class="kpi"><div class="label">Avg Monthly Expense</div><div class="value">${peso(avgMonthlyExpense)}</div><div class="sub">Expense pacing for completed months</div></div>`,
+        `<div class="kpi"><div class="label">Ministry Spending</div><div class="value">${pct(ministrySpending, annualExpense)}</div><div class="sub">${peso(ministrySpending)} of YTD expenses</div></div>`,
+        `<div class="kpi"><div class="label">Salaries & Personnel</div><div class="value">${pct(salarySpending, annualExpense)}</div><div class="sub">${peso(salarySpending)} of YTD expenses</div></div>`,
+        `<div class="kpi"><div class="label">Repairs & Maintenance</div><div class="value">${pct(repairsSpending, annualExpense)}</div><div class="sub">${peso(repairsSpending)} of YTD expenses</div></div>`,
+        `<div class="kpi"><div class="label">Connectional Ministries</div><div class="value">${pct(connectionalSpending, annualExpense)}</div><div class="sub">${peso(connectionalSpending)} of YTD expenses</div></div>`,
+        `<div class="kpi"><div class="label">Others</div><div class="value">${pct(othersSpending, annualExpense)}</div><div class="sub">${peso(othersSpending)} of YTD expenses</div></div>`,
+        `<div class="kpi"><div class="label">Miscellaneous</div><div class="value">${pct(miscSpending, annualExpense)}</div><div class="sub">${peso(miscSpending)} of YTD expenses</div></div>`
+      ];
+      const kpiPages = [];
+      for (let i = 0; i < kpiCards.length; i += 6) {
+        kpiPages.push(`<div class="kpi-page ${i === 0 ? 'active' : ''}">${kpiCards.slice(i, i + 6).join('')}</div>`);
+      }
+      const kpiBody = `
+        <div class="kpis kpi-pages">${kpiPages.join('')}</div>
+        <div class="kpi-pager">
+          <button onclick="setKpiPage(-1)">Left</button>
+          <span id="kpi-page-label">Page 1 of ${kpiPages.length}</span>
+          <button onclick="setKpiPage(1)">Right</button>
+        </div>`;
+      const graphBody = renderGraphSection(monthly, year, monthCount);
+
+      document.getElementById('report-content').innerHTML = `
+        ${sectionHtml('section-kpis', 'YTD KPI Dashboard', 'Expanded KPI cards from the report view, with larger fullscreen pages.', kpiBody)}
+
+        ${sectionHtml('section-graphs', 'Financial Graphs', 'Check the metrics you want to overlay in the graph area.', graphBody)}
+
+        ${sectionHtml('section-month-snapshot', 'Month-by-Month Snapshot', 'Completed months only for the selected year.', `<div class="month-grid">${monthlyCards}</div>`)}
+
+        ${sectionHtml('section-month-comparison', 'YTD Monthly Comparison', 'Receipts, expenses, net movement, tithes, attendance, and expense ratio per completed month.', `
+          <div class="table-wrap">
+            <table class="summary-table">
+              <thead>
+                <tr><th>Month</th><th>Receipts</th><th>Disbursements</th><th>Net</th><th>Tithes</th><th>Loose</th><th>Tithers</th><th>Attendance</th><th>Expense %</th></tr>
+              </thead>
+              <tbody>${summaryRows}</tbody>
+              <tfoot><tr><td>Total</td><td>${peso(annualIncome)}</td><td>${peso(annualExpense)}</td><td>${peso(annualNet)}</td><td>${peso(annualTithes)}</td><td>${peso(annualLoose)}</td><td>${totalMonthlyTitherCount}</td><td>${totalAttendance || '-'}</td><td>${pct(annualExpense, annualIncome)}</td></tr></tfoot>
+            </table>
+          </div>`)}
+
+        ${sectionHtml('section-categories', 'YTD Category Details', 'Top receipts and disbursements shown side by side by completed month.', `
+        <div class="two-col">
+          <div>
+            ${renderMatrix(incomeMatrix, 'No receipts recorded for this year.', visibleMonths)}
+          </div>
+          <div>
+            ${renderMatrix(expenseMatrix, 'No disbursements recorded for this year.', visibleMonths)}
+          </div>
+        </div>`)}
+
+        ${sectionHtml('section-financial-month', 'Financial Overview by Month', 'Account balances side by side for completed months only.', renderFinancialOverviewMatrix(monthlyAccountBalances, visibleMonths))}
+
+        ${sectionHtml('section-financial-end', 'Financial Overview Balances', `Account balances as of the end of ${visibleFullMonths[visibleFullMonths.length - 1]} ${year}.`, `
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Account</th><th>Balance</th></tr></thead>
+              <tbody>${FINANCIAL_ACCOUNTS.map(a => `<tr><td>${a.name}</td><td>${peso(accountBalances[a.id] || 0)}</td></tr>`).join('')}</tbody>
+              <tfoot><tr><td>Total Financial Overview</td><td>${peso(accountTotal)}</td></tr></tfoot>
+            </table>
+          </div>`)}
+
+        <div class="note">This page is designed for read-only member presentation: annual KPIs first, then monthly side-by-side movement, then category details. Official signing and submission should still use Print Report and Report Workflow.</div>
+      `;
+      renderSelectedGraphs();
+    }
+
+    const yearSel = document.getElementById('report-year');
+    const now = new Date();
+    for (let y = now.getFullYear(); y >= 2023; y--) yearSel.innerHTML += `<option value="${y}">${y}</option>`;
+    yearSel.value = now.getFullYear();
+    yearSel.addEventListener('change', renderReport);
+    window.graceBooksAuthReady.then(() => loadData()).catch(error => {
+      console.error(error);
+      document.getElementById('report-content').innerHTML = '<div class="empty">Unable to load report data.</div>';
+    });
+  </script>
+</body>
+</html>

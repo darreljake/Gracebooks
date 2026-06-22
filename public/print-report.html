@@ -353,6 +353,7 @@
   <div class="report-type-tabs">
     <button class="rtype-btn active" onclick="setReportType('monthly', this)">📋 Monthly Report</button>
     <button class="rtype-btn" onclick="setReportType('annual', this)">📊 Annual Report</button>
+    <button class="rtype-btn" onclick="setReportType('special-project', this)">Special Projects</button>
   </div>
   <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
   <div>
@@ -381,6 +382,12 @@
         <option value="6">July</option><option value="7">August</option>
         <option value="8">September</option><option value="9">October</option>
         <option value="10">November</option><option value="11">December</option>
+      </select>
+    </div>
+    <div id="special-project-control" style="display:none;">
+      <label>Special Project</label><br>
+      <select id="sel-special-project" onchange="render()">
+        <option value="">Loading projects...</option>
       </select>
     </div>
   </div>
@@ -527,12 +534,16 @@
   let allIncomeData = [];
   let allExpenseData = [];
   let obligationsData = [];
+  let specialProjects = [];
+  let specialProjectEntries = [];
+  let specialProjectCosts = [];
   let memberNameById = {};
   let memberNameByLegacyKey = {};
   let accountOrder = { income: [], expense: [] }; 
   let reportType   = 'monthly';
   let systemInitialBalance = 0; 
   let beginningAccounts = {};
+  let generalFundAccounts = {};
   let reportZoom = 1;
   let workflowSignatures = {};
   const FINANCIAL_ACCOUNTS = [
@@ -590,6 +601,12 @@
   }
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const SPECIAL_PROJECT_SOURCE_LABELS = {
+    'Church Fund': 'Church Funds',
+    'Pledge': 'Pledges',
+    'Direct Contribution': 'Direct Contributions'
+  };
 
   function fmt(num) {
     return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -697,8 +714,10 @@
   // Listener para sa Beginning Balance
   db.collection('settings').doc('beginningBalances').get().then(s => {
     if (s.exists) {
-      systemInitialBalance = parseFloat(s.data().total || 0);
-      beginningAccounts = s.data().accounts || {};
+      const data = s.data();
+      beginningAccounts = data.accounts || {};
+      generalFundAccounts = data.generalFundAccounts || {};
+      systemInitialBalance = getGeneralFundBeginningBalance();
     }
     render();
   });
@@ -768,10 +787,12 @@
 
   db.collection('income').get().then(s => {
     // Keep the complete income pool for Financial Overview account balances.
-    allIncomeData = s.docs.map(d => d.data());
+    allIncomeData = s.docs.map(d => d.data()).filter(d => !d.isSpecialProject);
     incomeData = allIncomeData.filter(d => {
       // Skip transfers
       if (d.type === 'transfer') return false;
+      // Skip legacy special project inflows; project reports handle these separately.
+      if (d.isSpecialProject) return false;
       // Skip Building Fund
       if ((d.type || '').toLowerCase().includes('building fund') || 
           (d.budgetCategory || '').toLowerCase().includes('building fund')) return false;
@@ -783,7 +804,10 @@
   db.collection('expenses').get().then(s => {
     // Keep the complete expense pool for Financial Overview account balances.
     allExpenseData = s.docs.map(d => d.data());
-    expenseData = allExpenseData.filter(d => d.type !== 'transfer');
+    // Deduction-payment entries settle a liability already expensed at gross when
+    // payroll was generated (the withheld amount is part of that gross figure).
+    // Counting them again here would double the expense for the same cash outflow.
+    expenseData = allExpenseData.filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment');
     render();
   });
 
@@ -792,19 +816,49 @@
     render();
   });
 
+  db.collection('specialProjects').get().then(s => {
+    specialProjects = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    specialProjects.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    populateSpecialProjectSelector();
+    render();
+  });
+
+  db.collection('specialProjectEntries').get().then(s => {
+    specialProjectEntries = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    render();
+  });
+
+  db.collection('specialProjectCosts').get().then(s => {
+    specialProjectCosts = s.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    render();
+  });
+
+  function populateSpecialProjectSelector() {
+    const sel = document.getElementById('sel-special-project');
+    if (!sel) return;
+    const publishedProjects = specialProjects.filter(p => p.printReportPublished);
+    const selected = sel.value || initialReportParams.get('project') || '';
+    sel.innerHTML = publishedProjects.length
+      ? publishedProjects.map(p => `<option value="${escapeAttr(p.id)}">${escapeHtml(p.name || 'Special Project')}</option>`).join('')
+      : '<option value="">No pushed projects yet</option>';
+    if (selected && publishedProjects.some(p => p.id === selected)) sel.value = selected;
+  }
+
   function setReportType(type, btn) {
     reportType = type;
     const reportButtons = document.querySelectorAll('.report-type-tabs .rtype-btn');
     reportButtons.forEach(b => b.classList.remove('active'));
-    const activeBtn = btn || (type === 'annual' ? reportButtons[1] : reportButtons[0]);
+    const activeBtn = btn || (type === 'special-project' ? reportButtons[2] : type === 'annual' ? reportButtons[1] : reportButtons[0]);
     if (activeBtn) activeBtn.classList.add('active');
-    document.getElementById('month-control').style.display = type === 'monthly' ? 'block' : 'none'; 
+    document.getElementById('month-control').style.display = type === 'monthly' ? 'block' : 'none';
+    document.getElementById('special-project-control').style.display = type === 'special-project' ? 'block' : 'none';
+    document.getElementById('sel-member-sort').closest('div').style.display = type === 'special-project' ? 'none' : 'block';
     render();
   }
 
   function applyInitialReportParams() {
     const type = initialReportParams.get('type');
-    if (type === 'annual' || type === 'monthly') {
+    if (type === 'annual' || type === 'monthly' || type === 'special-project') {
       setReportType(type);
     }
 
@@ -866,10 +920,12 @@
     await loadWorkflowSignaturesForCurrentPeriod();
     if (reportType === 'monthly') renderMonthly();
     else if (reportType === 'annual') renderAnnual();
+    else if (reportType === 'special-project') renderSpecialProject();
   }
 
   function currentWorkflowId() {
     const year = document.getElementById('sel-year').value || new Date().getFullYear();
+    if (reportType === 'special-project') return `special-project-${document.getElementById('sel-special-project').value || 'none'}`;
     if (reportType === 'annual') return `annual-${year}`;
     const month = String(Number(document.getElementById('sel-month').value || 0) + 1).padStart(2, '0');
     return `monthly-${year}-${month}`;
@@ -981,10 +1037,10 @@
     const targetDate = isAnnual ? new Date(year, 0, 1) : new Date(year, month, 1);
     
     incomeData.forEach(d => {
-      if (d.date && new Date(d.date) < targetDate) begBal += parseFloat(d.amount||0);
+      if (d.date && new Date(d.date) < targetDate && isGeneralFundAccount(getIncomeAccountId(d))) begBal += parseFloat(d.amount||0);
     });
     expenseData.forEach(d => {
-      if (d.date && new Date(d.date) < targetDate) begBal -= parseFloat(d.amount||0);
+      if (d.date && new Date(d.date) < targetDate && isGeneralFundAccount(getExpenseAccountId(d))) begBal -= parseFloat(d.amount||0);
     });
 
     const totalIn  = fInc.reduce((s,d) => s + parseFloat(d.amount||0), 0);
@@ -993,6 +1049,9 @@
     const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
     const netChange = totalIn - totalOut;
     const accountBalances = getAccountBalancesThrough(periodEndDate);
+    const financialOverviewTotal = FINANCIAL_ACCOUNTS.reduce((sum, account) => {
+      return sum + (parseFloat(accountBalances[account.id]) || 0);
+    }, 0);
     const accountRows = FINANCIAL_ACCOUNTS.map(a => {
       const balance = accountBalances[a.id] || 0;
       return `
@@ -1483,6 +1542,11 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
             <td colspan="3">Financial Overview Accounts</td>
           </tr>
           ${accountRows}
+          <tr class="subtotal-row bold-row">
+            <td class="col-desc">Total Financial Overview</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${financialOverviewTotal < 0 ? 'amount-negative' : ''}">₱ ${fmt(financialOverviewTotal)}</td>
+          </tr>
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header">
@@ -1538,11 +1602,167 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
     document.getElementById('report-page').innerHTML = generateReportHTML(year, null, true);
   }
 
+  function renderSpecialProject() {
+    populateSpecialProjectSelector();
+    const projectId = document.getElementById('sel-special-project').value;
+    const project = specialProjects.find(p => p.id === projectId && p.printReportPublished);
+    document.getElementById('report-page').innerHTML = project
+      ? generateSpecialProjectReportHTML(project)
+      : `<div style="text-align:center; padding:60px; color:#777;">
+          <div style="font-weight:700; color:var(--red); margin-bottom:8px;">No Special Project Selected</div>
+          <div>Push a project from the Special Projects page first, then select it here.</div>
+        </div>`;
+  }
+
+  function projectCostTotal(projectId) {
+    return specialProjectCosts
+      .filter(c => c.projectId === projectId)
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  }
+
+  function projectFundingTotal(projectId) {
+    return specialProjectEntries
+      .filter(e => e.projectId === projectId)
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  }
+
+  function groupRows(rows, keyFn) {
+    return rows.reduce((acc, row) => {
+      const key = keyFn(row) || 'Uncategorized';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(row);
+      return acc;
+    }, {});
+  }
+
+  function generateSpecialProjectReportHTML(project) {
+    const projectCosts = specialProjectCosts.filter(c => c.projectId === project.id);
+    const projectEntries = specialProjectEntries.filter(e => e.projectId === project.id);
+    const costTotal = projectCostTotal(project.id);
+    const fundingTotal = projectFundingTotal(project.id);
+    const remainingNeed = Math.max(0, costTotal - fundingTotal);
+    const surplus = Math.max(0, fundingTotal - costTotal);
+    const periodText = `${project.projectType || 'Special Project'}${project.startDate ? ' · Started ' + project.startDate : ''}`;
+
+    const costGroups = groupRows(projectCosts, c => c.mainCategory);
+    const costRows = Object.keys(costGroups).sort().map(main => {
+      const rows = costGroups[main];
+      const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      return `
+        <tr>
+          <td class="col-desc indent-1" style="font-weight:bold;">${escapeHtml(main)}</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(total)}</td>
+        </tr>
+        ${rows.map(r => `
+          <tr>
+            <td class="col-desc indent-2">${escapeHtml(r.detail || 'Cost Item')} <span style="color:#777;font-size:11px;">${escapeHtml(r.basis || '')}</span></td>
+            <td class="col-sub">₱ ${fmt(r.amount || 0)}</td>
+            <td class="col-main"></td>
+          </tr>`).join('')}`;
+    }).join('');
+
+    const fundingGroups = groupRows(projectEntries, e => SPECIAL_PROJECT_SOURCE_LABELS[e.sourceType] || 'Other Contributions');
+    const fundingRows = Object.keys(fundingGroups).sort((a, b) => {
+      const order = ['Church Funds', 'Pledges', 'Direct Contributions', 'Other Contributions'];
+      const ai = order.indexOf(a) === -1 ? order.length : order.indexOf(a);
+      const bi = order.indexOf(b) === -1 ? order.length : order.indexOf(b);
+      return ai - bi || a.localeCompare(b);
+    }).map(main => {
+      const rows = fundingGroups[main];
+      const total = rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+      return `
+        <tr>
+          <td class="col-desc indent-1" style="font-weight:bold;">${escapeHtml(main)}</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(total)}</td>
+        </tr>
+        ${rows.map(r => {
+          const source = r.sourceType === 'Church Fund'
+            ? `${r.sourceAccountName || r.sourceAccount || 'Church Fund'}${r.particulars ? ' - ' + r.particulars : ''}`
+            : `${r.pledgerName || r.party || 'Contributor'}${r.particulars ? ' - ' + r.particulars : ''}`;
+          return `
+            <tr>
+              <td class="col-desc indent-2">${escapeHtml(source)} <span style="color:#777;font-size:11px;">${escapeHtml(r.date || '')}</span></td>
+              <td class="col-sub">₱ ${fmt(r.amount || 0)}</td>
+              <td class="col-main"></td>
+            </tr>`;
+        }).join('')}`;
+    }).join('');
+
+    return `
+      <div class="siksik-container" id="printable-content">
+        <div class="rpt-header">
+          <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+          <div class="rpt-header-text">
+            <div class="rpt-church-name">Tagaytay United Methodist Church</div>
+            <div class="rpt-church-address">Maglabe Drive, Asisan, Tagaytay City</div>
+            <div class="rpt-title">${escapeHtml(project.name || 'Special Project Report')}</div>
+            <div class="rpt-period">${escapeHtml(periodText)}</div>
+          </div>
+        </div>
+
+        <table class="fs-table" id="export-table">
+          <tr class="section-header"><td colspan="3">Project Summary</td></tr>
+          <tr class="bold-row"><td class="col-desc">Total Project Cost</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(costTotal)}</td></tr>
+          <tr class="bold-row"><td class="col-desc">Total Funding Secured</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(fundingTotal)}</td></tr>
+          <tr class="total-row"><td class="col-desc">${surplus > 0 ? 'Project Surplus' : 'Remaining Need'}</td><td class="col-sub"></td><td class="col-main ${remainingNeed > 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(surplus > 0 ? surplus : remainingNeed)}</td></tr>
+          ${project.notes ? `<tr><td class="col-desc indent-1" colspan="3" style="padding-top:10px;">${escapeHtml(project.notes)}</td></tr>` : ''}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header"><td colspan="3">Cost Breakdown</td></tr>
+          ${costRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No cost breakdown recorded.</td></tr>'}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header"><td colspan="3">Source of Funding</td></tr>
+          ${fundingRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No funding sources recorded.</td></tr>'}
+        </table>
+
+        <div class="sig-section">
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.chairpersonLabel}</div>
+            ${workflowSignatureHtml('chairperson', signatories.chairpersonName, signatories.chairpersonTitle)}
+          </div>
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.financeChairLabel}</div>
+            ${workflowSignatureHtml('financeChair', signatories.financeChairName, signatories.financeChairTitle)}
+          </div>
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.treasurerLabel}</div>
+            ${workflowSignatureHtml('treasurer', signatories.treasurerName, signatories.treasurerTitle)}
+          </div>
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.auditorLabel}</div>
+            ${workflowSignatureHtml('auditor', signatories.auditorName, signatories.auditorTitle)}
+          </div>
+          <div class="sig-box">
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.pastorLabel}</div>
+            ${workflowSignatureHtml('pastor', signatories.pastorName, signatories.pastorTitle)}
+          </div>
+        </div>
+
+        <div class="rpt-footer">
+          <span>GraceBooks — TUMC Finance System</span>
+          <span>Special Project Report · ${escapeHtml(project.name || '')}</span>
+        </div>
+      </div>`;
+  }
+
   const KNOWN_ACCOUNT_IDS = new Set(FINANCIAL_ACCOUNTS.map(account => account.id));
 
   function normalizeAccountId(value) {
     const raw = String(value || '').trim();
     return KNOWN_ACCOUNT_IDS.has(raw) ? raw : '';
+  }
+
+  function isGeneralFundAccount(id) {
+    return generalFundAccounts[id] !== false;
+  }
+
+  function getGeneralFundBeginningBalance() {
+    return FINANCIAL_ACCOUNTS
+      .filter(account => isGeneralFundAccount(account.id))
+      .reduce((sum, account) => sum + (parseFloat(beginningAccounts[account.id]) || 0), 0);
   }
 
   function getIncomeAccountId(d) {
@@ -1562,6 +1782,17 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
     return 'cash-hand';
   }
 
+  function getExpenseCashImpact(d) {
+    // Payroll is recognized as an expense at gross, but the withheld portion
+    // (tithe/SSS/other deductions) only actually leaves the cash account later via
+    // a separate deduction-payment record. Using the gross amount here for payroll
+    // would double-subtract that withheld portion once the deduction is remitted -
+    // mirrors the cash-impact logic in financial-overview.html.
+    const netPay = parseFloat(d.netPay);
+    const hasNetPayroll = d.isPayrollGenerated && !d.isBenefit && Number.isFinite(netPay);
+    return hasNetPayroll ? Math.max(0, netPay) : (parseFloat(d.amount) || 0);
+  }
+
   function getAccountBalancesThrough(endDate) {
     const balances = {};
     FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
@@ -1577,7 +1808,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       if (!d.date || new Date(d.date) > endDate) return;
       const id = getExpenseAccountId(d);
       if (balances[id] === undefined) balances[id] = 0;
-      balances[id] -= parseFloat(d.amount || 0);
+      balances[id] -= getExpenseCashImpact(d);
     });
 
     return balances;
