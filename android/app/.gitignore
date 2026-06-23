@@ -1,2 +1,5 @@
 /build/*
 !/build/.npmkeep
+
+# Debug signing key is provisioned from the ANDROID_DEBUG_KEYSTORE_B64 GitHub secret at CI time
+debug.keystore

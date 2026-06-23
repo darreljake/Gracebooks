@@ -34,6 +34,11 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
+      - name: Restore stable debug keystore
+        env:
+          ANDROID_DEBUG_KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: echo "$ANDROID_DEBUG_KEYSTORE_B64" | base64 -d > android/app/debug.keystore
+
       - name: Build debug APK
         working-directory: android
         run: |
