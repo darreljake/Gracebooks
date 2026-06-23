@@ -834,7 +834,6 @@
     appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
   };
 
-  // TODO: paste the reCAPTCHA v3 site key from Firebase Console > Build > App Check once created.
   const APP_CHECK_SITE_KEY = '';
 
   const app = initializeApp(firebaseConfig);
@@ -844,7 +843,28 @@
   const db  = getFirestore(app);
   const auth = getAuth(app);
 
-  let draftRecords   = [];
+  // Counters reload this page mid-batch (slow connection, accidental refresh,
+  // etc.) - persist drafts so a reload can't silently wipe entered amounts and
+  // cause the same tithes to be re-keyed and double-counted.
+  const DRAFT_STORAGE_KEY = 'graceBooksTitheDrafts';
+  function loadDraftsFromStorage() {
+    try {
+      const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Failed to restore saved drafts', e);
+      return [];
+    }
+  }
+  function saveDraftsToStorage() {
+    try {
+      sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftRecords));
+    } catch (e) {
+      console.error('Failed to save drafts', e);
+    }
+  }
+
+  let draftRecords   = loadDraftsFromStorage();
   let selectedType   = 'Source of Funds';
   let reviewEditingId  = null;
   const DENOMINATIONS = [
@@ -919,6 +939,12 @@
   }
 
   applyRoleAccessControls();
+
+  // Restore any drafts left over from before a reload and let the counter know.
+  updateUI();
+  if (draftRecords.length > 0) {
+    setTimeout(() => showToast(`📋 Restored ${draftRecords.length} unsaved entr${draftRecords.length === 1 ? 'y' : 'ies'} from before the reload.`), 300);
+  }
 
   async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
     const user = auth.currentUser;
@@ -1410,6 +1436,7 @@
 
   // ── 6. UPDATE UI TABLE ───────────────────────────────────────────────────
   function updateUI() {
+    saveDraftsToStorage();
     const tbody     = document.getElementById('records-body');
     const totalDisp = document.getElementById('total-amount');
     const total     = draftRecords.reduce((s,r) => s + r.amount, 0);

@@ -216,11 +216,31 @@
       color: rgba(255,255,255,0.6);
       font-size: 11px;
     }
+
+    #install-app-btn {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+      background: #8B0000;
+      color: white;
+      border: none;
+      padding: 12px 18px;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    #install-app-btn:hover { background: #a30000; }
   </style>
 </head>
 
 <body>
   <div class="auth-loading" id="auth-loading">Loading GraceBooks...</div>
+  <button id="install-app-btn" onclick="installApp()">📲 Install GraceBooks App</button>
 
   <div class="login-container" id="login-page">
     <div class="login-box">
@@ -476,6 +496,34 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
     }
+
+    // The browser's own install prompt only shows as a subtle, easy-to-miss
+    // address-bar icon and depends on per-browser engagement heuristics that
+    // app code can't accelerate. Capturing the event ourselves guarantees every
+    // user sees the same clear "Install GraceBooks" button the moment their
+    // browser decides the app is installable, instead of relying on whether
+    // they happen to notice the native UI.
+    let deferredInstallPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      document.getElementById('install-app-btn').style.display = 'block';
+    });
+
+    window.installApp = async function installApp() {
+      if (!deferredInstallPrompt) return;
+      const btn = document.getElementById('install-app-btn');
+      btn.style.display = 'none';
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+    };
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      document.getElementById('install-app-btn').style.display = 'none';
+    });
   </script>
 </body>
 </html>
