@@ -404,7 +404,7 @@
         returned_by_finance: 'Treasurer fixes the issue, then routes either back to Finance Chair or back to Auditor for major changes.',
         routed_to_chairperson: 'Chairperson views the report, affixes signature, and routes to Pastor.',
         routed_to_pastor: 'Pastor affixes signature to finalize the report.',
-        finalized: 'The report workflow is complete.'
+        finalized: 'The report workflow is complete and locked. Treasurer can reopen it for corrections if needed.'
       };
       return messages[status] || 'Workflow status is being reviewed.';
     }
@@ -444,12 +444,16 @@
         add('Affix Signature & Finalize', 'btn-good', "pastorSign('electronic')");
         add('Manual Signature & Finalize', 'btn-warn', "pastorSign('manual')");
       }
+      if (role === 'Treasurer' && status === 'finalized') {
+        add('Reopen Report (Requires Reason)', 'btn-warn', "reopenFinalizedReport()");
+      }
 
       document.getElementById('action-buttons').innerHTML =
         actions.join('') || '<div class="muted">No action is currently available for your role at this step.</div>';
     }
 
     function actionHelp(status) {
+      if (status === 'finalized') return 'This report is locked. Only the Treasurer can reopen it, and a reason is required.';
       if (status.includes('returned')) return 'Use the notes below to describe the fix or routing decision.';
       if (['submitted_to_auditor', 'submitted_to_finance'].includes(status)) return 'Use return notes when sending back to Treasurer.';
       return 'Choose electronic signature if your saved signature should be affixed. Choose manual if the paper copy will be signed outside the system.';
@@ -568,6 +572,26 @@
       }, status === 'returned_by_auditor'
         ? 'Auditor returned report to Treasurer.'
         : 'Finance Chair returned report to Treasurer.');
+    }
+
+    async function reopenFinalizedReport() {
+      const notes = document.getElementById('route-notes').value.trim();
+      if (!notes) {
+        const notesEl = document.getElementById('route-notes');
+        notesEl.focus();
+        notesEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        showMessage('A reason is required to reopen a finalized report.', 'err');
+        return;
+      }
+      if (!window.confirm('Reopen this finalized report? The full approval chain must run again before it can be finalized.')) {
+        return;
+      }
+      await saveTransition({
+        status: 'draft',
+        routeTo: 'Treasurer',
+        reopenedAt: new Date().toISOString(),
+        reopenedBy: profile.name
+      }, 'Treasurer reopened the finalized report for corrections.');
     }
 
     function removeSignaturesAfter(key) {

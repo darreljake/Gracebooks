@@ -186,9 +186,7 @@ Status: Started.
 - Notifications:
   - Add in-app and/or email notifications when a report is routed, returned, or finalized.
   - Notify the next responsible role immediately after each workflow transition.
-- Finalized report locking:
-  - Lock a report after Pastor finalization.
-  - Require Treasurer/admin reopen action before any finalized workflow can be edited again.
+- Finalized report locking: Done. `report-workflow.html` already had no per-role action available once `status === 'finalized'` (every action button is gated to a specific non-finalized status), so finalized reports were already implicitly locked. Added an explicit Treasurer-only "Reopen Report" action (requires a reason note + confirmation) that resets status back to `draft` so the full approval chain must run again; reopen is logged to both workflow history and `auditLogs` via the existing `saveTransition`/`writeAuditLog` pattern. No Firestore rule change needed — Treasurer already has `update` rights on `reportReviews`.
 - Better return notes: Done. `report-workflow.html` shows a prominent latest-return-note banner (who returned it, when, and the note text) whenever a report is in `returned_by_auditor` or `returned_by_finance` status. Return-note history was already visible per entry in the Routing History timeline.
 
 ## Phase 6 - Role and Access Enhancements
