@@ -1,0 +1,9 @@
+{
+  "appId": "org.tumc.gracebooks",
+  "appName": "GraceBooks",
+  "webDir": "public",
+  "server": {
+    "url": "https://gracebooks-7eebc.web.app",
+    "androidScheme": "https"
+  }
+}

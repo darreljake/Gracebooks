@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Report Workflow - GraceBooks</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -802,8 +807,15 @@
       const type = document.getElementById('report-type').value;
       const year = document.getElementById('period-year').value;
       const month = document.getElementById('period-month').value;
-      const query = type === 'annual' ? `?type=annual&year=${year}` : `?type=monthly&year=${year}&month=${month}`;
+      const query = type === 'special-project'
+        ? '?type=special-project'
+        : type === 'annual' ? `?type=annual&year=${year}` : `?type=monthly&year=${year}&month=${month}`;
       window.location.href = `print-report.html${query}`;
+    }
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
     }
   </script>
 </body>

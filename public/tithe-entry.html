@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Contribution Entry — GraceBooks</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
   <style>
@@ -1749,32 +1754,11 @@ document.getElementById('csv-upload').addEventListener('change', function(e) {
     reader.readAsText(file);
 });
 </script>
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        try {
-            // Kunin ang tamang data gamit ang 'graceBooksUser'
-            const userString = sessionStorage.getItem("graceBooksUser");
-            
-            if (userString) {
-                // Dahil naka-JSON package ito, kailangan natin i-parse
-                const userData = JSON.parse(userString);
-                
-                // Kunin yung role sa loob ng package
-                const userRole = userData.role ? userData.role.toLowerCase() : "";
-
-                // Hanapin ang Bulk Entry section
-                const bulkEntrySection = document.getElementById("bulk-entry");
-
-                // Itago kung counter ang naka-login
-                if (userRole === "counter" && bulkEntrySection) {
-                    bulkEntrySection.style.display = "none";
-                }
-            }
-        } catch (error) {
-            console.error("May error sa pag-check ng role:", error);
-        }
-    });
-</script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+    }
+  </script>
 </body>
 </html>
 

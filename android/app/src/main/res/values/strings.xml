@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GraceBooks</string>
+    <string name="title_activity_main">GraceBooks</string>
+    <string name="package_name">org.tumc.gracebooks</string>
+    <string name="custom_url_scheme">org.tumc.gracebooks</string>
+</resources>
