@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Special Projects - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Poppins', sans-serif; background: #f4f6f8; color: #263238; min-height: 100vh; }
+    .topbar { background: #8B0000; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; }
+    .container { max-width: 1320px; margin: 22px auto; padding: 0 18px; }
+    .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+    .page-head h1 { font-size: 22px; color: #263238; margin-bottom: 4px; }
+    .muted { color: #6f7c86; font-size: 12px; line-height: 1.5; }
+    .btn { background: #8B0000; color: white; border: none; border-radius: 7px; padding: 10px 13px; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 13px; }
+    .btn.secondary { background: #1a5276; }
+    .btn.ghost { background: #eef3f7; color: #34495e; }
+    .btn:disabled { background: #aaa; cursor: not-allowed; }
+    .icon-btn { width: 34px; height: 34px; border: none; border-radius: 7px; background: #eef3f7; color: #2d3d48; font-size: 20px; line-height: 1; cursor: pointer; }
+    .treasurer-only { display: none; }
+    .can-manage .treasurer-only { display: initial; }
+    .app-shell { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: start; }
+    .panel, .workspace { background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .panel { overflow: hidden; }
+    .panel-head { padding: 16px; border-bottom: 1px solid #edf2f5; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .panel-head h3, .section-title { color: #8B0000; font-size: 16px; }
+    .panel-tools { padding: 12px 16px; border-bottom: 1px solid #edf2f5; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccd6dd; border-radius: 7px; font-size: 13px; font-family: 'Poppins', sans-serif; background: white; }
+    textarea { min-height: 78px; resize: vertical; }
+    label { display: block; font-size: 11px; color: #667; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
+    .project-list { max-height: none; overflow-y: visible; }
+    .project-item { padding: 14px 16px; border-bottom: 1px solid #edf2f5; cursor: pointer; display: grid; gap: 7px; grid-template-columns: 1fr auto; align-items: center; }
+    .project-item:hover, .project-item.active { background: #fff7f7; }
+    .project-item strong { font-size: 13px; color: #263238; }
+    .project-meta { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .project-amount { font-size: 12px; font-weight: 700; color: #51616d; }
+    .project-line { display: grid; gap: 5px; }
+    .project-quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .badge-open { background: #d5f5e3; color: #1e8449; }
+    .badge-closed { background: #eef3f7; color: #51616d; }
+    .badge-church { background: #fcf3cf; color: #7d6608; }
+    .badge-pledge { background: #eafaf1; color: #1e8449; }
+    .badge-direct { background: #eaf2f8; color: #1a5276; }
+    .proof-link { color: #1a5276; font-weight: 700; text-decoration: none; }
+    .proof-link:hover { text-decoration: underline; }
+    .proof-none { color: #9aa6af; font-size: 12px; }
+    .link-expense-list { border: 1px solid #edf2f5; border-radius: 8px; max-height: 340px; overflow-y: auto; }
+    .expense-pick { width: 100%; border: none; border-bottom: 1px solid #edf2f5; background: white; text-align: left; padding: 12px; cursor: pointer; font-family: 'Poppins', sans-serif; }
+    .expense-pick:hover { background: #fff7f7; }
+    .expense-pick strong { display: block; color: #263238; font-size: 13px; }
+    .expense-pick span { display: block; color: #6f7c86; font-size: 12px; margin-top: 3px; }
+    .workspace { min-height: 620px; overflow: hidden; }
+    .workspace-head { padding: 18px 20px; border-bottom: 1px solid #edf2f5; display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .workspace-title h2 { font-size: 20px; color: #263238; margin-bottom: 5px; }
+    .workspace-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 10px; padding: 14px 20px; border-bottom: 1px solid #edf2f5; background: #fbfcfd; }
+    .kpi { border: 1px solid #edf2f5; border-radius: 8px; padding: 12px; background: white; }
+    .kpi .label { font-size: 10px; text-transform: uppercase; color: #72808b; font-weight: 700; }
+    .kpi .value { font-size: 18px; font-weight: 700; color: #263238; margin-top: 3px; }
+    .tabs { display: flex; gap: 6px; padding: 12px 20px 0; border-bottom: 1px solid #edf2f5; overflow-x: auto; }
+    .tab-btn { border: none; background: transparent; padding: 10px 12px; border-bottom: 3px solid transparent; cursor: pointer; color: #53626d; font-weight: 700; font-family: 'Poppins', sans-serif; white-space: nowrap; }
+    .tab-btn.active { color: #8B0000; border-bottom-color: #8B0000; }
+    .tab-body { padding: 18px 20px 22px; }
+    .empty { color: #8a99a5; text-align: center; padding: 28px; }
+    .section-card { border: 1px solid #edf2f5; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+    .section-card h3 { color: #8B0000; font-size: 16px; margin-bottom: 10px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
+    th { background: #f6f8fa; color: #51616d; text-align: left; padding: 10px; white-space: nowrap; border-bottom: 1px solid #e4ebf0; }
+    td { border-bottom: 1px solid #edf2f5; padding: 10px; vertical-align: top; }
+    .amount { text-align: right; font-weight: 700; white-space: nowrap; }
+    .report-line { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f4f6; font-size: 13px; }
+    .report-line.main { font-weight: 700; color: #2d3d48; }
+    .report-line.indent { padding-left: 22px; color: #53626d; }
+    .report-line.total { font-weight: 700; color: #8B0000; border-bottom: none; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(24, 32, 38, 0.58); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 50; }
+    .modal-overlay.active { display: flex; }
+    .modal { width: min(640px, 100%); max-height: 92vh; overflow-y: auto; background: white; border-radius: 8px; box-shadow: 0 18px 60px rgba(0,0,0,0.24); }
+    .modal.wide { width: min(1120px, 100%); }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #edf2f5; }
+    .modal-header h3 { color: #8B0000; font-size: 18px; margin-bottom: 4px; }
+    .modal-body { padding: 18px 20px 20px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .form-group { margin-bottom: 10px; }
+    .source-fields { display: none; }
+    .source-fields.active { display: block; }
+    .draft-card { background: #fbfcfd; }
+    .draft-list { border: 1px solid #edf2f5; border-radius: 8px; overflow: hidden; }
+    .draft-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf2f5; background: white; }
+    .draft-row:last-child { border-bottom: none; }
+    .draft-row strong { display: block; font-size: 13px; color: #263238; }
+    .draft-row span { display: block; font-size: 12px; color: #6f7c86; margin-top: 2px; }
+    .draft-total { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; font-size: 13px; font-weight: 700; color: #263238; }
+    .no-project { display: grid; place-items: center; min-height: 620px; padding: 30px; text-align: center; }
+    @media (max-width: 980px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .project-item { grid-template-columns: 1fr; }
+      .project-quick { justify-content: flex-start; }
+      .kpi-row, .two-col, .form-row { grid-template-columns: 1fr; }
+      .draft-row { grid-template-columns: 1fr; }
+      .workspace-head, .page-head { flex-direction: column; }
+      .workspace-actions { justify-content: flex-start; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+  <div class="topbar">
+    <h2>Special Projects</h2>
+    <a class="back-btn" href="index.html">Dashboard</a>
+  </div>
+
+  <div class="container">
+    <div class="page-head">
+      <div>
+        <h1>Project Fund Workspace</h1>
+        <div class="muted">Track designated projects, cost breakdowns, pledges, church-funded portions, and report-ready transparency.</div>
+      </div>
+      <button class="btn treasurer-only" onclick="openProjectModal()">Create Project</button>
+    </div>
+
+    <div class="app-shell">
+      <aside class="panel">
+        <div class="panel-head">
+          <h3>Projects</h3>
+          <span class="badge badge-open" id="open-count">0 Open</span>
+        </div>
+        <div class="panel-tools">
+          <input id="project-search" placeholder="Search projects..." oninput="renderProjectList()" />
+        </div>
+        <div class="project-list" id="project-list">
+          <div class="empty">Loading projects...</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="project-detail-modal" onclick="handleModalBackdrop(event, 'project-detail-modal')">
+    <div class="modal wide" role="dialog" aria-modal="true">
+      <div id="project-detail-body" class="workspace"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="project-modal" onclick="handleModalBackdrop(event, 'project-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3 id="project-modal-title">Create Project</h3>
+          <div class="muted" id="project-modal-sub">Creates an open project. Add cost and funding details after opening the workspace.</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('project-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Project Name</label>
+          <input id="project-name" placeholder="e.g. Anniversary Lechon, Sound System, Roof Repair" />
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Project Type</label>
+            <select id="project-type">
+              <option>Activity Contribution</option>
+              <option>Construction Project</option>
+              <option>Equipment / Capital Project</option>
+              <option>Other Designated Fund</option>
+            </select>
+          </div>
+          <div>
+            <label>Start Date</label>
+            <input type="date" id="project-date" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="project-notes" placeholder="Purpose, committee, restrictions, or target."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" onclick="closeModal('project-modal')">Cancel</button>
+          <button class="btn" id="project-save-btn" type="button" onclick="saveProject()">Save Project</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="cost-modal" onclick="handleModalBackdrop(event, 'cost-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3>Add Cost Item</h3>
+          <div class="muted" id="cost-modal-sub">Break down expected or actual project costs.</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('cost-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div>
+            <label>Main Cost Category</label>
+            <input id="cost-main" placeholder="e.g. Food, Materials, Transportation" />
+          </div>
+          <div>
+            <label>Subcategory / Details</label>
+            <input id="cost-detail" placeholder="e.g. Lechon baboy, cement, bus rental" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Amount</label>
+            <input type="number" id="cost-amount" min="0" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label>Basis</label>
+            <select id="cost-basis"><option>Estimated</option><option>Actual</option></select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" onclick="closeModal('cost-modal')">Cancel</button>
+          <button class="btn secondary" id="cost-save-btn" onclick="saveCost()">Save Cost Item</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="funding-modal" onclick="handleModalBackdrop(event, 'funding-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3>Add Funding Source</h3>
+          <div class="muted" id="funding-modal-sub">Record church funding, pledges, or direct contributions.</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('funding-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div>
+            <label>Date</label>
+            <input type="date" id="entry-date" />
+          </div>
+          <div>
+            <label>Source Type</label>
+            <select id="entry-source-type" onchange="toggleSourceFields()">
+              <option>Church Fund</option>
+              <option>Pledge</option>
+              <option>Direct Contribution</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="church-fields" class="source-fields active">
+          <div class="form-row">
+            <div>
+              <label>Source of Fund</label>
+              <select id="entry-account">
+                <option value="cash-hand">Cash on Hand</option>
+                <option value="cash-bank">Cash in Bank</option>
+                <option value="building">Building Fund</option>
+                <option value="petty-cash">Petty Cash Fund</option>
+                <option value="mission">Mission Fund</option>
+                <option value="investment">Investments/TD</option>
+              </select>
+            </div>
+            <div>
+              <label>Budget Category</label>
+              <select id="entry-budget-category"><option value="">Loading budget categories...</option></select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>Payee</label>
+              <input id="entry-payee" placeholder="Supplier, vendor, or payee" />
+            </div>
+            <div>
+              <label>Particulars</label>
+            <input id="entry-particulars" placeholder="e.g. Youth camp meals" />
+            </div>
+          </div>
+        </div>
+
+        <div id="pledge-fields" class="source-fields">
+          <div class="form-group">
+            <label>Receiving Account</label>
+            <select id="entry-receive-account">
+              <option value="cash-hand">Cash on Hand</option>
+              <option value="cash-bank">Cash in Bank</option>
+              <option value="building">Building Fund</option>
+              <option value="petty-cash">Petty Cash Fund</option>
+              <option value="mission">Mission Fund</option>
+              <option value="investment">Investments/TD</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div>
+              <label>Pledger / Contributor</label>
+              <input id="entry-pledger" placeholder="Member name" />
+            </div>
+            <div>
+              <label>Contribution Note</label>
+              <input id="entry-pledge-note" placeholder="e.g. May contribution, pledge payment" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label>Amount</label>
+            <input type="number" id="entry-amount" min="0" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label>Reference</label>
+            <input id="entry-reference" placeholder="OR, voucher, or note" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Receipt / Voucher Proof</label>
+          <input type="file" id="entry-receipt" accept="image/*,.pdf" />
+          <div class="muted">Optional. Church fund proof attaches to the linked expense; pledge/direct proof attaches to this project entry.</div>
+        </div>
+        <div class="form-group">
+          <label>Remarks</label>
+          <textarea id="entry-notes" placeholder="Extra context for the project report."></textarea>
+        </div>
+        <div class="section-card draft-card" id="funding-draft-card">
+          <h3>Funding Draft</h3>
+          <div class="muted">Add several funding sources here first, then save them in one posting.</div>
+          <div class="draft-list" id="funding-draft-list" style="margin-top:10px;"></div>
+          <div class="draft-total">
+            <span>Draft Total</span>
+            <span id="funding-draft-total">PHP 0.00</span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" onclick="closeModal('funding-modal')">Cancel</button>
+          <button class="btn ghost" id="entry-draft-btn" type="button" onclick="addFundingToDraft()">Add to Draft</button>
+          <button class="btn secondary" id="entry-save-btn" onclick="saveFundingEntry()">Save Draft</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="link-expense-modal" onclick="handleModalBackdrop(event, 'link-expense-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3>Link Existing Expense</h3>
+          <div class="muted" id="link-expense-sub">Choose an expense that already belongs to this project.</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('link-expense-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Search Expenses</label>
+          <input id="expense-link-search" placeholder="Search by date, category, payee, particulars, or amount..." oninput="renderExpenseLinkList()" />
+        </div>
+        <div class="link-expense-list" id="expense-link-list">
+          <div class="empty">Loading expenses...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+      authDomain: "gracebooks-7eebc.firebaseapp.com",
+      projectId: "gracebooks-7eebc",
+      storageBucket: "gracebooks-7eebc.firebasestorage.app"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    document.getElementById('project-date').value = todayIso;
+    document.getElementById('entry-date').value = todayIso;
+
+    let activeProfile = null;
+    let projects = [];
+    let entries = [];
+    let costs = [];
+    let expenses = [];
+    let activeProjectId = '';
+    let activeTab = 'overview';
+    let editingProjectId = '';
+    let editingCostId = '';
+    let editingEntryId = '';
+    let fundingDraft = [];
+
+    const accountNames = {
+      'cash-hand': 'General Fund - Cash on Hand',
+      'cash-bank': 'General Fund - Cash in Bank',
+      'building': 'Building Fund',
+      'petty-cash': 'Petty Cash Fund',
+      'mission': 'Mission Fund',
+      'investment': 'Investments/TD'
+    };
+
+    function fmt(value) { return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function peso(value) { return '\u20b1' + fmt(value); }
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+    function roleIs(...roles) { return activeProfile && roles.includes(activeProfile.role); }
+
+    async function initPage() {
+      activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
+      document.body.classList.toggle('can-manage', roleIs('Treasurer'));
+      await Promise.all([loadProjects(), loadEntries(), loadCosts(), loadExpenses(), loadBudgetCategories()]);
+      if (!activeProjectId && projects[0]) activeProjectId = projects[0].id;
+      renderAll();
+    }
+
+    async function loadProjects() {
+      const snap = await db.collection('specialProjects').get();
+      projects = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      projects.sort((a, b) => {
+        const statusSort = String(a.status || 'Open').localeCompare(String(b.status || 'Open'));
+        return statusSort || String(a.name || '').localeCompare(String(b.name || ''));
+      });
+    }
+
+    async function loadEntries() {
+      const snap = await db.collection('specialProjectEntries').get();
+      entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    }
+
+    async function loadCosts() {
+      const snap = await db.collection('specialProjectCosts').get();
+      costs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      costs.sort((a, b) => String(a.mainCategory || '').localeCompare(String(b.mainCategory || '')));
+    }
+
+    async function loadExpenses() {
+      const snap = await db.collection('expenses').orderBy('date', 'desc').limit(500).get();
+      expenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+
+    async function loadBudgetCategories() {
+      const year = new Date().getFullYear().toString();
+      const doc = await db.collection('budgets').doc(year).get();
+      const expenseBudgetKeys = doc.exists && doc.data().expense ? Object.keys(doc.data().expense).sort() : [];
+      const sel = document.getElementById('entry-budget-category');
+      sel.innerHTML = '<option value="">Select budget category</option>' +
+        expenseBudgetKeys.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('') +
+        '<option value="Non-Budgeted - Special Project">Non-Budgeted - Special Project</option>';
+    }
+
+    async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
+      const user = firebase.auth().currentUser;
+      await db.collection('auditLogs').add({
+        action, collection: collectionName, docId, summary,
+        before: beforeData || null, after: afterData || null,
+        actorUid: user ? user.uid : '',
+        actorEmail: user ? user.email : '',
+        actorName: activeProfile ? activeProfile.name : '',
+        actorRole: activeProfile ? activeProfile.role : '',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+      if (!document.querySelector('.modal-overlay.active')) document.body.style.overflow = '';
+    }
+
+    function handleModalBackdrop(event, id) {
+      if (event.target.id === id) closeModal(id);
+    }
+
+    function openProjectModal(projectId = '') {
+      editingProjectId = projectId;
+      const project = projects.find(p => p.id === projectId);
+      document.getElementById('project-modal-title').textContent = project ? 'Edit Project' : 'Create Project';
+      document.getElementById('project-modal-sub').textContent = project ? 'Update project details.' : 'Creates an open project. Add cost and funding details after opening the workspace.';
+      document.getElementById('project-save-btn').textContent = project ? 'Save Changes' : 'Save Project';
+      document.getElementById('project-name').value = project ? (project.name || '') : '';
+      document.getElementById('project-type').value = project ? (project.projectType || 'Activity Contribution') : 'Activity Contribution';
+      document.getElementById('project-date').value = project ? (project.startDate || todayIso) : todayIso;
+      document.getElementById('project-notes').value = project ? (project.notes || '') : '';
+      openModal('project-modal');
+      setTimeout(() => document.getElementById('project-name').focus(), 50);
+    }
+
+    function openCostModal(costId = '') {
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      editingCostId = costId;
+      const cost = costs.find(c => c.id === costId);
+      document.getElementById('cost-modal-sub').textContent = project.name;
+      document.querySelector('#cost-modal h3').textContent = cost ? 'Edit Cost Item' : 'Add Cost Item';
+      document.getElementById('cost-save-btn').textContent = cost ? 'Save Changes' : 'Save Cost Item';
+      document.getElementById('cost-main').value = cost ? (cost.mainCategory || '') : '';
+      document.getElementById('cost-detail').value = cost ? (cost.detail || '') : '';
+      document.getElementById('cost-amount').value = cost ? (cost.amount || '') : '';
+      document.getElementById('cost-basis').value = cost ? (cost.basis || 'Estimated') : 'Estimated';
+      openModal('cost-modal');
+      setTimeout(() => document.getElementById('cost-main').focus(), 50);
+    }
+
+    function openFundingModal(entryId = '') {
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      editingEntryId = entryId;
+      const entry = entries.find(e => e.id === entryId);
+      document.getElementById('funding-modal-sub').textContent = project.name;
+      document.querySelector('#funding-modal h3').textContent = entry ? 'Edit Funding Source' : 'Add Funding Source';
+      document.getElementById('entry-save-btn').textContent = entry ? 'Save Changes' : 'Save Draft';
+      document.getElementById('entry-draft-btn').style.display = entry ? 'none' : 'inline-block';
+      document.getElementById('funding-draft-card').style.display = entry ? 'none' : 'block';
+      document.getElementById('entry-date').value = entry ? (entry.date || todayIso) : todayIso;
+      document.getElementById('entry-source-type').value = entry ? (entry.sourceType || 'Church Fund') : 'Church Fund';
+      document.getElementById('entry-account').value = entry ? (entry.sourceAccount || 'cash-hand') : 'cash-hand';
+      document.getElementById('entry-receive-account').value = entry ? (entry.receiveAccount || 'cash-hand') : 'cash-hand';
+      document.getElementById('entry-budget-category').value = entry ? (entry.budgetCategory || '') : '';
+      document.getElementById('entry-payee').value = entry ? (entry.payee || '') : '';
+      document.getElementById('entry-particulars').value = entry ? (entry.particulars || '') : '';
+      document.getElementById('entry-pledger').value = entry ? (entry.pledgerName || entry.party || '') : '';
+      document.getElementById('entry-pledge-note').value = entry ? (entry.particulars || '') : '';
+      document.getElementById('entry-amount').value = entry ? (entry.amount || '') : '';
+      document.getElementById('entry-reference').value = entry ? (entry.reference || '') : '';
+      document.getElementById('entry-notes').value = entry ? (entry.notes || '') : '';
+      document.getElementById('entry-receipt').value = '';
+      if (!entry) fundingDraft = [];
+      renderFundingDraft();
+      toggleSourceFields();
+      openModal('funding-modal');
+    }
+
+    function openLinkExpenseModal() {
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      document.getElementById('link-expense-sub').textContent = project.name;
+      document.getElementById('expense-link-search').value = '';
+      renderExpenseLinkList();
+      openModal('link-expense-modal');
+    }
+
+    function validateReceiptFile(receiptFile) {
+      if (!receiptFile) return true;
+      const allowedReceiptTypes = ['application/pdf'];
+      const isAllowedReceipt = receiptFile.type.startsWith('image/') || allowedReceiptTypes.includes(receiptFile.type);
+      if (!isAllowedReceipt) {
+        alert('Receipt/proof must be an image or PDF file.');
+        return false;
+      }
+      if (receiptFile.size > 5 * 1024 * 1024) {
+        alert('Receipt/proof must be 5MB or smaller.');
+        return false;
+      }
+      return true;
+    }
+
+    async function uploadReceiptForExpense(expenseId, receiptFile) {
+      if (!receiptFile) return null;
+      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const receiptPath = `expense-receipts/${expenseId}/${Date.now()}-${safeName}`;
+      const receiptRef = storage.ref(receiptPath);
+      await receiptRef.put(receiptFile);
+      const receiptUrl = await receiptRef.getDownloadURL();
+      return {
+        receiptName: receiptFile.name,
+        receiptPath,
+        receiptUrl,
+        receiptUploadedAt: new Date().toISOString()
+      };
+    }
+
+    async function uploadProofForProjectEntry(entryId, proofFile) {
+      if (!proofFile) return null;
+      const safeName = proofFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const proofPath = `project-proofs/${entryId}/${Date.now()}-${safeName}`;
+      const proofRef = storage.ref(proofPath);
+      await proofRef.put(proofFile);
+      const proofUrl = await proofRef.getDownloadURL();
+      return {
+        proofName: proofFile.name,
+        proofPath,
+        proofUrl,
+        proofUploadedAt: new Date().toISOString()
+      };
+    }
+
+    async function saveProject() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can create projects.');
+      const name = document.getElementById('project-name').value.trim();
+      if (!name) return alert('Project name is required.');
+      const payload = {
+        name,
+        projectType: document.getElementById('project-type').value,
+        startDate: document.getElementById('project-date').value,
+        notes: document.getElementById('project-notes').value.trim(),
+        updatedAt: new Date().toISOString()
+      };
+      const btn = document.getElementById('project-save-btn');
+      btn.disabled = true;
+      try {
+        if (editingProjectId) {
+          const before = projects.find(p => p.id === editingProjectId) || null;
+          await db.collection('specialProjects').doc(editingProjectId).update(payload);
+          await writeAuditLog('special_project_updated', 'specialProjects', editingProjectId, before, { ...before, ...payload }, `Updated project ${name}`);
+          activeProjectId = editingProjectId;
+        } else {
+          const createPayload = { ...payload, status: 'Open', targetCost: 0, createdAt: new Date().toISOString() };
+          const ref = await db.collection('specialProjects').add(createPayload);
+          await writeAuditLog('special_project_created', 'specialProjects', ref.id, null, createPayload, `Created project fund ${name}`);
+          activeProjectId = ref.id;
+        }
+        document.getElementById('project-name').value = '';
+        document.getElementById('project-notes').value = '';
+        document.getElementById('project-date').value = todayIso;
+        await loadProjects();
+        activeTab = 'overview';
+        renderAll();
+        closeModal('project-modal');
+        if (activeProjectId) openModal('project-detail-modal');
+        editingProjectId = '';
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+    }
+
+    async function saveCost() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can add cost items.');
+      const project = getActiveProject();
+      const amount = parseFloat(document.getElementById('cost-amount').value) || 0;
+      const mainCategory = document.getElementById('cost-main').value.trim();
+      const detail = document.getElementById('cost-detail').value.trim();
+      if (!project || !mainCategory || !detail || amount <= 0) return alert('Select project, enter cost category, details, and amount.');
+      const payload = {
+        projectId: project.id,
+        projectName: project.name,
+        mainCategory,
+        detail,
+        amount,
+        basis: document.getElementById('cost-basis').value,
+        updatedAt: new Date().toISOString()
+      };
+      const btn = document.getElementById('cost-save-btn');
+      btn.disabled = true;
+      try {
+        if (editingCostId) {
+          const before = costs.find(c => c.id === editingCostId) || null;
+          await db.collection('specialProjectCosts').doc(editingCostId).update(payload);
+          await writeAuditLog('special_project_cost_updated', 'specialProjectCosts', editingCostId, before, { ...before, ...payload }, `Updated cost item ${detail} for ${project.name}`);
+        } else {
+          const createPayload = { ...payload, createdAt: new Date().toISOString() };
+          const ref = await db.collection('specialProjectCosts').add(createPayload);
+          await writeAuditLog('special_project_cost_created', 'specialProjectCosts', ref.id, null, createPayload, `Added cost item ${detail} for ${project.name}`);
+        }
+        document.getElementById('cost-main').value = '';
+        document.getElementById('cost-detail').value = '';
+        document.getElementById('cost-amount').value = '';
+        await loadCosts();
+        activeTab = 'costs';
+        renderAll();
+        closeModal('cost-modal');
+        editingCostId = '';
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+    }
+
+    function toggleSourceFields() {
+      const type = document.getElementById('entry-source-type').value;
+      document.getElementById('church-fields').classList.toggle('active', type === 'Church Fund');
+      document.getElementById('pledge-fields').classList.toggle('active', type !== 'Church Fund');
+    }
+
+    function collectFundingInput() {
+      const sourceType = document.getElementById('entry-source-type').value;
+      const amount = parseFloat(document.getElementById('entry-amount').value) || 0;
+      const date = document.getElementById('entry-date').value;
+      const receiptFile = document.getElementById('entry-receipt').files[0];
+      if (amount <= 0 || !date) {
+        alert('Select date and valid amount.');
+        return null;
+      }
+      if (!validateReceiptFile(receiptFile)) return null;
+
+      const isChurchFund = sourceType === 'Church Fund';
+      const sourceAccount = isChurchFund ? document.getElementById('entry-account').value : '';
+      const receiveAccount = isChurchFund ? '' : document.getElementById('entry-receive-account').value;
+      const budgetCategory = isChurchFund ? document.getElementById('entry-budget-category').value : '';
+      const pledgerName = isChurchFund ? '' : document.getElementById('entry-pledger').value.trim();
+      const note = isChurchFund ? document.getElementById('entry-particulars').value.trim() : document.getElementById('entry-pledge-note').value.trim();
+      const party = isChurchFund ? accountNames[sourceAccount] : pledgerName;
+      if (isChurchFund && !budgetCategory) {
+        alert('Select a budget category for the church-funded expense.');
+        return null;
+      }
+      if (!isChurchFund && !pledgerName) {
+        alert('Enter pledger or contributor name.');
+        return null;
+      }
+
+      return {
+        date,
+        sourceType,
+        amount,
+        receiptFile,
+        isChurchFund,
+        sourceAccount,
+        receiveAccount,
+        budgetCategory,
+        pledgerName,
+        note,
+        party,
+        payee: document.getElementById('entry-payee').value.trim(),
+        reference: document.getElementById('entry-reference').value.trim(),
+        notes: document.getElementById('entry-notes').value.trim()
+      };
+    }
+
+    function renderFundingDraft() {
+      const list = document.getElementById('funding-draft-list');
+      const totalEl = document.getElementById('funding-draft-total');
+      if (!list || !totalEl) return;
+      if (!fundingDraft.length) {
+        list.innerHTML = '<div class="empty" style="padding:16px;">No draft funding yet.</div>';
+      } else {
+        list.innerHTML = fundingDraft.map((item, index) => `
+          <div class="draft-row">
+            <div>
+              <strong>${item.sourceType}: ${item.party || item.payee || 'Funding source'}</strong>
+              <span>${item.date} &middot; ${item.note || item.reference || 'No note'}${item.receiptFile ? ` &middot; Proof: ${item.receiptFile.name}` : ''}</span>
+            </div>
+            <div class="amount">${peso(item.amount)}</div>
+            <button class="btn ghost" type="button" onclick="removeFundingDraft(${index})">Remove</button>
+          </div>
+        `).join('');
+      }
+      const total = fundingDraft.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      totalEl.textContent = peso(total);
+    }
+
+    function addFundingToDraft() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can add project funding.');
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      const draftItem = collectFundingInput();
+      if (!draftItem) return;
+      fundingDraft.push(draftItem);
+      renderFundingDraft();
+      clearFundingForm();
+      document.getElementById('entry-amount').focus();
+    }
+
+    function removeFundingDraft(index) {
+      fundingDraft.splice(index, 1);
+      renderFundingDraft();
+    }
+
+    function buildFundingPayload(project, item, entryId) {
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        date: item.date,
+        type: 'Funding',
+        sourceType: item.sourceType,
+        sourceAccount: item.sourceAccount,
+        sourceAccountName: item.sourceAccount ? accountNames[item.sourceAccount] : '',
+        receiveAccount: item.receiveAccount,
+        receiveAccountName: item.receiveAccount ? accountNames[item.receiveAccount] : '',
+        budgetCategory: item.budgetCategory,
+        amount: item.amount,
+        party: item.party,
+        pledgerName: item.pledgerName,
+        payee: item.payee,
+        particulars: item.note,
+        reference: item.reference,
+        notes: item.notes,
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    async function commitFundingDraftItem(project, item) {
+      const entryRef = db.collection('specialProjectEntries').doc();
+      const payload = buildFundingPayload(project, item, entryRef.id);
+      if (item.isChurchFund) {
+        const expenseRef = db.collection('expenses').doc();
+        payload.linkedExpenseId = expenseRef.id;
+        const expensePayload = {
+          date: item.date,
+          category: item.budgetCategory,
+          budgetCategory: item.budgetCategory,
+          sub: item.note || project.name,
+          isPayrollGenerated: false,
+          amount: item.amount,
+          workersTithe: 0,
+          sssDeduction: 0,
+          deckerDeduction: 0,
+          bopDeduction: 0,
+          netPay: item.amount,
+          payment: item.sourceAccount,
+          targetAccId: item.sourceAccount,
+          payee: item.payee || project.name,
+          status: 'Paid',
+          isPayroll: false,
+          postedAt: new Date().toISOString(),
+          budgetYear: new Date(item.date).getFullYear().toString(),
+          expenseMonth: item.date.substring(0, 7),
+          isSpecialProject: true,
+          specialProjectId: project.id,
+          specialProjectName: project.name,
+          specialProjectEntryId: entryRef.id
+        };
+        const batch = db.batch();
+        batch.set(entryRef, payload);
+        batch.set(expenseRef, expensePayload);
+        await batch.commit();
+        const receiptData = await uploadReceiptForExpense(expenseRef.id, item.receiptFile);
+        if (receiptData) await expenseRef.update(receiptData);
+        await writeAuditLog('special_project_funding_created', 'specialProjectEntries', entryRef.id, null, payload, `Added church fund source for ${project.name}`);
+        await writeAuditLog('expense_created_from_special_project', 'expenses', expenseRef.id, null, expensePayload, `Recorded project expense for ${project.name}`);
+      } else {
+        await entryRef.set(payload);
+        const proofData = await uploadProofForProjectEntry(entryRef.id, item.receiptFile);
+        if (proofData) await entryRef.update(proofData);
+        await writeAuditLog('special_project_funding_created', 'specialProjectEntries', entryRef.id, null, payload, `Added ${item.sourceType} for ${project.name}`);
+      }
+    }
+
+    async function saveFundingDraft() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can add project funding.');
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      if (!fundingDraft.length) {
+        const draftItem = collectFundingInput();
+        if (!draftItem) return;
+        fundingDraft.push(draftItem);
+      }
+
+      const btn = document.getElementById('entry-save-btn');
+      const draftBtn = document.getElementById('entry-draft-btn');
+      btn.disabled = true;
+      draftBtn.disabled = true;
+      try {
+        for (const item of fundingDraft) {
+          await commitFundingDraftItem(project, item);
+        }
+        fundingDraft = [];
+        clearFundingForm();
+        await loadEntries();
+        await loadExpenses();
+        activeTab = 'funding';
+        renderAll();
+        closeModal('funding-modal');
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+      draftBtn.disabled = false;
+    }
+
+    async function saveFundingEntry() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can add project funding.');
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      if (!editingEntryId) return saveFundingDraft();
+
+      const item = collectFundingInput();
+      if (!item) return;
+
+      const btn = document.getElementById('entry-save-btn');
+      btn.disabled = true;
+      try {
+        const before = entries.find(e => e.id === editingEntryId) || null;
+        if (before && before.sourceType !== item.sourceType) {
+          alert('For existing funding entries, source type cannot be changed. Delete and recreate the entry if the source type is wrong.');
+          btn.disabled = false;
+          return;
+        }
+        const updatePayload = {
+          date: item.date,
+          sourceType: item.sourceType,
+          sourceAccount: item.sourceAccount,
+          sourceAccountName: item.sourceAccount ? accountNames[item.sourceAccount] : '',
+          receiveAccount: item.receiveAccount,
+          receiveAccountName: item.receiveAccount ? accountNames[item.receiveAccount] : '',
+          budgetCategory: item.budgetCategory,
+          amount: item.amount,
+          party: item.party,
+          pledgerName: item.pledgerName,
+          payee: item.payee,
+          particulars: item.note,
+          reference: item.reference,
+          notes: item.notes,
+          updatedAt: new Date().toISOString()
+        };
+        await db.collection('specialProjectEntries').doc(editingEntryId).update(updatePayload);
+        if (before && before.linkedExpenseId) {
+          await db.collection('expenses').doc(before.linkedExpenseId).update({
+            date: item.date,
+            amount: item.amount,
+            category: item.budgetCategory,
+            budgetCategory: item.budgetCategory,
+            sub: item.note || project.name,
+            payment: item.sourceAccount,
+            targetAccId: item.sourceAccount,
+            payee: updatePayload.payee || project.name,
+            budgetYear: new Date(item.date).getFullYear().toString(),
+            expenseMonth: item.date.substring(0, 7),
+            updatedAt: new Date().toISOString()
+          });
+        }
+        if (before && before.linkedIncomeId) {
+          await db.collection('income').doc(before.linkedIncomeId).delete();
+          await db.collection('specialProjectEntries').doc(editingEntryId).update({
+            linkedIncomeId: firebase.firestore.FieldValue.delete()
+          });
+        }
+        const proofData = item.isChurchFund && before && before.linkedExpenseId
+          ? await uploadReceiptForExpense(before.linkedExpenseId, item.receiptFile)
+          : await uploadProofForProjectEntry(editingEntryId, item.receiptFile);
+        if (proofData && item.isChurchFund && before && before.linkedExpenseId) await db.collection('expenses').doc(before.linkedExpenseId).update(proofData);
+        if (proofData && (!item.isChurchFund || !before || !before.linkedExpenseId)) await db.collection('specialProjectEntries').doc(editingEntryId).update(proofData);
+        const auditAfter = { ...before, ...updatePayload };
+        if (before && before.linkedIncomeId) delete auditAfter.linkedIncomeId;
+        await writeAuditLog('special_project_funding_updated', 'specialProjectEntries', editingEntryId, before, auditAfter, `Updated funding source for ${project.name}`);
+        editingEntryId = '';
+        clearFundingForm();
+        await loadEntries();
+        await loadExpenses();
+        activeTab = 'funding';
+        renderAll();
+        closeModal('funding-modal');
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+    }
+
+    async function toggleProjectFinished(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can close or reopen projects.');
+      const project = projects.find(p => p.id === projectId);
+      if (!project) return alert('Project not found.');
+      const currentStatus = project.status || 'Open';
+      const nextStatus = currentStatus === 'Closed' ? 'Open' : 'Closed';
+      const verb = nextStatus === 'Closed' ? 'finish/close' : 'reopen';
+      if (!confirm(`Do you want to ${verb} "${project.name}"?`)) return;
+
+      const beforeData = { ...project };
+      const payload = {
+        status: nextStatus,
+        finishedAt: nextStatus === 'Closed' ? new Date().toISOString() : null,
+        updatedAt: new Date().toISOString()
+      };
+      await db.collection('specialProjects').doc(projectId).update(payload);
+      await writeAuditLog(
+        nextStatus === 'Closed' ? 'special_project_closed' : 'special_project_reopened',
+        'specialProjects',
+        projectId,
+        beforeData,
+        { ...beforeData, ...payload },
+        `${nextStatus === 'Closed' ? 'Closed' : 'Reopened'} project ${project.name}`
+      );
+      await loadProjects();
+      renderAll();
+    }
+
+    async function toggleProjectPrintReport(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can publish project reports.');
+      const project = projects.find(p => p.id === projectId);
+      if (!project) return alert('Project not found.');
+      const shouldPublish = !project.printReportPublished;
+      const actionText = shouldPublish ? 'push this project to Print Report' : 'remove this project from Print Report';
+      if (!confirm(`Do you want to ${actionText}?`)) return;
+
+      const beforeData = { ...project };
+      const payload = {
+        printReportPublished: shouldPublish,
+        printReportPublishedAt: shouldPublish ? new Date().toISOString() : null,
+        updatedAt: new Date().toISOString()
+      };
+      await db.collection('specialProjects').doc(projectId).update(payload);
+      await writeAuditLog(
+        shouldPublish ? 'special_project_print_report_published' : 'special_project_print_report_unpublished',
+        'specialProjects',
+        projectId,
+        beforeData,
+        { ...beforeData, ...payload },
+        `${shouldPublish ? 'Pushed' : 'Removed'} ${project.name} ${shouldPublish ? 'to' : 'from'} Print Report`
+      );
+      await loadProjects();
+      renderAll();
+    }
+
+    async function deleteProject(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete projects.');
+      const project = projects.find(p => p.id === projectId);
+      if (!project) return alert('Project not found.');
+      const projectCosts = costs.filter(c => c.projectId === projectId);
+      const projectEntries = entries.filter(e => e.projectId === projectId);
+      const cleanupNote = projectCosts.length || projectEntries.length
+        ? `\n\nThis will also delete ${projectCosts.length} cost item(s) and ${projectEntries.length} funding entry/entries. Linked expenses will be unlinked, not deleted. Linked income created by this project will be deleted.`
+        : '';
+      if (!confirm(`Delete project "${project.name}"? This cannot be undone.${cleanupNote}`)) return;
+
+      const batch = db.batch();
+      projectCosts.forEach(cost => {
+        batch.delete(db.collection('specialProjectCosts').doc(cost.id));
+      });
+      projectEntries.forEach(entry => {
+        batch.delete(db.collection('specialProjectEntries').doc(entry.id));
+        if (entry.linkedExpenseId) {
+          batch.update(db.collection('expenses').doc(entry.linkedExpenseId), {
+            isSpecialProject: firebase.firestore.FieldValue.delete(),
+            specialProjectId: firebase.firestore.FieldValue.delete(),
+            specialProjectName: firebase.firestore.FieldValue.delete(),
+            specialProjectEntryId: firebase.firestore.FieldValue.delete(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+        if (entry.linkedIncomeId) {
+          batch.delete(db.collection('income').doc(entry.linkedIncomeId));
+        }
+      });
+      batch.delete(db.collection('specialProjects').doc(projectId));
+      await batch.commit();
+
+      await writeAuditLog(
+        'special_project_deleted',
+        'specialProjects',
+        projectId,
+        { ...project, deletedCostCount: projectCosts.length, deletedFundingCount: projectEntries.length },
+        null,
+        `Deleted project ${project.name} with cleanup`
+      );
+      activeProjectId = '';
+      await Promise.all([loadProjects(), loadEntries(), loadCosts(), loadExpenses()]);
+      if (projects[0]) activeProjectId = projects[0].id;
+      renderAll();
+      closeModal('project-detail-modal');
+    }
+
+    async function deleteCost(costId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete cost items.');
+      const cost = costs.find(c => c.id === costId);
+      if (!cost) return alert('Cost item not found.');
+      if (!confirm(`Delete cost item "${cost.detail || cost.mainCategory}"?`)) return;
+      await db.collection('specialProjectCosts').doc(costId).delete();
+      await writeAuditLog('special_project_cost_deleted', 'specialProjectCosts', costId, cost, null, `Deleted cost item ${cost.detail || ''}`);
+      await loadCosts();
+      activeTab = 'costs';
+      renderAll();
+    }
+
+    async function deleteFundingEntry(entryId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete funding entries.');
+      const entry = entries.find(e => e.id === entryId);
+      if (!entry) return alert('Funding entry not found.');
+      if (!confirm('Delete this project funding entry? Linked existing expenses will only be unlinked, not deleted.')) return;
+      const batch = db.batch();
+      batch.delete(db.collection('specialProjectEntries').doc(entryId));
+      if (entry.linkedExpenseId) {
+        batch.update(db.collection('expenses').doc(entry.linkedExpenseId), {
+          isSpecialProject: firebase.firestore.FieldValue.delete(),
+          specialProjectId: firebase.firestore.FieldValue.delete(),
+          specialProjectName: firebase.firestore.FieldValue.delete(),
+          specialProjectEntryId: firebase.firestore.FieldValue.delete(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+      if (entry.linkedIncomeId) {
+        batch.delete(db.collection('income').doc(entry.linkedIncomeId));
+      }
+      await batch.commit();
+      await writeAuditLog('special_project_funding_deleted', 'specialProjectEntries', entryId, entry, null, `Deleted funding entry for ${entry.projectName || ''}`);
+      await Promise.all([loadEntries(), loadExpenses()]);
+      activeTab = 'funding';
+      renderAll();
+    }
+
+    function clearFundingForm() {
+      document.getElementById('entry-amount').value = '';
+      document.getElementById('entry-payee').value = '';
+      document.getElementById('entry-particulars').value = '';
+      document.getElementById('entry-pledger').value = '';
+      document.getElementById('entry-pledge-note').value = '';
+      document.getElementById('entry-reference').value = '';
+      document.getElementById('entry-notes').value = '';
+      document.getElementById('entry-receipt').value = '';
+    }
+
+    function getActiveProject() {
+      return projects.find(p => p.id === activeProjectId) || null;
+    }
+
+    function projectTotals(projectId) {
+      const project = projects.find(p => p.id === projectId) || {};
+      const projectCosts = costs.filter(c => c.projectId === projectId);
+      const projectEntries = entries.filter(e => e.projectId === projectId);
+      const costBreakdownTotal = projectCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
+      const plannedCost = Math.max(costBreakdownTotal, Number(project.targetCost || 0));
+      const churchFund = projectEntries.filter(e => e.sourceType === 'Church Fund').reduce((s, e) => s + Number(e.amount || 0), 0);
+      const pledges = projectEntries.filter(e => e.sourceType === 'Pledge').reduce((s, e) => s + Number(e.amount || 0), 0);
+      const direct = projectEntries.filter(e => e.sourceType === 'Direct Contribution').reduce((s, e) => s + Number(e.amount || 0), 0);
+      const other = projectEntries
+        .filter(e => !['Church Fund', 'Pledge', 'Direct Contribution'].includes(e.sourceType || ''))
+        .reduce((s, e) => s + Number(e.amount || 0), 0);
+      const funding = churchFund + pledges + direct + other;
+      return { plannedCost, churchFund, pledges, direct, other, funding, need: Math.max(0, plannedCost - funding) };
+    }
+
+    function groupBy(rows, keyFn) {
+      return rows.reduce((acc, row) => {
+        const key = keyFn(row) || 'Uncategorized';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(row);
+        return acc;
+      }, {});
+    }
+
+    function renderAll() {
+      renderProjectList();
+      renderWorkspace();
+    }
+
+    function renderProjectList() {
+      const search = document.getElementById('project-search').value.trim().toLowerCase();
+      const filtered = projects.filter(p => !search || `${p.name || ''} ${p.projectType || ''} ${p.notes || ''}`.toLowerCase().includes(search));
+      const openCount = projects.filter(p => (p.status || 'Open') !== 'Closed').length;
+      document.getElementById('open-count').textContent = `${openCount} Open`;
+      document.getElementById('project-list').innerHTML = filtered.map(p => {
+        const t = projectTotals(p.id);
+        const isActive = p.id === activeProjectId;
+        return `
+          <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.id}')">
+            <div class="project-line">
+              <strong>${escapeHtml(p.name)}</strong>
+              <div class="muted">${escapeHtml(p.projectType || 'Project Fund')}</div>
+            </div>
+            <div class="project-quick">
+              <span class="badge ${p.status === 'Closed' ? 'badge-closed' : 'badge-open'}">${escapeHtml(p.status || 'Open')}</span>
+              <span class="project-amount">${peso(t.plannedCost)} cost</span>
+              <span class="project-amount">${peso(t.funding)} funded</span>
+              <span class="project-amount">${peso(t.need)} need</span>
+            </div>
+          </div>`;
+      }).join('') || '<div class="empty">No projects found.</div>';
+    }
+
+    function selectProject(projectId) {
+      activeProjectId = projectId;
+      activeTab = 'overview';
+      renderAll();
+      openModal('project-detail-modal');
+    }
+
+    function setTab(tab) {
+      activeTab = tab;
+      renderWorkspace();
+    }
+
+    function renderWorkspace() {
+      const project = getActiveProject();
+      const workspace = document.getElementById('project-detail-body');
+      if (!project) {
+        workspace.innerHTML = `
+          <div class="no-project">
+            <div>
+              <h2>No project selected</h2>
+              <div class="muted">Create or select a project to open its workspace.</div>
+            </div>
+          </div>`;
+        return;
+      }
+
+      const t = projectTotals(project.id);
+      const isClosed = project.status === 'Closed';
+      workspace.innerHTML = `
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <h2>${escapeHtml(project.name)}</h2>
+            <div class="muted">${escapeHtml(project.projectType || 'Project Fund')} | ${escapeHtml(project.status || 'Open')} ${project.notes ? '| ' + escapeHtml(project.notes) : ''}</div>
+          </div>
+          <div class="workspace-actions">
+            <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('project-detail-modal')">&times;</button>
+            ${roleIs('Treasurer') && !isClosed ? '<button class="btn secondary" onclick="openCostModal()">Add Cost</button><button class="btn secondary" onclick="openFundingModal()">Add Funding</button><button class="btn ghost" onclick="openLinkExpenseModal()">Link Expense</button>' : ''}
+            ${roleIs('Treasurer') ? `<button class="btn ghost" onclick="openProjectModal('${project.id}')">Edit Project</button><button class="btn ghost" onclick="deleteProject('${project.id}')">Delete Project</button>` : ''}
+            ${roleIs('Treasurer') ? `<button class="btn ${isClosed ? 'secondary' : 'ghost'}" onclick="toggleProjectFinished('${project.id}')">${isClosed ? 'Reopen Project' : 'Mark Finished'}</button>` : ''}
+            ${roleIs('Treasurer') ? `<button class="btn ${project.printReportPublished ? 'ghost' : 'secondary'}" onclick="toggleProjectPrintReport('${project.id}')">${project.printReportPublished ? 'Remove from Print Report' : 'Push to Print Report'}</button>` : ''}
+            ${project.printReportPublished ? `<button class="btn ghost" onclick="window.location.href='print-report.html?type=special-project&project=${project.id}'">Open Print Report</button>` : ''}
+          </div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="label">Total Cost</div><div class="value">${peso(t.plannedCost)}</div></div>
+          <div class="kpi"><div class="label">Funding Secured</div><div class="value">${peso(t.funding)}</div></div>
+          <div class="kpi"><div class="label">Church Funds Used</div><div class="value">${peso(t.churchFund)}</div></div>
+          <div class="kpi"><div class="label">Remaining Need</div><div class="value">${peso(t.need)}</div></div>
+        </div>
+        <div class="tabs">
+          ${tabButton('overview', 'Overview')}
+          ${tabButton('costs', 'Cost Breakdown')}
+          ${tabButton('funding', 'Funding Sources')}
+          ${tabButton('ledger', 'Ledger')}
+          ${tabButton('report', 'Report Preview')}
+        </div>
+        <div class="tab-body">${renderActiveTab(project, t)}</div>`;
+    }
+
+    function tabButton(id, label) {
+      return `<button class="tab-btn ${activeTab === id ? 'active' : ''}" onclick="setTab('${id}')">${label}</button>`;
+    }
+
+    function renderActiveTab(project, totals) {
+      if (activeTab === 'costs') return renderCostsTab(project);
+      if (activeTab === 'funding') return renderFundingTab(project);
+      if (activeTab === 'ledger') return renderLedgerTab(project);
+      if (activeTab === 'report') return renderReportTab(project, totals);
+      return renderOverviewTab(project, totals);
+    }
+
+    function renderOverviewTab(project, totals) {
+      const projectCosts = costs.filter(c => c.projectId === project.id);
+      const projectEntries = entries.filter(e => e.projectId === project.id);
+      return `
+        <div class="two-col">
+          <div class="section-card">
+            <h3>Cost Summary</h3>
+            ${renderCostGroups(projectCosts, true)}
+          </div>
+          <div class="section-card">
+            <h3>Funding Summary</h3>
+            ${renderFundingGroups(projectEntries, totals, true)}
+          </div>
+        </div>`;
+    }
+
+    function renderCostsTab(project) {
+      const rows = costs.filter(c => c.projectId === project.id);
+      if (!rows.length) return '<div class="empty">No cost items yet.</div>';
+      return `
+        <div class="section-card">
+          <h3>Cost Breakdown</h3>
+          ${renderCostGroups(rows, false)}
+        </div>`;
+    }
+
+    function renderFundingTab(project) {
+      const rows = entries.filter(e => e.projectId === project.id);
+      const totals = projectTotals(project.id);
+      if (!rows.length) return '<div class="empty">No funding sources yet.</div>';
+      return `
+        <div class="section-card">
+          <h3>Source of Funding</h3>
+          ${renderFundingGroups(rows, totals, false)}
+        </div>`;
+    }
+
+    function renderLedgerTab(project) {
+      const projectCosts = costs.filter(c => c.projectId === project.id).map(c => ({
+        date: c.createdAt || '',
+        kind: 'Cost',
+        detail: `${c.mainCategory || 'Cost'} - ${c.detail || ''}`,
+        source: c.basis || '',
+        amount: c.amount || 0,
+        proof: ''
+      }));
+      const projectEntries = entries.filter(e => e.projectId === project.id).map(e => ({
+        date: e.date || '',
+        kind: e.sourceType || 'Funding',
+        detail: getLinkedExpense(e) ? expenseLabel(getLinkedExpense(e)) : (e.particulars || e.notes || e.reference || ''),
+        source: e.sourceType === 'Church Fund' ? (e.sourceAccountName || accountNames[e.sourceAccount] || 'Church Fund') : (e.pledgerName || e.party || ''),
+        amount: e.amount || 0,
+        proof: renderProofLink(getProofRecord(e))
+      }));
+      const rows = [...projectEntries, ...projectCosts].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      if (!rows.length) return '<div class="empty">No ledger activity yet.</div>';
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Source / Name</th><th>Details</th><th>Proof</th><th>Amount</th></tr></thead>
+            <tbody>
+              ${rows.map(r => `<tr><td>${escapeHtml(String(r.date).slice(0, 10) || '-')}</td><td>${escapeHtml(r.kind)}</td><td>${escapeHtml(r.source || '-')}</td><td>${escapeHtml(r.detail || '-')}</td><td>${r.proof || '<span class="proof-none">None</span>'}</td><td class="amount">${peso(r.amount)}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderReportTab(project, totals) {
+      const projectCosts = costs.filter(c => c.projectId === project.id);
+      const projectEntries = entries.filter(e => e.projectId === project.id);
+      return `
+        <div class="section-card">
+          <h3>Cost Breakdown</h3>
+          ${renderCostGroups(projectCosts, false)}
+          <div class="report-line total"><span>Total Project Cost</span><span>${peso(totals.plannedCost)}</span></div>
+        </div>
+        <div class="section-card">
+          <h3>Source of Funding</h3>
+          ${renderFundingGroups(projectEntries, totals, false)}
+          <div class="report-line total"><span>Total Funding Secured</span><span>${peso(totals.funding)}</span></div>
+          <div class="report-line total"><span>Remaining Need</span><span>${peso(totals.need)}</span></div>
+        </div>`;
+    }
+
+    function renderCostGroups(rows, compact) {
+      if (!rows.length) return '<div class="empty">No cost categories yet.</div>';
+      const groups = groupBy(rows, c => c.mainCategory);
+      return Object.keys(groups).sort().map(main => {
+        const groupRows = groups[main];
+        const total = groupRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const visibleRows = compact ? groupRows.slice(0, 4) : groupRows;
+        return `
+          <div class="report-line main"><span>${escapeHtml(main)}</span><span>${peso(total)}</span></div>
+          ${visibleRows.map(r => `<div class="report-line indent"><span>${escapeHtml(r.detail)} <span class="muted">(${escapeHtml(r.basis || 'Estimated')})</span>${renderCostActions(r, compact)}</span><span>${peso(r.amount)}</span></div>`).join('')}
+          ${compact && groupRows.length > visibleRows.length ? `<div class="report-line indent"><span>${groupRows.length - visibleRows.length} more item(s)</span><span></span></div>` : ''}`;
+      }).join('');
+    }
+
+    function renderCostActions(cost, compact) {
+      if (!roleIs('Treasurer') || compact || activeTab === 'report') return '';
+      return ` <span style="margin-left:8px;"><button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="openCostModal('${cost.id}')">Edit</button> <button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="deleteCost('${cost.id}')">Delete</button></span>`;
+    }
+
+    function renderFundingGroups(rows, totals, compact) {
+      if (!rows.length) return '<div class="empty">No funding sources yet.</div>';
+      const churchRows = rows.filter(e => e.sourceType === 'Church Fund');
+      const pledgeRows = rows.filter(e => e.sourceType === 'Pledge');
+      const directRows = rows.filter(e => e.sourceType === 'Direct Contribution');
+      const otherRows = rows.filter(e => !['Church Fund', 'Pledge', 'Direct Contribution'].includes(e.sourceType || ''));
+      return [
+        renderFundingSection('Church Funds', churchRows, totals.churchFund, compact),
+        renderFundingSection('Pledges', pledgeRows, totals.pledges, compact),
+        renderFundingSection('Direct Contributions', directRows, totals.direct, compact),
+        renderFundingSection('Other Contributions', otherRows, totals.other || 0, compact)
+      ].filter(Boolean).join('');
+    }
+
+    function renderFundingSection(label, rows, total, compact) {
+      if (!rows.length) return '';
+      const visibleRows = compact ? rows.slice(0, 4) : rows;
+      return `
+        <div class="report-line main"><span>${escapeHtml(label)}</span><span>${peso(total)}</span></div>
+        ${visibleRows.map(r => {
+          const expense = getLinkedExpense(r);
+          const proofRecord = getProofRecord(r);
+          const name = r.sourceType === 'Church Fund'
+            ? `${r.sourceAccountName || accountNames[r.sourceAccount] || 'Church Fund'} - ${expense ? expenseLabel(expense) : (r.particulars || r.notes || '')}`
+            : `${r.pledgerName || r.party || 'Contributor'}${r.particulars ? ' - ' + r.particulars : ''}`;
+          const proof = renderProofLink(proofRecord);
+          return `<div class="report-line indent"><span>${escapeHtml(name)} ${proof ? '<span style="margin-left:8px;">' + proof + '</span>' : ''}${renderFundingActions(r, compact)}</span><span>${peso(r.amount)}</span></div>`;
+        }).join('')}
+        ${compact && rows.length > visibleRows.length ? `<div class="report-line indent"><span>${rows.length - visibleRows.length} more item(s)</span><span></span></div>` : ''}`;
+    }
+
+    function renderFundingActions(entry, compact) {
+      if (!roleIs('Treasurer') || compact || activeTab === 'report') return '';
+      return ` <span style="margin-left:8px;"><button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="openFundingModal('${entry.id}')">Edit</button> <button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="deleteFundingEntry('${entry.id}')">Delete</button></span>`;
+    }
+
+    function expenseLabel(expense) {
+      return [expense.category || expense.budgetCategory || 'Expense', expense.sub || expense.payee || ''].filter(Boolean).join(' - ');
+    }
+
+    function getLinkedExpense(entry) {
+      if (!entry || !entry.linkedExpenseId) return null;
+      return expenses.find(e => e.id === entry.linkedExpenseId) || null;
+    }
+
+    function getProofRecord(entry) {
+      const expense = getLinkedExpense(entry);
+      if (expense && expense.receiptUrl) return expense;
+      if (entry && entry.proofUrl) return entry;
+      return null;
+    }
+
+    function renderProofLink(record) {
+      const url = record && (record.receiptUrl || record.proofUrl);
+      if (!url) return '';
+      return `<a class="proof-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(record.receiptName || record.proofName || 'View proof')}</a>`;
+    }
+
+    function renderExpenseLinkList() {
+      const project = getActiveProject();
+      const search = document.getElementById('expense-link-search').value.trim().toLowerCase();
+      const usedExpenseIds = new Set(entries.map(e => e.linkedExpenseId).filter(Boolean));
+      const rows = expenses
+        .filter(e => e.type !== 'transfer')
+        .filter(e => !usedExpenseIds.has(e.id) || e.specialProjectId === (project && project.id))
+        .filter(e => {
+          if (!search) return true;
+          return `${e.date || ''} ${e.category || ''} ${e.budgetCategory || ''} ${e.sub || ''} ${e.payee || ''} ${e.payment || ''} ${e.amount || ''}`.toLowerCase().includes(search);
+        })
+        .slice(0, 80);
+
+      document.getElementById('expense-link-list').innerHTML = rows.map(e => `
+        <button class="expense-pick" type="button" onclick="linkExistingExpense('${e.id}')">
+          <strong>${escapeHtml(e.date || '-')} | ${peso(e.amount)} | ${escapeHtml(e.category || e.budgetCategory || 'Expense')}</strong>
+          <span>${escapeHtml(e.sub || e.payee || '-')} | ${escapeHtml(accountNames[e.targetAccId || e.payment] || e.payment || 'Cash on Hand')} ${e.receiptUrl ? '| has receipt/proof' : '| no receipt'}</span>
+        </button>
+      `).join('') || '<div class="empty">No matching expenses found.</div>';
+    }
+
+    async function linkExistingExpense(expenseId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can link expenses.');
+      const project = getActiveProject();
+      const expense = expenses.find(e => e.id === expenseId);
+      if (!project || !expense) return alert('Select a project and expense first.');
+      if (!confirm(`Link this expense to "${project.name}"?`)) return;
+
+      const entryRef = db.collection('specialProjectEntries').doc();
+      const accountId = expense.targetAccId || expense.payment || 'cash-hand';
+      const payload = {
+        projectId: project.id,
+        projectName: project.name,
+        date: expense.date || todayIso,
+        type: 'Funding',
+        sourceType: 'Church Fund',
+        sourceAccount: accountId,
+        sourceAccountName: accountNames[accountId] || accountId,
+        budgetCategory: expense.budgetCategory || expense.category || '',
+        amount: Number(expense.amount || 0),
+        party: accountNames[accountId] || accountId,
+        payee: expense.payee || '',
+        particulars: expense.sub || expense.category || '',
+        reference: 'Linked existing expense',
+        notes: `Linked from Expenses tab (${expense.id})`,
+        linkedExpenseId: expense.id,
+        createdAt: new Date().toISOString()
+      };
+      const expenseUpdate = {
+        isSpecialProject: true,
+        specialProjectId: project.id,
+        specialProjectName: project.name,
+        specialProjectEntryId: entryRef.id,
+        updatedAt: new Date().toISOString()
+      };
+      const batch = db.batch();
+      batch.set(entryRef, payload);
+      batch.update(db.collection('expenses').doc(expense.id), expenseUpdate);
+      await batch.commit();
+      await writeAuditLog('expense_linked_to_special_project', 'expenses', expense.id, expense, { ...expense, ...expenseUpdate }, `Linked expense to ${project.name}`);
+      await writeAuditLog('special_project_funding_created', 'specialProjectEntries', entryRef.id, null, payload, `Linked existing expense for ${project.name}`);
+      await Promise.all([loadEntries(), loadExpenses()]);
+      activeTab = 'funding';
+      renderAll();
+      closeModal('link-expense-modal');
+    }
+
+    initPage().catch(err => {
+      console.error(err);
+      document.getElementById('project-list').innerHTML = '<div class="empty">Unable to load special projects.</div>';
+    });
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+    }
+  </script>
+</body>
+</html>

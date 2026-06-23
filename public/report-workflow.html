@@ -15,6 +15,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
   <style>
@@ -140,6 +141,7 @@
         <select id="report-type" onchange="syncPeriodControls(); loadWorkflow();">
           <option value="monthly">Monthly</option>
           <option value="annual">Annual</option>
+          <option value="special-project">Special Projects</option>
         </select>
       </div>
       <div class="field">
@@ -276,13 +278,17 @@
     }
 
     function syncPeriodControls() {
+      const type = document.getElementById('report-type').value;
       document.getElementById('month-field').style.display =
-        document.getElementById('report-type').value === 'monthly' ? 'block' : 'none';
+        type === 'monthly' ? 'block' : 'none';
+      document.getElementById('period-year').closest('.field').style.display =
+        type === 'special-project' ? 'none' : 'block';
     }
 
     function workflowId() {
       const type = document.getElementById('report-type').value;
       const year = document.getElementById('period-year').value;
+      if (type === 'special-project') return 'special-project-none';
       if (type === 'annual') return `annual-${year}`;
       const month = String(Number(document.getElementById('period-month').value) + 1).padStart(2, '0');
       return `monthly-${year}-${month}`;
@@ -291,6 +297,7 @@
     function periodLabel() {
       const type = document.getElementById('report-type').value;
       const year = document.getElementById('period-year').value;
+      if (type === 'special-project') return 'Special Projects Report';
       if (type === 'annual') return `Annual Report ${year}`;
       return `${MONTHS[Number(document.getElementById('period-month').value)]} ${year}`;
     }

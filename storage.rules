@@ -2,8 +2,20 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function testingAccessOpen() {
+      return request.time < timestamp.date(2027, 1, 1);
+    }
+
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && testingAccessOpen();
+    }
+
+    function role() {
+      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role;
+    }
+
+    function hasRole(roles) {
+      return signedIn() && role() in roles;
     }
 
     function validReceiptFile() {
@@ -18,8 +30,14 @@ service firebase.storage {
 
     match /expense-receipts/{expenseId}/{fileName} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && validReceiptFile();
-      allow delete: if signedIn();
+      allow create, update: if hasRole(['Treasurer']) && validReceiptFile();
+      allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /project-proofs/{entryId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if hasRole(['Treasurer']) && validReceiptFile();
+      allow delete: if hasRole(['Treasurer']);
     }
 
     match /signatures/{uid}/{fileName} {

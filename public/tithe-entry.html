@@ -593,6 +593,16 @@
     }
     /* ─────────────────────────────────────────────────────────────────────── */
 
+    .member-suggestions {
+      position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+      background: white; border: 1px solid #ddd; border-radius: 8px;
+      max-height: 220px; overflow-y: auto; z-index: 50;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12); display: none;
+    }
+    .member-suggestion-item { padding: 9px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #f2f2f2; }
+    .member-suggestion-item:last-child { border-bottom: none; }
+    .member-suggestion-item:hover, .member-suggestion-item.active { background: #fdf2f2; }
+    .member-suggestion-item .ms-code { color: #999; font-size: 11px; margin-left: 6px; }
   </style>
 </head>
 <body>
@@ -654,16 +664,17 @@
 
         <div id="existing-member-fields"
           style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:16px;">
-          <div class="form-group" style="margin-bottom:0;">
-            <label>Member Code</label>
+          <div class="form-group" style="margin-bottom:0; position:relative;">
+            <label>Member Code or Name</label>
             <div style="display:flex; gap:5px;">
-              <input type="text" id="member-code-search" placeholder="Enter Code" inputmode="numeric" pattern="[0-9]*" />
+              <input type="text" id="member-code-search" placeholder="Type code or name..." autocomplete="off" />
               <button type="button" onclick="searchMember()"
                 style="background:#8B0000; color:white; border:none;
                 border-radius:8px; padding:0 14px; cursor:pointer; font-size:16px;">
                 🔍
               </button>
             </div>
+            <div id="member-suggestions" class="member-suggestions"></div>
           </div>
           <div class="form-group" style="margin-bottom:0;">
             <label>Member Name</label>
@@ -757,6 +768,7 @@
         <span>📊 Today's Draft</span>
         <span id="total-amount">₱0.00</span>
       </div>
+      <div id="draft-cash-subtotal" style="display:none; background:#fdf2f2; color:#8B0000; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:600; margin-bottom:14px;"></div>
       <div class="summary-grid" id="summary-grid"
         style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:20px;">
       </div>
@@ -811,6 +823,7 @@
     query, orderBy, where, getDocs, limit
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+  import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
@@ -821,7 +834,13 @@
     appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
   };
 
+  // TODO: paste the reCAPTCHA v3 site key from Firebase Console > Build > App Check once created.
+  const APP_CHECK_SITE_KEY = '';
+
   const app = initializeApp(firebaseConfig);
+  if (APP_CHECK_SITE_KEY) {
+    initializeAppCheck(app, { provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+  }
   const db  = getFirestore(app);
   const auth = getAuth(app);
 
@@ -877,6 +896,29 @@
   }
 
   const activeUserProfile = await requireAuth();
+
+
+  // ── ROLE ACCESS CONTROLS ────────────────────────────────────────────────
+  const currentRole = (activeUserProfile?.role || '').toLowerCase().trim();
+
+  function isTreasurer() {
+    return currentRole === 'treasurer';
+  }
+
+  function isMoneyCounter() {
+    return currentRole === 'money counter' || currentRole === 'counter';
+  }
+
+  function applyRoleAccessControls() {
+    const bulkEntrySection = document.getElementById('bulk-entry');
+
+    // Bulk Import should be visible ONLY to Treasurer.
+    if (bulkEntrySection) {
+      bulkEntrySection.style.display = isTreasurer() ? 'block' : 'none';
+    }
+  }
+
+  applyRoleAccessControls();
 
   async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
     const user = auth.currentUser;
@@ -974,6 +1016,7 @@
   
   // Call initYears pagka-load ng page
   initYears();
+  loadAllMembersCache();
 
   // ── 1. EVALUATE MEMBER SECTION ───────────────────────────
   window.evaluateMemberSection = function() {
@@ -1067,51 +1110,166 @@
   };
 
   // ── 4. SEARCH MEMBER BY CODE ─────────────────────────────────────────────
+  function getMemberCodeCandidates(code) {
+    const raw = String(code || '').trim();
+    const digits = raw.replace(/\D/g, '');
+    const candidates = [raw];
+    if (digits) {
+      candidates.push(String(parseInt(digits, 10)));
+      candidates.push(digits.padStart(3, '0'));
+      candidates.push(`M${String(parseInt(digits, 10))}`);
+      candidates.push(`M${digits.padStart(3, '0')}`);
+      candidates.push(`m${String(parseInt(digits, 10))}`);
+      candidates.push(`m${digits.padStart(3, '0')}`);
+    }
+    return [...new Set(candidates.filter(Boolean))];
+  }
+
+  function normalizeMemberCode(value) {
+    const raw = String(value || '').trim().toUpperCase();
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return raw;
+    return String(parseInt(digits, 10));
+  }
+
+  function memberMatchesCode(docId, data, code) {
+    const target = normalizeMemberCode(code);
+    const values = [
+      docId,
+      data.memberId,
+      data.memberID,
+      data.memberCode,
+      data.id
+    ];
+    return values.some(value => normalizeMemberCode(value) === target);
+  }
+
+  async function findMemberByCode(code) {
+    const candidates = getMemberCodeCandidates(code);
+    for (const candidate of candidates) {
+      const docSnap = await getDoc(doc(db, 'members', candidate));
+      if (docSnap.exists()) return { id: docSnap.id, data: docSnap.data() };
+
+      const q = query(collection(db,'members'), where('memberId','==',candidate), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const match = snap.docs[0];
+        return { id: match.id, data: match.data() };
+      }
+
+      const numericCandidate = parseInt(candidate.replace(/\D/g, ''), 10);
+      if (!Number.isNaN(numericCandidate)) {
+        const numericQ = query(collection(db,'members'), where('memberId','==',numericCandidate), limit(1));
+        const numericSnap = await getDocs(numericQ);
+        if (!numericSnap.empty) {
+          const match = numericSnap.docs[0];
+          return { id: match.id, data: match.data() };
+        }
+      }
+    }
+
+    const allSnap = await getDocs(collection(db, 'members'));
+    const fallback = allSnap.docs.find(d => memberMatchesCode(d.id, d.data(), code));
+    if (fallback) return { id: fallback.id, data: fallback.data() };
+    return null;
+  }
+
+  function getMemberDisplayName(data) {
+    const last = data.last || data.lastName || '';
+    const first = data.first || data.firstName || '';
+    return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim() || data.name || '';
+  }
+
+  function showMemberResult(match, fallbackCode) {
+    const nameDisplay = document.getElementById('member-name-display');
+    if (!match) {
+      nameDisplay.value = '';
+      nameDisplay.dataset.memberId = '';
+      return false;
+    }
+    const data = match.data;
+    nameDisplay.value = getMemberDisplayName(data);
+    nameDisplay.dataset.memberId = data.memberId || data.memberID || data.memberCode || match.id || fallbackCode;
+    return true;
+  }
+
+  // ── In-memory member cache for instant type-ahead (avoids a Firestore
+  // read per keystroke; loaded once on page init and reused for every entry) ──
+  let allMembersCache = [];
+
+  async function loadAllMembersCache() {
+    try {
+      const snap = await getDocs(collection(db, 'members'));
+      allMembersCache = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+    } catch (e) {
+      console.error('Error loading members cache:', e);
+    }
+  }
+
+  function searchMembersInCache(term) {
+    const q = String(term || '').trim().toLowerCase();
+    if (!q) return [];
+    return allMembersCache.filter(({ id, data }) => {
+      const name = getMemberDisplayName(data).toLowerCase();
+      const code = String(data.memberId || data.memberID || data.memberCode || id || '').toLowerCase();
+      return name.includes(q) || code.includes(q);
+    }).slice(0, 8);
+  }
+
+  function renderMemberSuggestions(matches) {
+    const box = document.getElementById('member-suggestions');
+    if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = matches.map((m, i) => {
+      const code = m.data.memberId || m.data.memberID || m.data.memberCode || m.id;
+      return `<div class="member-suggestion-item" data-idx="${i}" onclick="selectMemberSuggestion(${i})">
+        ${getMemberDisplayName(m.data) || '(no name)'}<span class="ms-code">#${code}</span>
+      </div>`;
+    }).join('');
+    box.dataset.matches = JSON.stringify(matches.map(m => ({ id: m.id, data: m.data })));
+    box.style.display = 'block';
+  }
+
+  window.selectMemberSuggestion = function(idx) {
+    const box = document.getElementById('member-suggestions');
+    const matches = JSON.parse(box.dataset.matches || '[]');
+    const match = matches[idx];
+    if (!match) return;
+    showMemberResult(match, match.id);
+    document.getElementById('member-code-search').value = getMemberDisplayName(match.data);
+    box.style.display = 'none';
+  };
+
   window.searchMember = async function() {
     const code        = document.getElementById('member-code-search').value.trim();
     const nameDisplay = document.getElementById('member-name-display');
-    if (!code) { alert('Please enter a Member Code.'); return; }
+    if (!code) { alert('Please enter a Member Code or Name.'); return; }
     try {
-      const q   = query(collection(db,'members'), where('memberId','==',code), limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) {
+      const cacheMatches = searchMembersInCache(code);
+      const match = cacheMatches.length ? cacheMatches[0] : await findMemberByCode(code);
+      if (!showMemberResult(match, code)) {
         alert('Member not found: ' + code);
         nameDisplay.value = '';
         nameDisplay.dataset.memberId = '';
-      } else {
-        snap.forEach(d => {
-          const data    = d.data();
-          nameDisplay.value = `${data.last}, ${data.first}`;
-          nameDisplay.dataset.memberId = data.memberId || code;
-        });
       }
+      document.getElementById('member-suggestions').style.display = 'none';
     } catch(e) {
       console.error(e);
       alert('Search error: ' + e.message);
     }
   };
 
-  document.getElementById('member-code-search').addEventListener('input', async (e) => {
+  document.getElementById('member-code-search').addEventListener('input', (e) => {
     const val         = e.target.value.trim();
     const nameDisplay = document.getElementById('member-name-display');
-    if (!val) { nameDisplay.value = ''; return; }
-    try {
-      const q    = query(collection(db,'members'), where('memberId','==',val), limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        nameDisplay.value = '';
-        nameDisplay.dataset.memberId = '';
-      } else {
-        let n = '';
-        let memberId = '';
-        snap.forEach(d => {
-          n = `${d.data().last}, ${d.data().first}`;
-          memberId = d.data().memberId || val;
-        });
-        nameDisplay.value = n;
-        nameDisplay.dataset.memberId = memberId;
-      }
-    } catch(e) { console.error(e); }
+    if (!val) { nameDisplay.value = ''; renderMemberSuggestions([]); return; }
+    renderMemberSuggestions(searchMembersInCache(val));
+  });
+
+  document.addEventListener('click', (e) => {
+    const box = document.getElementById('member-suggestions');
+    if (box && !box.contains(e.target) && e.target.id !== 'member-code-search') {
+      box.style.display = 'none';
+    }
   });
 
   // ── 5. SAVE TO DRAFT ────────────────────────────────────────────────────
@@ -1162,20 +1320,25 @@
 
       const budgetCategory = document.getElementById('budget-category').value;
       const budgetDetails = document.getElementById('budget-details').value.trim();
+      const isPledge = document.getElementById('pledge-section').style.display !== 'none';
+      const pledgeTarget = isPledge ? (parseFloat(document.getElementById('pledge-target').value) || 0) : null;
+      const pledgePaymentNo = isPledge ? (parseInt(document.getElementById('pledge-payment-no').value, 10) || null) : null;
 
       const entry = {
         id          : Date.now(),
         date        : document.getElementById('entry-date').value,
         memberId    : finalMemberId,
         member      : finalMemberName,
-        type        : selectedType, 
+        type        : selectedType,
         amount,
         payment     : document.getElementById('entry-payment').value,
-        budgetCategory: budgetCategory,     
-        budgetDetails: budgetDetails,       
+        budgetCategory: budgetCategory,
+        budgetDetails: budgetDetails,
         notes       : document.getElementById('entry-notes').value.trim(),
         isNewMember : isNew,
-        newMemberData
+        newMemberData,
+        pledgeTarget,
+        pledgePaymentNo
       };
 
       draftRecords.push(entry);
@@ -1194,6 +1357,8 @@
       document.getElementById('entry-amount').value = '';
       document.getElementById('entry-notes').value = '';
       document.getElementById('budget-details').value = '';
+      document.getElementById('pledge-target').value = '';
+      document.getElementById('pledge-payment-no').value = '';
       if(document.getElementById('member-option').value === 'new') {
           document.getElementById('new-first-name').value = '';
           document.getElementById('new-last-name').value = '';
@@ -1250,6 +1415,17 @@
     const total     = draftRecords.reduce((s,r) => s + r.amount, 0);
     totalDisp.textContent = '₱' + fmt(total);
 
+    // Surface the running cash subtotal as entries are added, instead of only
+    // revealing the denomination-count target inside the final review modal.
+    const cashSubtotalEl = document.getElementById('draft-cash-subtotal');
+    const cashSoFar = draftRecords.filter(r => r.payment === 'Cash').reduce((s,r) => s + r.amount, 0);
+    if (isMoneyCounter() && cashSoFar > 0) {
+      cashSubtotalEl.style.display = 'block';
+      cashSubtotalEl.textContent = `💵 Cash collected so far: ₱${fmt(cashSoFar)} — start counting denominations as you go.`;
+    } else {
+      cashSubtotalEl.style.display = 'none';
+    }
+
     if (draftRecords.length === 0) {
       tbody.innerHTML =
         '<tr><td colspan="4" style="text-align:center;padding:20px;color:#999;">No records yet.</td></tr>';
@@ -1293,7 +1469,8 @@
     const total     = filteredRecords.reduce((s,r) => s + r.amount, 0);
     const cashTotal = filteredRecords.filter(r=>r.payment==='Cash').reduce((s,r)=>s+r.amount,0);
     const bankTotal = filteredRecords.filter(r=>r.payment==='Bank Transfer').reduce((s,r)=>s+r.amount,0);
-    const cashCountHTML = cashTotal > 0 ? buildCashCountHtml(cashTotal) : '';
+    const cashCountRequired = isMoneyCounter() && cashTotal > 0;
+    const cashCountHTML = cashCountRequired ? buildCashCountHtml(cashTotal) : '';
 
     const categoryIcons = {
       'Source of Funds'    : '🏦',
@@ -1459,10 +1636,12 @@
         <div class="rc-row"><span>Total Entries:</span> <span>${filteredRecords.length}</span></div>
         <div class="rc-row total"><span>Total Amount:</span> <span>₱${fmt(total)}</span></div>
         <div class="rc-note">By confirming, all entries will be saved directly to the main ledger and member records.</div>
-        <button class="btn-confirm-income" id="confirm-income-btn" onclick="submitAllEntries()" ${cashTotal > 0 ? 'disabled' : ''}>🚀 Confirm & Save All</button>
+        <button class="btn-confirm-income" id="confirm-income-btn" onclick="submitAllEntries()" ${cashCountRequired ? 'disabled' : ''}>🚀 Confirm & Save All</button>
         <button class="btn-cancel-review" onclick="closeReview()">Cancel</button>
       </div>`;
-    updateCashCountStatus(cashTotal);
+    if (cashCountRequired) {
+      updateCashCountStatus(cashTotal);
+    }
   };
 
   // ── 8b. TOGGLE COLLAPSIBLE GROUP (works for both levels) ─────────────────
@@ -1602,7 +1781,7 @@
   window.submitAllEntries = async function() {
     if (draftRecords.length === 0) return;
     const cashTotal = currentReviewCashTotal();
-    if (cashTotal > 0 && !updateCashCountStatus(cashTotal)) {
+    if (isMoneyCounter() && cashTotal > 0 && !updateCashCountStatus(cashTotal)) {
       alert('Cash denomination count must match the Cash total before saving.');
       return;
     }
@@ -1621,14 +1800,16 @@
                 date: entry.date,
                 memberId: entry.memberId || "",
                 member: entry.member,
-                type: entry.type, 
+                type: entry.type,
                 amount: entry.amount,
-                payment: entry.payment, 
+                payment: entry.payment,
                 budgetCategory: entry.budgetCategory,
                 budgetDetails: entry.budgetDetails || "",
                 notes: entry.notes || "",
                 targetAccount: mapTypeToAccount(entry.type),
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                ...(entry.pledgeTarget != null ? { pledgeTarget: entry.pledgeTarget } : {}),
+                ...(entry.pledgePaymentNo != null ? { pledgePaymentNo: entry.pledgePaymentNo } : {})
             };
             const incomeRef = await addDoc(collection(db, 'income'), incomePayload);
             await writeAuditLog(
@@ -1660,6 +1841,11 @@
     }
   };
   window.generateBulkGrid = function() {
+    if (!isTreasurer()) {
+      alert('Access denied. Bulk import tools are only available to the Treasurer.');
+      return;
+    }
+
     const monthVal = document.getElementById('bulk-month-picker').value; // format: YYYY-MM
     if(!monthVal) return;
 
@@ -1691,6 +1877,12 @@
 // --- AUTOMATIC CSV READER ---
 // Sinisiguro nito na kahit kailan ka mag-upload, babasahin niya ito.
 document.getElementById('csv-upload').addEventListener('change', function(e) {
+    if (!isTreasurer()) {
+        alert('Access denied. Bulk CSV import is only available to the Treasurer.');
+        e.target.value = '';
+        return;
+    }
+
     // Kinukuha natin yung value mula sa bagong selector na ginawa natin sa Step 1
     const selectedMonth = document.getElementById('bulk-month-picker').value; 
     

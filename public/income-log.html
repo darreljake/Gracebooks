@@ -13,6 +13,7 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app-check.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 
@@ -219,7 +220,7 @@
       const matchMonth = (selMonth === 'all') ? true : r.date.substring(5, 7) === selMonth;
       const matchType = !typeF || r.type === typeF;
       const isTransfer = (r.type || '').toLowerCase() === 'transfer';
-      return matchYear && matchMonth && matchType && !isTransfer;
+      return matchYear && matchMonth && matchType && !isTransfer && !r.isSpecialProject;
     });
 
     // Consolidate by Date and Type

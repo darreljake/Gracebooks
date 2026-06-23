@@ -15,6 +15,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 
@@ -134,6 +135,7 @@
     .prog-bar { height: 8px; background: #eee; border-radius: 10px; overflow: hidden; }
     .prog-fill { height: 100%; border-radius: 10px; transition: width 0.4s; }
     .fill-green { background: #27ae60; }
+    .fill-amber { background: #f39c12; }
     .fill-red { background: #c0392b; }
 
     .month-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
@@ -406,6 +408,7 @@
             <h2 id="preview-net" style="color: #1a5276;">₱0.00</h2>
           </div>
         </div>
+        <div id="preview-comparison-wrap"></div>
       </div>
     </div>
 
@@ -596,7 +599,8 @@
 
     let html = "";
     let totalAnn = 0, totalBud = 0, totalAct = 0, totalRem = 0;
-    
+    const budgetAlerts = [];
+
     groups.forEach(g => {
       const isCollapsed = collapsedBva.expense.has(g.main);
       const icon = isCollapsed ? '▶' : '▼';
@@ -611,18 +615,23 @@
       }).reduce((s,d)=>s+parseFloat(d.amount||0),0);
       const rem = bud - act;
       const pct = bud > 0 ? (act/bud*100) : (act > 0 ? 100 : 0);
-      
+      const fillClass = pct >= 100 ? 'fill-red' : (pct >= 90 ? 'fill-amber' : 'fill-green');
+
       // Track totals
       totalAnn += ann;
       totalBud += bud;
       totalAct += act;
       totalRem += rem;
-      
+
+      if (bud > 0 && pct >= 90) {
+        budgetAlerts.push({ label: g.main, pct, over: pct >= 100 });
+      }
+
       html += `<tr class="row-main" onclick="toggleBvaGroup('expense', '${g.main}')">
         <td><span style="display:inline-block; width:15px; font-size:11px;">${icon}</span> ${g.main} (Total)</td>
         <td>₱${fmt(ann)}</td><td>₱${fmt(bud)}</td><td>₱${fmt(act)}</td>
         <td style="color:${rem<0?'#c0392b':'#27ae60'}">${rem>=0?'+':'-'}₱${fmt(Math.abs(rem))}</td>
-        <td><div class="prog-bar"><div class="prog-fill ${pct>100?'fill-red':'fill-green'}" style="width:${Math.min(pct,100)}%"></div></div></td>
+        <td><div class="prog-bar"><div class="prog-fill ${fillClass}" style="width:${Math.min(pct,100)}%"></div></div></td>
       </tr>`;
       
      if (!isCollapsed) {
@@ -657,6 +666,20 @@
     
     const body = document.getElementById('expense-bva-body');
     if(body) body.innerHTML = html;
+
+    const alertEl = document.getElementById('alert-exceeded');
+    if (alertEl) {
+      if (budgetAlerts.length) {
+        budgetAlerts.sort((a, b) => b.pct - a.pct);
+        alertEl.style.display = 'block';
+        alertEl.innerHTML = '⚠️ <b>Categories near/over budget:</b> ' + budgetAlerts.map(a =>
+          `${a.label} (${a.pct.toFixed(0)}%${a.over ? ' — over budget' : ''})`
+        ).join(', ');
+      } else {
+        alertEl.style.display = 'none';
+        alertEl.innerHTML = '';
+      }
+    }
   }
 
   function renderIncomeBva(fInc) {
@@ -1240,6 +1263,37 @@
     document.getElementById('preview-total-expense').textContent = '₱' + fmt(totalExp);
     document.getElementById('preview-net').textContent = '₱' + fmt(Math.abs(net));
     document.getElementById('preview-net').style.color = net >= 0 ? '#1e8449' : '#c0392b';
+
+    renderPreviewComparison();
+  }
+
+  function renderPreviewComparison() {
+    const basis = parseInt(document.getElementById('basisYears').value);
+    const years = [];
+    for (let i = basis; i >= 1; i--) years.push(currentYear - i);
+
+    const buildSection = (type, title, color) => {
+      const accounts = accountOrder[type] || [];
+      if (!accounts.length) return '';
+      const rows = accounts.map(acc => {
+        const yearCells = years.map(y => `<td>₱${fmt(getHistoricalActual(type, acc, y))}</td>`).join('');
+        const proposed = (wizardProposedBudget[type] || {})[acc] || 0;
+        return `<tr><td><strong>${acc}</strong></td>${yearCells}<td style="background:#f4f6f7;">₱${fmt(proposed)}</td></tr>`;
+      }).join('');
+      const yearHeaders = years.map(y => `<th>${y} Actual</th>`).join('');
+      return `
+        <h3 style="color:${color}; margin: 18px 0 10px;">${title}</h3>
+        <div class="table-scroll-wrapper">
+          <table class="wiz-table">
+            <thead><tr><th>Account</th>${yearHeaders}<th style="background:#eee;">${currentYear} Proposed</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    };
+
+    document.getElementById('preview-comparison-wrap').innerHTML =
+      buildSection('income', '💰 Income — Proposed vs. Historical Actuals', '#1e8449') +
+      buildSection('expense', '🧾 Expense — Proposed vs. Historical Actuals', '#c0392b');
   }
 
   function finalizeWizardBudget() {

@@ -389,6 +389,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
@@ -451,7 +452,7 @@
               const rSel = document.getElementById('recurring-list');
               rSel.innerHTML = '<option value="">-- Auto-fill a Recurring Template --</option>';
               recurringData.forEach((r, idx) => {
-                  rSel.innerHTML += `<option value="${idx}">${r.particular} - ₱${Number(r.amount).toLocaleString()}</option>`;
+                  rSel.innerHTML += `<option value="${idx}">${escapeHtml(r.particular)} - ₱${Number(r.amount).toLocaleString()}</option>`;
               });
           }
       });

@@ -8,12 +8,21 @@
     appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
   };
 
+  // TODO: paste the reCAPTCHA v3 site key from Firebase Console > Build > App Check
+  // (register this web app under a reCAPTCHA v3 provider) once created. Until this
+  // is set, App Check stays inactive and nothing else is affected.
+  const APP_CHECK_SITE_KEY = '';
+
   if (!window.firebase) {
     window.location.href = 'index.html';
     return;
   }
 
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+
+  if (APP_CHECK_SITE_KEY && typeof firebase.appCheck === 'function') {
+    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+  }
 
   window.getGraceBooksProfile = async function getGraceBooksProfile(user) {
     const cached = sessionStorage.getItem('graceBooksUser');

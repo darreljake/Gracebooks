@@ -406,6 +406,7 @@
       <button class="tab-btn" onclick="showTab('members-tab', this)">Member Giving</button>
       <button class="tab-btn" onclick="showTab('weekly-tithers-tab', this)">Weekly Collection</button>
       <button class="tab-btn" onclick="showTab('trends-tab', this)">Trends</button>
+      <button class="tab-btn" onclick="showTab('yoy-tab', this)">Year over Year</button>
     </div>
 
     <div class="tab-content active" id="income-tab">
@@ -420,6 +421,7 @@
     </div>
 
     <div class="tab-content" id="expense-tab">
+      <div class="trend-chart" id="expense-category-chart" style="margin-bottom:16px;"></div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -475,12 +477,24 @@
         <div class="trend-chart" id="trend-chart"></div>
       </div>
     </div>
+
+    <div class="tab-content" id="yoy-tab">
+      <div class="trend-wrap">
+        <div class="legend-row">
+          <span><i class="legend-dot" style="background:#1e8449;"></i>Income</span>
+          <span><i class="legend-dot" style="background:#c0392b;"></i>Expenses</span>
+          <span><i class="legend-dot" style="background:#1a5276;"></i>Net</span>
+        </div>
+        <div class="trend-chart" id="yoy-chart"></div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 
@@ -1368,11 +1382,88 @@
 
     renderGroupedTable('income', inc, totalInc);
     renderGroupedTable('expense', exp, totalExp);
+    renderExpenseCategoryChart(exp, totalExp);
     renderMonthly(yearSel.value);
     renderMembers(inc);
     renderWeeklyTithers();
     renderObligations();
     renderTrendGraph();
+    renderYearOverYearChart();
+  }
+
+  function renderExpenseCategoryChart(exp, total) {
+    const container = document.getElementById('expense-category-chart');
+    const map = {};
+    exp.forEach(d => {
+      const key = d.category || 'Uncategorized';
+      map[key] = (map[key] || 0) + d.amount;
+    });
+    const top = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (!top.length) {
+      container.innerHTML = '<p class="empty">No expense data for this period.</p>';
+      return;
+    }
+
+    const width = 840;
+    const rowHeight = 32;
+    const height = top.length * rowHeight + 20;
+    const labelWidth = 220;
+    const maxVal = Math.max(1, ...top.map(([, v]) => v));
+    const barAreaWidth = width - labelWidth - 80;
+
+    const rows = top.map(([key, value], i) => {
+      const y = 10 + i * rowHeight;
+      const barW = Math.max(2, (value / maxVal) * barAreaWidth);
+      const shortLabel = key.length > 28 ? key.slice(0, 26) + '…' : key;
+      return `
+        <text x="${labelWidth - 10}" y="${y + rowHeight * 0.6}" text-anchor="end" font-size="12" fill="#444"><title>${key}</title>${shortLabel}</text>
+        <rect x="${labelWidth}" y="${y + 4}" width="${barW}" height="${rowHeight - 12}" fill="#c0392b" rx="3"></rect>
+        <text x="${labelWidth + barW + 8}" y="${y + rowHeight * 0.6}" font-size="12" fill="#666">₱${fmt(value)} (${total > 0 ? (value / total * 100).toFixed(1) : 0}%)</text>
+      `;
+    }).join('');
+
+    container.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Top expense categories chart">
+        ${rows}
+      </svg>`;
+  }
+
+  function renderYearOverYearChart() {
+    const currentYear = parseInt(yearSel.value) || new Date().getFullYear();
+    const years = [];
+    for (let y = currentYear - 4; y <= currentYear; y++) years.push(y);
+
+    const totals = years.map(y => {
+      const inc = incomeData.filter(d => { const dt = parseDate(d.date); return dt && dt.getFullYear() === y; }).reduce((s, d) => s + d.amount, 0);
+      const exp = expenseData.filter(d => { const dt = parseDate(d.date); return dt && dt.getFullYear() === y; }).reduce((s, d) => s + d.amount, 0);
+      return { year: y, inc, exp, net: inc - exp };
+    });
+
+    const width = 840, height = 280, pad = 40, topPad = 20;
+    const zeroY = height - pad;
+    const maxVal = Math.max(1, ...totals.map(t => Math.max(t.inc, t.exp, Math.abs(t.net))));
+    const scale = (zeroY - topPad) / maxVal;
+    const yOf = v => zeroY - v * scale;
+    const groupWidth = (width - pad * 2) / totals.length;
+    const barWidth = groupWidth / 4;
+
+    const bars = totals.map((t, i) => {
+      const gx = pad + i * groupWidth;
+      const netColor = t.net >= 0 ? '#1a5276' : '#c0392b';
+      return `
+        <rect x="${gx + barWidth * 0.5}" y="${Math.min(yOf(t.inc), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.inc))}" fill="#1e8449"><title>${t.year} Income: ₱${fmt(t.inc)}</title></rect>
+        <rect x="${gx + barWidth * 1.6}" y="${Math.min(yOf(t.exp), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.exp))}" fill="#c0392b"><title>${t.year} Expenses: ₱${fmt(t.exp)}</title></rect>
+        <circle cx="${gx + barWidth * 2.7}" cy="${yOf(t.net)}" r="4" fill="${netColor}"><title>${t.year} Net: ${t.net >= 0 ? '+' : '-'}₱${fmt(Math.abs(t.net))}</title></circle>
+        <text x="${gx + groupWidth / 2}" y="${height - 10}" text-anchor="middle" font-size="11" fill="#777">${t.year}</text>
+      `;
+    }).join('');
+
+    document.getElementById('yoy-chart').innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Year over year income, expense, and net comparison chart">
+        <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" stroke="#ccc" />
+        <line x1="${pad}" y1="${topPad}" x2="${pad}" y2="${zeroY}" stroke="#ddd" />
+        ${bars}
+      </svg>`;
   }
 
   function renderGroupedTable(type, data, total) {

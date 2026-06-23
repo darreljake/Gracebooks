@@ -72,6 +72,33 @@
     tr:hover td { background: #fff5f5; }
     .empty { text-align: center; color: #999; padding: 24px; }
     .muted { color: #777; font-size: 12px; }
+    .chart-wrap {
+      border: 1px solid #f4d3d0;
+      border-radius: 10px;
+      background: #fffafa;
+      padding: 12px;
+      overflow-x: auto;
+    }
+    .attendance-chart svg { width: 100%; min-width: 760px; height: 330px; display: block; }
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      color: #666;
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--c);
+      margin-right: 6px;
+      vertical-align: -1px;
+    }
     @media (max-width: 760px) {
       .form-grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: span 1; }
@@ -80,6 +107,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
 </head>
@@ -148,6 +176,18 @@
           <tr><td colspan="5" class="empty">Loading attendance records...</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Weekly Attendance Trend</h3>
+      <span class="muted">Latest recorded weeks</span>
+    </div>
+    <div class="chart-wrap">
+      <div class="attendance-chart" id="attendance-chart">
+        <div class="empty">Loading attendance graph...</div>
+      </div>
     </div>
   </div>
 </div>
@@ -270,10 +310,11 @@
   }
 
   async function loadAttendance() {
-    const snap = await db.collection('attendance').orderBy('serviceDate', 'desc').limit(16).get();
+    const snap = await db.collection('attendance').orderBy('serviceDate', 'desc').limit(24).get();
     attendanceRecords = snap.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(row => row.entryType === 'weekly' || row.serviceDate);
+    renderAttendanceChart();
     renderAttendance();
   }
 
@@ -338,6 +379,72 @@
     const minimum = selectedMemberIds.size + guests;
     const current = parseInt(attendanceInput.value, 10) || 0;
     if (minimum > current) attendanceInput.value = minimum;
+  }
+
+  function shortDate(value) {
+    if (!value) return '-';
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+  }
+
+  function renderAttendanceChart() {
+    const chart = document.getElementById('attendance-chart');
+    const rows = attendanceRecords
+      .filter(row => row.serviceDate)
+      .slice()
+      .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
+    if (!rows.length) {
+      chart.innerHTML = '<div class="empty">No weekly attendance records yet.</div>';
+      return;
+    }
+
+    const series = [
+      { key: 'attendance', label: 'Total Attendance', color: '#c0392b', values: rows.map(row => Number(row.attendance || 0)) },
+      { key: 'members', label: 'Members Present', color: '#1e8449', values: rows.map(row => Number(row.presentMemberCount || (row.presentMemberIds || []).length || 0)) },
+      { key: 'guests', label: 'Guests', color: '#1a5276', values: rows.map(row => Number(row.guests || 0)) }
+    ];
+    const width = 980;
+    const height = 330;
+    const padL = 58;
+    const padR = 24;
+    const padT = 28;
+    const padB = 58;
+    const max = Math.max(1, ...series.flatMap(item => item.values));
+    const x = index => rows.length === 1
+      ? (padL + width - padR) / 2
+      : padL + index * ((width - padL - padR) / (rows.length - 1));
+    const y = value => height - padB - (Number(value || 0) / max) * (height - padT - padB);
+    const grid = [0, .25, .5, .75, 1].map(ratio => {
+      const value = max * ratio;
+      const yy = y(value);
+      return `<line x1="${padL}" y1="${yy}" x2="${width - padR}" y2="${yy}" stroke="#f2d7d5" />
+        <text x="${padL - 10}" y="${yy + 4}" text-anchor="end" font-size="11" fill="#888">${Math.round(value)}</text>`;
+    }).join('');
+    const lines = series.map(item => {
+      const points = item.values.map((value, index) => `${x(index)},${y(value)}`).join(' ');
+      const dots = item.values.map((value, index) => `
+        <circle cx="${x(index)}" cy="${y(value)}" r="4" fill="${item.color}">
+          <title>${shortDate(rows[index].serviceDate)} ${item.label}: ${value}</title>
+        </circle>`).join('');
+      return `<polyline points="${points}" fill="none" stroke="${item.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />${dots}`;
+    }).join('');
+    const labelStep = rows.length > 18 ? 3 : rows.length > 10 ? 2 : 1;
+
+    chart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Weekly member attendance line graph">
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#fffafa" />
+        ${grid}
+        <line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="#d7b5b2" />
+        <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="#d7b5b2" />
+        ${lines}
+        ${rows.map((row, index) => index % labelStep === 0
+          ? `<text x="${x(index)}" y="${height - 24}" text-anchor="middle" font-size="11" fill="#777">${escapeHtml(shortDate(row.serviceDate))}</text>`
+          : '').join('')}
+      </svg>
+      <div class="legend">
+        ${series.map(item => `<span style="--c:${item.color}">${item.label}</span>`).join('')}
+      </div>`;
   }
 
   function renderAttendance() {

@@ -2,8 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function testingAccessOpen() {
+      return request.time < timestamp.date(2027, 1, 1);
+    }
+
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null && testingAccessOpen();
     }
 
     function role() {
@@ -83,6 +87,21 @@ service cloud.firestore {
         && request.resource.data.requesterUid == request.auth.uid;
       allow update: if hasRole(['Treasurer']);
       allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /specialProjects/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /specialProjectEntries/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /specialProjectCosts/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /auditLogs/{docId} {
