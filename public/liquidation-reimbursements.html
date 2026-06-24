@@ -60,13 +60,29 @@
     .badge-submitted { background: #fcf3cf; color: #9a6a00; }
     .badge-approved { background: #d5f5e3; color: #1e8449; }
     .badge-rejected { background: #fadbd8; color: #a93226; }
+    .badge-released { background: #d6eaf8; color: #1a5276; }
+    .badge-reconciled { background: #e8daef; color: #6c3483; }
     .empty { color: #8a99a5; text-align: center; padding: 26px; }
     .treasurer-only { display: none; }
+    .receipt-link { color: #1a5276; font-weight: 700; text-decoration: none; font-size: 12px; }
+    .receipt-link:hover { text-decoration: underline; }
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      align-items: center; justify-content: center; z-index: 50; padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: white; border-radius: 10px; padding: 22px; width: 100%; max-width: 420px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+    }
+    .modal-box h3 { color: #8B0000; margin-bottom: 14px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     @media (max-width: 700px) { .span-2 { grid-column: span 1; } }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
@@ -109,6 +125,11 @@
           <label>Notes</label>
           <textarea id="req-notes" placeholder="Purpose, event, reference number, or other details"></textarea>
         </div>
+        <div class="span-2">
+          <label>Receipt / Proof (optional)</label>
+          <input type="file" id="req-receipt" accept="image/*,.pdf" />
+          <div class="muted">Attach a receipt or supporting document if you already have one.</div>
+        </div>
         <button class="btn" id="submit-btn" onclick="submitRequest()">Submit Request</button>
       </div>
     </div>
@@ -124,6 +145,8 @@
             <option value="">All Statuses</option>
             <option value="Submitted">Submitted</option>
             <option value="Approved">Approved</option>
+            <option value="Released">Released</option>
+            <option value="Reconciled">Reconciled</option>
             <option value="Rejected">Rejected</option>
           </select>
         </div>
@@ -138,13 +161,54 @@
               <th>Particulars</th>
               <th>Status</th>
               <th>Amount</th>
+              <th>Receipt</th>
               <th class="treasurer-only">Action</th>
             </tr>
           </thead>
           <tbody id="requests-body">
-            <tr><td colspan="7" class="empty">Loading requests...</td></tr>
+            <tr><td colspan="8" class="empty">Loading requests...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="releaseModal">
+    <div class="modal-box">
+      <h3>Release Payment</h3>
+      <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div>
+          <label>Source of Fund</label>
+          <select id="release-fund">
+            <option value="cash-hand">Cash on Hand</option>
+            <option value="cash-bank">Cash in Bank</option>
+            <option value="petty-cash">Petty Cash Fund</option>
+            <option value="building">Building Fund</option>
+            <option value="mission">Mission Fund</option>
+            <option value="investment">Investments/TD</option>
+          </select>
+        </div>
+        <div class="muted">This records a linked expense entry for the disbursed amount and marks the request as Released.</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeReleaseModal()">Cancel</button>
+        <button class="btn" id="release-confirm-btn" onclick="confirmRelease()">Confirm Release</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="reconcileModal">
+    <div class="modal-box">
+      <h3>Mark Reconciled</h3>
+      <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div>
+          <label>Reconciliation Notes (optional)</label>
+          <textarea id="reconcile-notes" placeholder="Confirm receipts matched the released amount, or note any discrepancy."></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeReconcileModal()">Cancel</button>
+        <button class="btn" id="reconcile-confirm-btn" onclick="confirmReconcile()">Confirm Reconciled</button>
       </div>
     </div>
   </div>
@@ -157,6 +221,7 @@
     };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    const storage = firebase.storage();
 
     let activeProfile = null;
     let requestRows = [];
@@ -177,11 +242,11 @@
       return activeProfile && roles.includes(activeProfile.role);
     }
 
-    async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+    async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
       const user = firebase.auth().currentUser;
       await db.collection('auditLogs').add({
         action,
-        collection: 'liquidationRequests',
+        collection: collectionName,
         docId,
         summary,
         before: beforeData || null,
@@ -192,6 +257,35 @@
         actorRole: activeProfile ? activeProfile.role : '',
         createdAt: new Date().toISOString()
       });
+    }
+
+    function validateReceiptFile(receiptFile) {
+      if (!receiptFile) return true;
+      const isAllowed = receiptFile.type.startsWith('image/') || receiptFile.type === 'application/pdf';
+      if (!isAllowed) {
+        alert('Receipt must be an image or PDF file.');
+        return false;
+      }
+      if (receiptFile.size > 5 * 1024 * 1024) {
+        alert('Receipt must be 5 MB or smaller.');
+        return false;
+      }
+      return true;
+    }
+
+    async function uploadReceiptForRequest(requestId, receiptFile) {
+      if (!receiptFile) return null;
+      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const receiptPath = `liquidation-receipts/${requestId}/${Date.now()}-${safeName}`;
+      const receiptRef = storage.ref(receiptPath);
+      await receiptRef.put(receiptFile);
+      const receiptUrl = await receiptRef.getDownloadURL();
+      return {
+        receiptName: receiptFile.name,
+        receiptPath,
+        receiptUrl,
+        receiptUploadedAt: new Date().toISOString()
+      };
     }
 
     async function initPage() {
@@ -243,10 +337,19 @@
           updatedAt: new Date().toISOString()
         };
         const ref = await db.collection('liquidationRequests').add(payload);
-        await writeAuditLog('liquidation_request_created', ref.id, null, payload, `Submitted ${type}: ${title}`);
+        const receiptFile = document.getElementById('req-receipt').files[0];
+        let finalPayload = payload;
+        if (receiptFile) {
+          if (!validateReceiptFile(receiptFile)) { button.disabled = false; button.textContent = 'Submit Request'; return; }
+          const receiptData = await uploadReceiptForRequest(ref.id, receiptFile);
+          await ref.update(receiptData);
+          finalPayload = { ...payload, ...receiptData };
+        }
+        await writeAuditLog('liquidation_request_created', 'liquidationRequests', ref.id, null, finalPayload, `Submitted ${type}: ${title}`);
         document.getElementById('req-title').value = '';
         document.getElementById('req-amount').value = '';
         document.getElementById('req-notes').value = '';
+        document.getElementById('req-receipt').value = '';
         await loadRequests();
       } catch (error) {
         alert(error.message);
@@ -266,8 +369,130 @@
         updatedAt: new Date().toISOString()
       };
       await db.collection('liquidationRequests').doc(id).set(after, { merge: true });
-      await writeAuditLog('liquidation_request_reviewed', id, row, { ...row, ...after }, `${status} request: ${row.title || id}`);
+      await writeAuditLog('liquidation_request_reviewed', 'liquidationRequests', id, row, { ...row, ...after }, `${status} request: ${row.title || id}`);
       await loadRequests();
+    }
+
+    let releaseTargetId = null;
+    let reconcileTargetId = null;
+
+    function openReleaseModal(id) {
+      if (!roleIs('Treasurer')) return;
+      releaseTargetId = id;
+      document.getElementById('releaseModal').classList.add('open');
+    }
+
+    function closeReleaseModal() {
+      releaseTargetId = null;
+      document.getElementById('releaseModal').classList.remove('open');
+    }
+
+    async function confirmRelease() {
+      if (!releaseTargetId) return;
+      const row = requestRows.find(item => item.id === releaseTargetId);
+      if (!row) return closeReleaseModal();
+      const button = document.getElementById('release-confirm-btn');
+      button.disabled = true;
+      button.textContent = 'Releasing...';
+      try {
+        const fund = document.getElementById('release-fund').value;
+        const now = new Date().toISOString();
+        const expensePayload = {
+          date: now.slice(0, 10),
+          category: 'Non-Budgeted - Staff Liquidation/Reimbursement',
+          sub: row.title || '',
+          payee: row.requesterName || row.requesterRole || '',
+          amount: row.amount,
+          payment: fund,
+          status: 'Paid',
+          notes: row.notes || '',
+          linkedLiquidationRequestId: row.id,
+          createdAt: now,
+          updatedAt: now
+        };
+        const expenseRef = await db.collection('expenses').add(expensePayload);
+        await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, expensePayload, `Recorded payout for ${row.type || 'liquidation'}: ${row.title || ''}`);
+
+        const after = {
+          status: 'Released',
+          linkedExpenseId: expenseRef.id,
+          releasedFund: fund,
+          releasedBy: activeProfile.name || 'Treasurer',
+          releasedAt: now,
+          updatedAt: now
+        };
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_request_released', 'liquidationRequests', row.id, row, { ...row, ...after }, `Released payment for ${row.title || row.id}`);
+        closeReleaseModal();
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Confirm Release';
+    }
+
+    function openReconcileModal(id) {
+      if (!roleIs('Treasurer')) return;
+      reconcileTargetId = id;
+      document.getElementById('reconcile-notes').value = '';
+      document.getElementById('reconcileModal').classList.add('open');
+    }
+
+    function closeReconcileModal() {
+      reconcileTargetId = null;
+      document.getElementById('reconcileModal').classList.remove('open');
+    }
+
+    async function confirmReconcile() {
+      if (!reconcileTargetId) return;
+      const row = requestRows.find(item => item.id === reconcileTargetId);
+      if (!row) return closeReconcileModal();
+      const button = document.getElementById('reconcile-confirm-btn');
+      button.disabled = true;
+      button.textContent = 'Saving...';
+      try {
+        const notes = document.getElementById('reconcile-notes').value.trim();
+        const now = new Date().toISOString();
+        const after = {
+          status: 'Reconciled',
+          reconciliationNotes: notes,
+          reconciledBy: activeProfile.name || 'Treasurer',
+          reconciledAt: now,
+          updatedAt: now
+        };
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_request_reconciled', 'liquidationRequests', row.id, row, { ...row, ...after }, `Reconciled request: ${row.title || row.id}`);
+        closeReconcileModal();
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Confirm Reconciled';
+    }
+
+    function badgeClassFor(status) {
+      if (status === 'Approved') return 'badge-approved';
+      if (status === 'Rejected') return 'badge-rejected';
+      if (status === 'Released') return 'badge-released';
+      if (status === 'Reconciled') return 'badge-reconciled';
+      return 'badge-submitted';
+    }
+
+    function renderActionsFor(row, isTreasurer) {
+      if (!isTreasurer) return '-';
+      if (row.status === 'Submitted') {
+        return `<button class="btn btn-secondary" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>
+              <button class="btn" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`;
+      }
+      if (row.status === 'Approved') {
+        return `<button class="btn" onclick="openReleaseModal('${row.id}')">Release Payment</button>`;
+      }
+      if (row.status === 'Released') {
+        return `<button class="btn btn-secondary" onclick="openReconcileModal('${row.id}')">Mark Reconciled</button>`;
+      }
+      return '-';
     }
 
     function renderRequests() {
@@ -275,7 +500,10 @@
       const rows = requestRows.filter(row => !statusFilter || row.status === statusFilter);
       const isTreasurer = roleIs('Treasurer');
       document.getElementById('requests-body').innerHTML = rows.map(row => {
-        const badgeClass = row.status === 'Approved' ? 'badge-approved' : row.status === 'Rejected' ? 'badge-rejected' : 'badge-submitted';
+        const badgeClass = badgeClassFor(row.status);
+        const receiptCell = row.receiptUrl
+          ? `<a class="receipt-link" href="${escapeHtml(row.receiptUrl)}" target="_blank" rel="noopener">View</a>`
+          : '<span class="muted">None</span>';
         return `
           <tr>
             <td>${escapeHtml(row.date || '')}</td>
@@ -284,16 +512,14 @@
             <td><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div></td>
             <td><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Submitted')}</span></td>
             <td class="amount">₱${fmt(row.amount)}</td>
-            <td class="treasurer-only" style="${isTreasurer ? '' : 'display:none;'}">
-              <button class="btn btn-secondary" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>
-              <button class="btn" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>
-            </td>
+            <td>${receiptCell}</td>
+            <td class="treasurer-only" style="${isTreasurer ? '' : 'display:none;'}">${renderActionsFor(row, isTreasurer)}</td>
           </tr>`;
-      }).join('') || '<tr><td colspan="7" class="empty">No requests found.</td></tr>';
+      }).join('') || '<tr><td colspan="8" class="empty">No requests found.</td></tr>';
     }
 
     initPage().catch(error => {
-      document.getElementById('requests-body').innerHTML = `<tr><td colspan="7" class="empty">${escapeHtml(error.message)}</td></tr>`;
+      document.getElementById('requests-body').innerHTML = `<tr><td colspan="8" class="empty">${escapeHtml(error.message)}</td></tr>`;
     });
   </script>
   <script>

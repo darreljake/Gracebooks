@@ -112,8 +112,8 @@ Status: In progress.
 Status: Started.
 
 - Create `liquidation-reimbursements.html`. Done as initial staff request + Treasurer review page.
-- Handle request, review, approval, release, reconciliation, and receipts.
-- Auto-create expense entry after approval where appropriate.
+- Handle request, review, approval, release, reconciliation, and receipts. Done — requesters can attach an optional receipt/proof at submission (new `liquidation-receipts/{requestId}/...` Storage path, owner-or-Treasurer write, same image/PDF ≤5MB allowlist as other receipts). Treasurer flow now has explicit per-status actions: Submitted → Approve/Reject, Approved → "Release Payment" (picks a source of fund), Released → "Mark Reconciled" (optional notes). All transitions write `auditLogs` entries.
+- Auto-create expense entry after approval where appropriate. Done — implemented at the **Release** step (not Approve), since that's when cash actually leaves the church: confirming release creates a linked `expenses` doc (category `Non-Budgeted - Staff Liquidation/Reimbursement`, `linkedLiquidationRequestId`) and stores `linkedExpenseId` back on the request, both audit-logged.
 
 ## Staff Payroll Access
 

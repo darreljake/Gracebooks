@@ -45,5 +45,16 @@ service firebase.storage {
       allow create, update: if signedIn() && request.auth.uid == uid && validSignatureFile();
       allow delete: if signedIn() && request.auth.uid == uid;
     }
+
+    function isLiquidationRequestOwner(requestId) {
+      return signedIn()
+        && firestore.get(/databases/(default)/documents/liquidationRequests/$(requestId)).data.requesterUid == request.auth.uid;
+    }
+
+    match /liquidation-receipts/{requestId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if (hasRole(['Treasurer']) || isLiquidationRequestOwner(requestId)) && validReceiptFile();
+      allow delete: if hasRole(['Treasurer']) || isLiquidationRequestOwner(requestId);
+    }
   }
 }
