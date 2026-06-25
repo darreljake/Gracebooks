@@ -273,10 +273,19 @@
       return true;
     }
 
+    function generateStorageToken() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function safeFileExtension(fileName) {
+      const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+      return match ? `.${match[1].toLowerCase()}` : '';
+    }
+
     async function uploadReceiptForRequest(requestId, receiptFile) {
       if (!receiptFile) return null;
-      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const receiptPath = `liquidation-receipts/${requestId}/${Date.now()}-${safeName}`;
+      const receiptPath = `liquidation-receipts/${requestId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
       const receiptUrl = await receiptRef.getDownloadURL();

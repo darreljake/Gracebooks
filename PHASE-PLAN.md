@@ -147,8 +147,8 @@ Status: Storage rules tightening started; remaining items not started.
 - Add upload audit records:
   - Uploader UID, role, timestamp, file path, linked transaction/project, action type, and replacement/removal reason.
 - Add safer file handling:
-  - Generate server/app-side storage paths instead of trusting original filenames.
-  - Store original filename only as display metadata.
+  - Generate server/app-side storage paths instead of trusting original filenames. Done — `expenses.html`, `special-projects.html` (both its expense-receipt and project-proof uploaders), and `liquidation-reimbursements.html` now build the Storage path from a `crypto.randomUUID()`-based token (`Date.now()`+random fallback) plus a sanitized extension only; the original filename is no longer embedded in the path.
+  - Store original filename only as display metadata. Done as part of the above — `receiptName`/`proofName` already carried the original filename for display; it's now purely metadata, not part of the path.
   - Do not render uploaded PDFs or files as executable HTML.
 - Add malware/content validation later:
   - Cloud Function triggered after upload.
