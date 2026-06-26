@@ -674,8 +674,11 @@
       document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt / Voucher';
       const isPdf = (record.receiptName || '').toLowerCase().endsWith('.pdf');
       document.getElementById('receipt-viewer-body').innerHTML = isPdf
-          ? `<iframe class="receipt-frame" src="${record.receiptUrl}" title="Receipt PDF"></iframe>`
-          : `<img class="receipt-frame" src="${record.receiptUrl}" alt="Receipt image">`;
+          ? `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+               <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+               <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger view">Open PDF in New Tab</a>
+             </div>`
+          : `<img class="receipt-frame" src="${escapeHtml(record.receiptUrl)}" alt="Receipt image">`;
       document.getElementById('receiptViewerModal').style.display = 'flex';
   }
 
