@@ -56,6 +56,7 @@ Status: Done, except Financial Overview listener conversion is intentionally ski
 - Reports attendance input restricted to Membership Secretary.
 - Membership Secretary role now uses a dedicated weekly attendance entry page with member-name selection and cannot see finance/report data.
 - Membership Secretary can access and maintain the member database.
+  - Fix: `index.html` dashboard menu for the Membership Secretary role was missing the "Members" link (only "Weekly Attendance" was listed), even though `firestore.rules` already granted this role full read/create/update/delete on `members`. Added the menu entry so the role can actually reach `members.html`.
 - Reports church obligations section with input mechanism.
 - Reports church obligation input restricted to Treasurer.
 - Firestore role rules for income, expenses, members, attendance, church obligations, budgets, settings, and audit logs.
