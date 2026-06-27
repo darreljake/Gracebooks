@@ -118,7 +118,7 @@
 </div>
 
 <div class="container">
-  <div class="card">
+  <div class="card" id="entry-card">
     <div class="card-header">
       <h3>Attendance Entry</h3>
       <div class="muted" id="role-label"></div>
@@ -213,11 +213,13 @@
   window.graceBooksAuthReady.then(profile => {
     activeUserProfile = profile;
     document.getElementById('role-label').textContent = profile.role;
-    if (!['Membership Secretary', 'Treasurer'].includes(profile.role)) {
+    if (!['Membership Secretary', 'Treasurer', 'Deaconess'].includes(profile.role)) {
       window.location.href = 'index.html';
       return;
     }
-    loadMembers();
+    const canEdit = ['Membership Secretary', 'Treasurer'].includes(profile.role);
+    document.getElementById('entry-card').style.display = canEdit ? '' : 'none';
+    if (canEdit) loadMembers();
     loadAttendance();
   });
 
