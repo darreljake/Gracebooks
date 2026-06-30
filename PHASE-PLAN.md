@@ -185,8 +185,8 @@ Status: Started.
 ### Next Enhancements
 
 - Notifications:
-  - Add in-app and/or email notifications when a report is routed, returned, or finalized.
-  - Notify the next responsible role immediately after each workflow transition.
+  - In-app notifications: Done. `report-workflow.html` calls `writeNotification()` after each `saveTransition()` to write a doc to the new `notifications` Firestore collection (recipientRole, message, reportId, periodLabel, transition, actorName, actorRole, createdAt). `index.html` dashboard shows a bell icon in the topbar with a red badge count for unread notifications; clicking opens a dropdown listing recent notifications. "Unread" is tracked via `localStorage` per role (no Firestore write needed). Firestore rules allow any signed-in user to read/create notifications; updates and deletes are denied.
+  - Email notifications: Needs a human decision on which email/notification provider to use (Firebase Extensions, SendGrid, etc.). Not implemented.
 - Finalized report locking: Done. `report-workflow.html` already had no per-role action available once `status === 'finalized'` (every action button is gated to a specific non-finalized status), so finalized reports were already implicitly locked. Added an explicit Treasurer-only "Reopen Report" action (requires a reason note + confirmation) that resets status back to `draft` so the full approval chain must run again; reopen is logged to both workflow history and `auditLogs` via the existing `saveTransition`/`writeAuditLog` pattern. No Firestore rule change needed — Treasurer already has `update` rights on `reportReviews`.
 - Better return notes: Done. `report-workflow.html` shows a prominent latest-return-note banner (who returned it, when, and the note text) whenever a report is in `returned_by_auditor` or `returned_by_finance` status. Return-note history was already visible per entry in the Routing History timeline.
 

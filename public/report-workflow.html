@@ -653,6 +653,7 @@
           await ref.set(payload, { merge: true });
         }
         await writeAuditLog(summary, notes);
+        await writeNotification(extra.status, summary);
         document.getElementById('route-notes').value = '';
         showMessage(summary, 'ok');
         await loadWorkflow();
@@ -679,6 +680,34 @@
         actorRole: profile ? profile.role : '',
         createdAt: new Date().toISOString()
       });
+    }
+
+    async function writeNotification(newStatus, summary) {
+      const NOTIFY_MAP = {
+        submitted_to_auditor: 'Auditor',
+        returned_by_auditor: 'Treasurer',
+        submitted_to_finance: 'Finance Chair',
+        returned_by_finance: 'Treasurer',
+        routed_to_chairperson: 'Chairperson',
+        routed_to_pastor: 'Pastor',
+        finalized: 'Treasurer'
+      };
+      const recipientRole = NOTIFY_MAP[newStatus];
+      if (!recipientRole) return;
+      try {
+        await db.collection('notifications').add({
+          recipientRole,
+          message: summary,
+          reportId: workflowId(),
+          periodLabel: periodLabel(),
+          transition: newStatus,
+          actorName: profile ? profile.name : '',
+          actorRole: profile ? profile.role : '',
+          createdAt: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('Notification write failed', e);
+      }
     }
 
     async function saveUploadedSignature() {

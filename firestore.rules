@@ -81,6 +81,12 @@ service cloud.firestore {
       allow delete: if hasRole(['Treasurer']);
     }
 
+    match /notifications/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
     match /liquidationRequests/{docId} {
       allow read: if hasRole(['Treasurer', 'Auditor']) || isLiquidationOwner();
       allow create: if hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
