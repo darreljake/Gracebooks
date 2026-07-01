@@ -582,6 +582,13 @@
       const receiptPath = `expense-receipts/${docRef.id}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
+      await writeAuditLog(
+          oldReceiptPath ? 'receipt_replaced' : 'receipt_uploaded',
+          docRef.id,
+          oldReceiptPath ? { receiptPath: oldReceiptPath } : null,
+          { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
+          oldReceiptPath ? `Replaced receipt for expense ${docRef.id}` : `Uploaded receipt for expense ${docRef.id}`
+      );
       const receiptUrl = await receiptRef.getDownloadURL();
       if (oldReceiptPath) {
           try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }

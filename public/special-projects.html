@@ -586,6 +586,7 @@
       const receiptPath = `expense-receipts/${expenseId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
+      await writeAuditLog('receipt_uploaded', 'expenses', expenseId, null, { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type }, `Uploaded receipt for expense ${expenseId}`);
       const receiptUrl = await receiptRef.getDownloadURL();
       return {
         receiptName: receiptFile.name,
@@ -600,6 +601,7 @@
       const proofPath = `project-proofs/${entryId}/${generateStorageToken()}${safeFileExtension(proofFile.name)}`;
       const proofRef = storage.ref(proofPath);
       await proofRef.put(proofFile);
+      await writeAuditLog('proof_uploaded', 'specialProjectEntries', entryId, null, { proofName: proofFile.name, proofPath, fileSize: proofFile.size, fileType: proofFile.type }, `Uploaded proof for project entry ${entryId}`);
       const proofUrl = await proofRef.getDownloadURL();
       return {
         proofName: proofFile.name,

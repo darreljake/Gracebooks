@@ -288,6 +288,7 @@
       const receiptPath = `liquidation-receipts/${requestId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
+      await writeAuditLog('receipt_uploaded', 'liquidationRequests', requestId, null, { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type }, `Uploaded receipt for liquidation request ${requestId}`);
       const receiptUrl = await receiptRef.getDownloadURL();
       return {
         receiptName: receiptFile.name,

@@ -145,7 +145,7 @@ Status: Storage rules tightening started; remaining items not started.
   - Keep strict file size caps.
   - Keep file type allowlist to images and PDFs only for receipts/proofs, images only for signatures.
   - Prevent silent overwrites where possible; prefer create-only uploads with replacement audit records.
-- Add upload audit records:
+- Add upload audit records: Done — `expenses.html`, `special-projects.html`, and `liquidation-reimbursements.html` upload functions now write a dedicated `receipt_uploaded`, `receipt_replaced`, or `proof_uploaded` `auditLogs` entry immediately after each successful `put()`, capturing uploader UID/role (via writeAuditLog actor fields), file path, original filename, file size, file type, linked docId/collection, and (for replacements) the old receipt path in `before`.
   - Uploader UID, role, timestamp, file path, linked transaction/project, action type, and replacement/removal reason.
 - Add safer file handling:
   - Generate server/app-side storage paths instead of trusting original filenames. Done — `expenses.html`, `special-projects.html` (both its expense-receipt and project-proof uploaders), and `liquidation-reimbursements.html` now build the Storage path from a `crypto.randomUUID()`-based token (`Date.now()`+random fallback) plus a sanitized extension only; the original filename is no longer embedded in the path.
