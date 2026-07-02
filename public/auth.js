@@ -8,9 +8,6 @@
     appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
   };
 
-  // TODO: paste the reCAPTCHA v3 site key from Firebase Console > Build > App Check
-  // (register this web app under a reCAPTCHA v3 provider) once created. Until this
-  // is set, App Check stays inactive and nothing else is affected.
   const APP_CHECK_SITE_KEY = '';
 
   if (!window.firebase) {

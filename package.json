@@ -4,6 +4,7 @@
   "private": true,
   "description": "GraceBooks finance/membership management system - mobile app shell (Capacitor)",
   "scripts": {
+    "guardrails": "node scripts/guardrails/check-storage-rules.js",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "cap:run": "cap run android"

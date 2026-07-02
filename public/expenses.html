@@ -579,9 +579,10 @@
 
   async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath) {
       if (!receiptFile) return null;
+      const contentType = getReceiptContentType(receiptFile);
       const receiptPath = `expense-receipts/${docRef.id}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
-      await receiptRef.put(receiptFile);
+      await receiptRef.put(receiptFile, { contentType });
       await writeAuditLog(
           oldReceiptPath ? 'receipt_replaced' : 'receipt_uploaded',
           docRef.id,
@@ -601,10 +602,23 @@
       };
   }
 
+  function getReceiptContentType(receiptFile) {
+      const fileType = (receiptFile && receiptFile.type || '').toLowerCase();
+      const fileName = (receiptFile && receiptFile.name || '').toLowerCase();
+      if (fileType.startsWith('image/') || fileType === 'application/pdf') return fileType;
+      if (fileName.endsWith('.pdf')) return 'application/pdf';
+      if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg') || fileName.endsWith('.jfif')) return 'image/jpeg';
+      if (fileName.endsWith('.png')) return 'image/png';
+      if (fileName.endsWith('.gif')) return 'image/gif';
+      if (fileName.endsWith('.webp')) return 'image/webp';
+      if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) return 'image/heic';
+      return '';
+  }
+
   function validateReceiptFile(receiptFile) {
       if (!receiptFile) return true;
-      const allowedReceiptTypes = ['application/pdf'];
-      const isAllowedReceipt = receiptFile.type.startsWith('image/') || allowedReceiptTypes.includes(receiptFile.type);
+      const contentType = getReceiptContentType(receiptFile);
+      const isAllowedReceipt = contentType.startsWith('image/') || contentType === 'application/pdf';
       if (!isAllowedReceipt) {
           alert('Receipt must be an image or PDF file.');
           return false;
@@ -614,6 +628,34 @@
           return false;
       }
       return true;
+  }
+
+  function getReceiptUploadErrorMessage(error) {
+      const code = error && error.code ? error.code : '';
+      if (code === 'storage/unauthorized') {
+          const file = document.getElementById('exp-receipt').files[0];
+          return `Receipt upload was denied. Please make sure you are signed in as Treasurer and the file is an image/PDF under 5 MB.\n\n${getReceiptUploadDiagnostics(file)}`;
+      }
+      if (code === 'storage/canceled') return 'Receipt upload was canceled.';
+      if (code === 'storage/quota-exceeded') return 'Firebase Storage quota has been exceeded.';
+      return (error && error.message) ? error.message : 'Receipt upload failed. Please try again.';
+  }
+
+  function getReceiptUploadDiagnostics(receiptFile) {
+      const user = firebase.auth().currentUser;
+      const profile = activeUserProfile || {};
+      const sizeMb = receiptFile ? (receiptFile.size / 1024 / 1024).toFixed(2) : 'n/a';
+      const browserType = receiptFile ? (receiptFile.type || '(blank)') : 'n/a';
+      const uploadType = receiptFile ? (getReceiptContentType(receiptFile) || '(blank)') : 'n/a';
+      const name = receiptFile ? receiptFile.name : 'n/a';
+      return [
+          `Signed-in UID: ${user ? user.uid : 'none'}`,
+          `Profile role: ${profile.role || 'not loaded'}`,
+          `File: ${name}`,
+          `Browser type: ${browserType}`,
+          `Upload type: ${uploadType}`,
+          `Size: ${sizeMb} MB`
+      ].join('\n');
   }
 
   function clearExpenseForm() {
@@ -791,6 +833,7 @@
     if (!subcat) return alert('Select category!');
     if (!amount) return alert('Enter amount!');
     if (!validateReceiptFile(receiptFile)) return;
+    if (!canManageExpenses()) return alert(`Only the Treasurer can save expenses with receipts.\n\n${getReceiptUploadDiagnostics(receiptFile)}`);
 
     btn.disabled = true;
     btn.textContent = editingExpenseId ? 'Updating...' : 'Saving...';
@@ -835,17 +878,19 @@
           editingExpenseOriginal = null;
           document.getElementById('edit-banner').style.display = 'none';
       } else {
-          const docRef = await db.collection('expenses').add(dbPayload);
+          const docRef = db.collection('expenses').doc();
           const receiptData = await uploadReceiptForExpense(docRef, receiptFile, null);
-          if (receiptData) await docRef.update(receiptData);
-          await writeAuditLog('expense_created', docRef.id, null, dbPayload, `Created ${dbPayload.category || 'expense'} for ${dbPayload.date || ''}`);
+          const createPayload = receiptData ? { ...dbPayload, ...receiptData } : dbPayload;
+          await docRef.set(createPayload);
+          await writeAuditLog('expense_created', docRef.id, null, createPayload, `Created ${dbPayload.category || 'expense'} for ${dbPayload.date || ''}`);
       }
 
       listenToLedger();
       showSuccess();
       clearExpenseForm();
     } catch(e) {
-      alert(e.message);
+      console.error(e);
+      alert(getReceiptUploadErrorMessage(e));
     }
     btn.disabled = false;
     btn.textContent = '💾 Save Single Expense';

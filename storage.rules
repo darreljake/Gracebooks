@@ -10,12 +10,8 @@ service firebase.storage {
       return request.auth != null && testingAccessOpen();
     }
 
-    function role() {
-      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role;
-    }
-
-    function hasRole(roles) {
-      return signedIn() && role() in roles;
+    function isTreasurer() {
+      return signedIn() && request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3';
     }
 
     function validReceiptFile() {
@@ -30,14 +26,14 @@ service firebase.storage {
 
     match /expense-receipts/{expenseId}/{fileName} {
       allow read: if signedIn();
-      allow create, update: if hasRole(['Treasurer']) && validReceiptFile();
-      allow delete: if hasRole(['Treasurer']);
+      allow create, update: if isTreasurer() && validReceiptFile();
+      allow delete: if isTreasurer();
     }
 
     match /project-proofs/{entryId}/{fileName} {
       allow read: if signedIn();
-      allow create, update: if hasRole(['Treasurer']) && validReceiptFile();
-      allow delete: if hasRole(['Treasurer']);
+      allow create, update: if isTreasurer() && validReceiptFile();
+      allow delete: if isTreasurer();
     }
 
     match /signatures/{uid}/{fileName} {

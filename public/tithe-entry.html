@@ -665,9 +665,9 @@
         <div id="existing-member-fields"
           style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:16px;">
           <div class="form-group" style="margin-bottom:0; position:relative;">
-            <label>Member Code or Name</label>
+            <label>Member ID</label>
             <div style="display:flex; gap:5px;">
-              <input type="text" id="member-code-search" placeholder="Type code or name..." autocomplete="off" />
+              <input type="text" id="member-code-search" placeholder="Type member ID..." autocomplete="off" inputmode="numeric" pattern="[0-9]*" />
               <button type="button" onclick="searchMember()"
                 style="background:#8B0000; color:white; border:none;
                 border-radius:8px; padding:0 14px; cursor:pointer; font-size:16px;">
@@ -1222,6 +1222,8 @@
   // ── In-memory member cache for instant type-ahead (avoids a Firestore
   // read per keystroke; loaded once on page init and reused for every entry) ──
   let allMembersCache = [];
+  let allMembersCacheLoaded = false;
+  let memberLookupRequestId = 0;
 
   async function loadAllMembersCache() {
     try {
@@ -1229,6 +1231,8 @@
       allMembersCache = snap.docs.map(d => ({ id: d.id, data: d.data() }));
     } catch (e) {
       console.error('Error loading members cache:', e);
+    } finally {
+      allMembersCacheLoaded = true;
     }
   }
 
@@ -1238,8 +1242,37 @@
     return allMembersCache.filter(({ id, data }) => {
       const name = getMemberDisplayName(data).toLowerCase();
       const code = String(data.memberId || data.memberID || data.memberCode || id || '').toLowerCase();
-      return name.includes(q) || code.includes(q);
+      return memberMatchesCode(id, data, q) || name.includes(q) || code.includes(q);
     }).slice(0, 8);
+  }
+
+  function searchMembersByCodeInCache(code) {
+    const q = String(code || '').trim();
+    if (!q) return [];
+    return allMembersCache.filter(({ id, data }) => memberMatchesCode(id, data, q)).slice(0, 8);
+  }
+
+  function sanitizeMemberCodeInput(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function getMemberCode(match) {
+    if (!match) return '';
+    return match.data.memberId || match.data.memberID || match.data.memberCode || match.id || '';
+  }
+
+  function applyMemberCodeLookup(value) {
+    const nameDisplay = document.getElementById('member-name-display');
+    const matches = searchMembersByCodeInCache(value);
+    if (matches.length === 1) {
+      showMemberResult(matches[0], value);
+      renderMemberSuggestions([]);
+      return true;
+    }
+    nameDisplay.value = '';
+    nameDisplay.dataset.memberId = '';
+    renderMemberSuggestions(matches);
+    return false;
   }
 
   function renderMemberSuggestions(matches) {
@@ -1261,16 +1294,18 @@
     const match = matches[idx];
     if (!match) return;
     showMemberResult(match, match.id);
-    document.getElementById('member-code-search').value = getMemberDisplayName(match.data);
+    document.getElementById('member-code-search').value = getMemberCode(match);
     box.style.display = 'none';
   };
 
   window.searchMember = async function() {
-    const code        = document.getElementById('member-code-search').value.trim();
+    const input       = document.getElementById('member-code-search');
+    input.value       = sanitizeMemberCodeInput(input.value);
+    const code        = input.value.trim();
     const nameDisplay = document.getElementById('member-name-display');
-    if (!code) { alert('Please enter a Member Code or Name.'); return; }
+    if (!code) { alert('Please enter a numeric Member ID.'); return; }
     try {
-      const cacheMatches = searchMembersInCache(code);
+      const cacheMatches = searchMembersByCodeInCache(code);
       const match = cacheMatches.length ? cacheMatches[0] : await findMemberByCode(code);
       if (!showMemberResult(match, code)) {
         alert('Member not found: ' + code);
@@ -1284,11 +1319,23 @@
     }
   };
 
-  document.getElementById('member-code-search').addEventListener('input', (e) => {
-    const val         = e.target.value.trim();
+  document.getElementById('member-code-search').addEventListener('input', async (e) => {
+    const val         = sanitizeMemberCodeInput(e.target.value);
+    if (e.target.value !== val) e.target.value = val;
     const nameDisplay = document.getElementById('member-name-display');
     if (!val) { nameDisplay.value = ''; renderMemberSuggestions([]); return; }
-    renderMemberSuggestions(searchMembersInCache(val));
+    if (applyMemberCodeLookup(val) || allMembersCacheLoaded) return;
+
+    const requestId = ++memberLookupRequestId;
+    try {
+      const match = await findMemberByCode(val);
+      if (requestId === memberLookupRequestId && e.target.value === val) {
+        showMemberResult(match, val);
+        renderMemberSuggestions([]);
+      }
+    } catch (error) {
+      console.error('Member lookup failed:', error);
+    }
   });
 
   document.addEventListener('click', (e) => {

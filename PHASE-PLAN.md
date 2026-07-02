@@ -147,7 +147,7 @@ Status: Priority moved up; started as initial Special Projects ledger.
 Status: Storage rules tightening started; remaining items not started.
 
 - Tighten Firebase Storage rules:
-  - Receipts and project proofs: Treasurer-only upload/update/delete. Done — `storage.rules` now gates create/update/delete on `expense-receipts/` and `project-proofs/` with `hasRole(['Treasurer'])` via a `firestore.get()`-backed role check; read stays open to any signed-in user so other roles can still view receipts during report review.
+  - Receipts and project proofs: Treasurer-only upload/update/delete. Done — `storage.rules` now gates create/update/delete on `expense-receipts/` and `project-proofs/` with `isTreasurer()` plus file validation; read stays open to any signed-in user so other roles can still view receipts during report review. Do not use `firestore.get()` in Storage rules; it caused receipt uploads to be denied.
   - Signatures: owner-only upload/update/delete.
   - Keep strict file size caps.
   - Keep file type allowlist to images and PDFs only for receipts/proofs, images only for signatures.
