@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Connectional Ministries — GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Poppins', sans-serif; background: #f4f6f8; color: #263238; min-height: 100vh; }
+    .topbar { background: #8B0000; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 13px; }
+    .container { max-width: 1100px; margin: 22px auto; padding: 0 18px; }
+    .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+    .page-head-left h1 { font-size: 22px; color: #263238; margin-bottom: 4px; }
+    .muted { color: #6f7c86; font-size: 12px; line-height: 1.5; }
+    .page-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .year-sel-wrap { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #51616d; }
+    select.year-sel { padding: 8px 10px; border: 1px solid #ccd6dd; border-radius: 6px; font-family: 'Poppins', sans-serif; font-size: 13px; background: white; }
+    .btn { background: #8B0000; color: white; border: none; border-radius: 7px; padding: 10px 16px; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 13px; }
+    .btn.ghost { background: #eef3f7; color: #34495e; }
+    .btn.danger { background: #c0392b; }
+    .btn.secondary { background: #1a5276; }
+    .btn:disabled { background: #aaa; cursor: not-allowed; }
+    .treasurer-only { display: none; }
+    .can-manage .treasurer-only { display: initial; }
+    .tr-only-td { display: none; }
+    .can-manage .tr-only-td { display: table-cell; }
+
+    /* KPI row */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+    .kpi-card { background: white; border-radius: 8px; padding: 16px 18px; box-shadow: 0 2px 10px rgba(0,0,0,0.07); border-left: 4px solid #8B0000; }
+    .kpi-card.green { border-left-color: #1e8449; }
+    .kpi-card.amber { border-left-color: #e67e22; }
+    .kpi-card.blue { border-left-color: #1a5276; }
+    .kpi-label { font-size: 10px; text-transform: uppercase; color: #72808b; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 5px; }
+    .kpi-value { font-size: 20px; font-weight: 700; color: #263238; }
+    .kpi-sub { font-size: 11px; color: #8a99a5; margin-top: 3px; }
+
+    /* Progress bar (summary) */
+    .progress-card { background: white; border-radius: 8px; padding: 16px 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.07); margin-bottom: 18px; }
+    .progress-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; font-weight: 600; color: #263238; }
+    .progress-track { height: 12px; background: #edf2f5; border-radius: 999px; overflow: hidden; }
+    .progress-fill-bar { height: 100%; background: linear-gradient(90deg, #27ae60, #1e8449); border-radius: 999px; transition: width 0.4s ease; }
+
+    /* Main table card */
+    .table-card { background: white; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 24px; }
+    .table-card-head { padding: 14px 20px; border-bottom: 1px solid #edf2f5; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .table-card-head h3 { color: #8B0000; font-size: 15px; font-weight: 700; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; font-size: 13px; }
+    th { background: #f6f8fa; color: #51616d; text-align: left; padding: 10px 12px; white-space: nowrap; border-bottom: 1px solid #e4ebf0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+    td { border-bottom: 1px solid #edf2f5; padding: 11px 12px; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fdf8f8; }
+    .amount { text-align: right; font-weight: 700; white-space: nowrap; }
+    .balance-due { color: #c0392b; }
+    .empty-cell { color: #8a99a5; text-align: center; padding: 30px 20px; font-size: 13px; }
+    .row-note { font-size: 11px; color: #8a99a5; margin-top: 3px; }
+    .muted-text { color: #b0bec5; }
+
+    /* Badges */
+    .status-badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .status-paid { background: #d5f5e3; color: #1e8449; }
+    .status-partial { background: #fef9e7; color: #d4ac0d; }
+    .status-unpaid { background: #fdecea; color: #c0392b; }
+    .cat-badge { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 11px; background: #eaf2f8; color: #1a5276; font-weight: 600; white-space: nowrap; }
+
+    /* Inline progress per row */
+    .row-progress-wrap { height: 7px; background: #edf2f5; border-radius: 999px; overflow: hidden; min-width: 60px; margin-bottom: 2px; }
+    .row-progress-fill { height: 100%; border-radius: 999px; background: #27ae60; }
+    .row-progress-label { font-size: 10px; color: #8a99a5; font-weight: 700; }
+
+    /* Action buttons */
+    .action-btns { display: flex; gap: 5px; flex-wrap: nowrap; }
+    .action-btn { border: none; border-radius: 5px; padding: 5px 9px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; white-space: nowrap; }
+    .edit-btn { background: #eef3f7; color: #1a5276; }
+    .settle-btn { background: #eafaf1; color: #1e8449; }
+    .del-btn { background: #fdecea; color: #c0392b; }
+    .action-btn:hover { opacity: 0.8; }
+
+    /* Modals */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(24, 32, 38, 0.55); display: none; align-items: center; justify-content: center; padding: 18px; z-index: 50; }
+    .modal-overlay.active { display: flex; }
+    .modal { width: min(560px, 100%); max-height: 92vh; overflow-y: auto; background: white; border-radius: 8px; box-shadow: 0 18px 60px rgba(0,0,0,0.22); }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #edf2f5; }
+    .modal-header h3 { color: #8B0000; font-size: 18px; margin-bottom: 3px; }
+    .modal-body { padding: 18px 20px 20px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 11px; color: #667; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
+    input[type="text"], input[type="number"], input[type="date"], select, textarea {
+      width: 100%; padding: 9px 11px; border: 1px solid #ccd6dd; border-radius: 7px;
+      font-size: 13px; font-family: 'Poppins', sans-serif; background: white;
+    }
+    textarea { min-height: 70px; resize: vertical; }
+    .close-btn { width: 32px; height: 32px; border: none; border-radius: 6px; background: #eef3f7; color: #34495e; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .confirm-text { font-size: 14px; color: #263238; line-height: 1.6; }
+    .confirm-text strong { color: #8B0000; }
+    .settle-info { background: #f6f8fa; border-radius: 7px; padding: 12px 14px; margin-bottom: 14px; font-size: 13px; }
+    .settle-info .si-label { font-size: 11px; text-transform: uppercase; color: #8a99a5; font-weight: 700; }
+    .settle-info .si-value { font-weight: 700; color: #263238; font-size: 15px; margin-top: 2px; }
+
+    @media (max-width: 700px) {
+      .kpi-row { grid-template-columns: 1fr 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+      .page-head { flex-direction: column; }
+    }
+    @media (max-width: 400px) {
+      .kpi-row { grid-template-columns: 1fr; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+  <div class="topbar">
+    <h2>Connectional Ministries</h2>
+    <a class="back-btn" href="index.html">Dashboard</a>
+  </div>
+
+  <div class="container">
+    <div class="page-head">
+      <div class="page-head-left">
+        <h1>Church Obligation Tracker</h1>
+        <div class="muted">Track UMC connection apportionments and obligation payments by year.</div>
+      </div>
+      <div class="page-head-right">
+        <div class="year-sel-wrap">
+          <span>Year:</span>
+          <select class="year-sel" id="year-sel" onchange="loadObligations()">
+            <option value="2023">2023</option>
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026" selected>2026</option>
+            <option value="2027">2027</option>
+            <option value="2028">2028</option>
+          </select>
+        </div>
+        <button class="btn treasurer-only" onclick="openAddModal()">+ Add Obligation</button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Obligated</div>
+        <div class="kpi-value" id="kpi-total">₱0.00</div>
+        <div class="kpi-sub" id="kpi-count-sub">0 obligations</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Total Settled</div>
+        <div class="kpi-value" id="kpi-settled">₱0.00</div>
+        <div class="kpi-sub" id="kpi-paid-count">0 of 0 fully paid</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">Outstanding Balance</div>
+        <div class="kpi-value" id="kpi-balance">₱0.00</div>
+        <div class="kpi-sub" id="kpi-unpaid-count">0 with balance</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Settlement Progress</div>
+        <div class="kpi-value" id="kpi-progress">0%</div>
+        <div class="kpi-sub">of total obligations paid</div>
+      </div>
+    </div>
+
+    <!-- Overall progress bar -->
+    <div class="progress-card">
+      <div class="progress-card-head">
+        <span>Overall Settlement Progress</span>
+        <span id="progress-pct-label" style="color:#1e8449;">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill-bar" id="progress-bar-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Obligations table -->
+    <div class="table-card">
+      <div class="table-card-head">
+        <h3>Obligations</h3>
+        <span class="muted" id="table-year-label">Showing: 2026</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Obligation</th>
+              <th>Category</th>
+              <th>Due Date</th>
+              <th>Status</th>
+              <th style="text-align:right;">Total</th>
+              <th style="text-align:right;">Settled</th>
+              <th style="text-align:right;">Balance</th>
+              <th>Progress</th>
+              <th class="tr-only-td">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="obligations-body">
+            <tr><td colspan="9" class="empty-cell">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / Edit Obligation Modal -->
+  <div class="modal-overlay" id="obl-modal" onclick="handleModalBg(event,'obl-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3 id="modal-title">Add Obligation</h3>
+          <div class="muted" id="modal-sub">Record an apportionment or connection obligation.</div>
+        </div>
+        <button class="close-btn" onclick="closeOblModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Obligation Name <span style="color:#c0392b;">*</span></label>
+          <input type="text" id="obl-name" placeholder="e.g. Annual Conference Apportionment" />
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Category</label>
+            <select id="obl-category">
+              <option value="">— Select Category —</option>
+              <option value="Annual Conference">Annual Conference</option>
+              <option value="District Apportionment">District Apportionment</option>
+              <option value="Episcopal Fund">Episcopal Fund</option>
+              <option value="World Service">World Service</option>
+              <option value="General Church">General Church</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Due Date <span style="color:#c0392b;">*</span></label>
+            <input type="date" id="obl-date" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Total Amount <span style="color:#c0392b;">*</span></label>
+            <input type="number" id="obl-amount" min="0" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label>Settled to Date</label>
+            <input type="number" id="obl-paid" min="0" step="0.01" placeholder="0.00" value="0" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="obl-notes" placeholder="Optional: payment schedule, reference number, or remarks."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" onclick="closeOblModal()">Cancel</button>
+          <button class="btn" id="obl-save-btn" onclick="saveObligation()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Update Settlement Modal -->
+  <div class="modal-overlay" id="settle-modal" onclick="handleModalBg(event,'settle-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3>Update Settlement</h3>
+          <div class="muted">Enter the cumulative amount settled to date.</div>
+        </div>
+        <button class="close-btn" onclick="closeSettleModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settle-info">
+          <div class="si-label">Obligation</div>
+          <div class="si-value" id="settle-obl-name">—</div>
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Total Amount</label>
+            <div style="padding:9px 11px;background:#f6f8fa;border-radius:7px;font-weight:700;font-size:13px;" id="settle-obl-total">₱0.00</div>
+          </div>
+          <div>
+            <label>Cumulative Amount Settled <span style="color:#c0392b;">*</span></label>
+            <input type="number" id="settle-paid-input" min="0" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" onclick="closeSettleModal()">Cancel</button>
+          <button class="btn secondary" id="settle-save-btn" onclick="saveSettlement()">Update Settlement</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Delete Modal -->
+  <div class="modal-overlay" id="confirm-delete-modal" onclick="handleModalBg(event,'confirm-delete-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3 style="color:#c0392b;">Delete Obligation</h3>
+          <div class="muted">This action cannot be undone.</div>
+        </div>
+        <button class="close-btn" onclick="cancelDelete()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="confirm-text">Are you sure you want to delete <strong id="delete-obl-name">this obligation</strong>? This will permanently remove it from the church obligation records.</p>
+        <div class="modal-actions">
+          <button class="btn ghost" onclick="cancelDelete()">Cancel</button>
+          <button class="btn danger" id="confirm-del-btn" onclick="executeDelete()">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const db = firebase.firestore();
+    let activeUserProfile = null;
+    let obligationsData = [];
+    let editingId = null;
+    let deletingId = null;
+
+    document.addEventListener('gracebooks-auth-ready', function(e) {
+      activeUserProfile = e.detail;
+      applyRoleAccess();
+      loadObligations();
+    });
+
+    function roleIs() {
+      var roles = Array.prototype.slice.call(arguments);
+      return activeUserProfile && roles.indexOf(activeUserProfile.role) !== -1;
+    }
+
+    function applyRoleAccess() {
+      if (roleIs('Treasurer')) {
+        document.body.classList.add('can-manage');
+      } else {
+        document.body.classList.remove('can-manage');
+      }
+    }
+
+    function getYear() {
+      return parseInt(document.getElementById('year-sel').value) || new Date().getFullYear();
+    }
+
+    function fmt(n) {
+      return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function getPaidAmount(o) {
+      if (o.paidAmount !== undefined) return Math.max(0, parseFloat(o.paidAmount) || 0);
+      return o.status === 'Paid' ? Math.max(0, parseFloat(o.amount) || 0) : 0;
+    }
+
+    function getBalance(o) {
+      return Math.max(0, Math.max(0, parseFloat(o.amount) || 0) - getPaidAmount(o));
+    }
+
+    function getStatus(o) {
+      var amount = Math.max(0, parseFloat(o.amount) || 0);
+      var paid = Math.min(amount, getPaidAmount(o));
+      if (amount > 0 && paid >= amount) return 'Paid';
+      if (paid > 0) return 'Partially Paid';
+      return 'Unpaid';
+    }
+
+    function getFilteredObligations() {
+      var year = getYear();
+      return obligationsData.filter(function(o) {
+        if (!o.dueDate) return true;
+        var dt = new Date(o.dueDate);
+        return !isNaN(dt.getTime()) && dt.getFullYear() === year;
+      }).sort(function(a, b) {
+        return String(a.dueDate || '').localeCompare(String(b.dueDate || ''));
+      });
+    }
+
+    function loadObligations() {
+      document.getElementById('table-year-label').textContent = 'Showing: ' + getYear();
+      db.collection('churchObligations').get().then(function(snap) {
+        obligationsData = snap.docs.map(function(doc) {
+          return Object.assign({ id: doc.id }, doc.data());
+        });
+        renderPage();
+      }).catch(function(err) {
+        console.error('Error loading obligations:', err);
+        document.getElementById('obligations-body').innerHTML =
+          '<tr><td colspan="9" class="empty-cell" style="color:#c0392b;">Error loading data. Please refresh.</td></tr>';
+      });
+    }
+
+    function renderPage() {
+      var list = getFilteredObligations();
+      renderKpis(list);
+      renderTable(list);
+    }
+
+    function renderKpis(list) {
+      var totalAmount = 0, totalPaid = 0, paidCount = 0, unpaidCount = 0;
+      list.forEach(function(o) {
+        var amount = Math.max(0, parseFloat(o.amount) || 0);
+        var paid = getPaidAmount(o);
+        var bal = getBalance(o);
+        totalAmount += amount;
+        totalPaid += paid;
+        if (bal <= 0 && amount > 0) paidCount++;
+        if (bal > 0) unpaidCount++;
+      });
+      var totalBalance = Math.max(0, totalAmount - totalPaid);
+      var pct = totalAmount > 0 ? Math.round(totalPaid / totalAmount * 100) : 0;
+
+      document.getElementById('kpi-total').textContent = '₱' + fmt(totalAmount);
+      document.getElementById('kpi-count-sub').textContent = list.length + ' obligation' + (list.length !== 1 ? 's' : '');
+      document.getElementById('kpi-settled').textContent = '₱' + fmt(totalPaid);
+      document.getElementById('kpi-paid-count').textContent = paidCount + ' of ' + list.length + ' fully paid';
+      document.getElementById('kpi-balance').textContent = '₱' + fmt(totalBalance);
+      document.getElementById('kpi-unpaid-count').textContent = unpaidCount + ' with outstanding balance';
+      document.getElementById('kpi-progress').textContent = pct + '%';
+      document.getElementById('progress-bar-fill').style.width = pct + '%';
+      document.getElementById('progress-pct-label').textContent = pct + '%';
+    }
+
+    function renderTable(list) {
+      var tbody = document.getElementById('obligations-body');
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-cell">No obligations recorded for ' + getYear() + '.' +
+          (roleIs('Treasurer') ? ' Use “Add Obligation” to get started.' : '') + '</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(function(o) {
+        var amount = Math.max(0, parseFloat(o.amount) || 0);
+        var paid = getPaidAmount(o);
+        var balance = getBalance(o);
+        var status = getStatus(o);
+        var pct = amount > 0 ? Math.min(100, Math.round(paid / amount * 100)) : 0;
+        var statusClass = status === 'Paid' ? 'status-paid' : status === 'Partially Paid' ? 'status-partial' : 'status-unpaid';
+        var cat = o.category || '';
+        var fillColor = pct >= 100 ? '#27ae60' : pct > 0 ? '#e67e22' : '#e0e0e0';
+        return '<tr>' +
+          '<td><strong>' + escapeHtml(o.name || 'Obligation') + '</strong>' +
+          (o.notes ? '<div class="row-note">' + escapeHtml(o.notes) + '</div>' : '') + '</td>' +
+          '<td>' + (cat ? '<span class="cat-badge">' + escapeHtml(cat) + '</span>' : '<span class="muted-text">—</span>') + '</td>' +
+          '<td>' + escapeHtml(o.dueDate || '—') + '</td>' +
+          '<td><span class="status-badge ' + statusClass + '">' + status + '</span></td>' +
+          '<td class="amount">₱' + fmt(amount) + '</td>' +
+          '<td class="amount">₱' + fmt(paid) + '</td>' +
+          '<td class="amount' + (balance > 0 ? ' balance-due' : '') + '">₱' + fmt(balance) + '</td>' +
+          '<td style="min-width:80px;">' +
+            '<div class="row-progress-wrap"><div class="row-progress-fill" style="width:' + pct + '%;background:' + fillColor + ';"></div></div>' +
+            '<div class="row-progress-label">' + pct + '%</div>' +
+          '</td>' +
+          '<td class="tr-only-td">' +
+            '<div class="action-btns">' +
+              '<button class="action-btn edit-btn" onclick="openEditModal(\'' + o.id + '\')">Edit</button>' +
+              '<button class="action-btn settle-btn" onclick="openSettleModal(\'' + o.id + '\')">Settle</button>' +
+              '<button class="action-btn del-btn" onclick="confirmDelete(\'' + o.id + '\')">Delete</button>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
+      var user = firebase.auth().currentUser;
+      await db.collection('auditLogs').add({
+        action: action,
+        collection: collectionName,
+        docId: docId,
+        summary: summary,
+        before: beforeData || null,
+        after: afterData || null,
+        actorUid: user ? user.uid : '',
+        actorEmail: user ? user.email : '',
+        actorName: activeUserProfile ? activeUserProfile.name : '',
+        actorRole: activeUserProfile ? activeUserProfile.role : '',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    function handleModalBg(event, id) {
+      if (event.target === document.getElementById(id)) {
+        document.getElementById(id).classList.remove('active');
+      }
+    }
+
+    function openAddModal() {
+      editingId = null;
+      document.getElementById('modal-title').textContent = 'Add Obligation';
+      document.getElementById('modal-sub').textContent = 'Record an apportionment or connection obligation.';
+      document.getElementById('obl-name').value = '';
+      document.getElementById('obl-category').value = '';
+      document.getElementById('obl-date').value = '';
+      document.getElementById('obl-amount').value = '';
+      document.getElementById('obl-paid').value = '0';
+      document.getElementById('obl-notes').value = '';
+      document.getElementById('obl-save-btn').textContent = 'Save';
+      document.getElementById('obl-save-btn').disabled = false;
+      document.getElementById('obl-modal').classList.add('active');
+      setTimeout(function() { document.getElementById('obl-name').focus(); }, 50);
+    }
+
+    function openEditModal(id) {
+      var o = obligationsData.find(function(x) { return x.id === id; });
+      if (!o) return;
+      editingId = id;
+      document.getElementById('modal-title').textContent = 'Edit Obligation';
+      document.getElementById('modal-sub').textContent = 'Update the obligation details or settlement amount.';
+      document.getElementById('obl-name').value = o.name || '';
+      document.getElementById('obl-category').value = o.category || '';
+      document.getElementById('obl-date').value = o.dueDate || '';
+      document.getElementById('obl-amount').value = o.amount || '';
+      document.getElementById('obl-paid').value = getPaidAmount(o);
+      document.getElementById('obl-notes').value = o.notes || '';
+      document.getElementById('obl-save-btn').textContent = 'Save';
+      document.getElementById('obl-save-btn').disabled = false;
+      document.getElementById('obl-modal').classList.add('active');
+    }
+
+    function closeOblModal() {
+      editingId = null;
+      document.getElementById('obl-modal').classList.remove('active');
+    }
+
+    function openSettleModal(id) {
+      var o = obligationsData.find(function(x) { return x.id === id; });
+      if (!o) return;
+      var amount = Math.max(0, parseFloat(o.amount) || 0);
+      document.getElementById('settle-obl-name').textContent = o.name || 'Obligation';
+      document.getElementById('settle-obl-total').textContent = '₱' + fmt(amount);
+      var input = document.getElementById('settle-paid-input');
+      input.value = getPaidAmount(o);
+      input.max = amount;
+      input.setAttribute('data-id', id);
+      document.getElementById('settle-save-btn').textContent = 'Update Settlement';
+      document.getElementById('settle-save-btn').disabled = false;
+      document.getElementById('settle-modal').classList.add('active');
+      setTimeout(function() { input.focus(); input.select(); }, 50);
+    }
+
+    function closeSettleModal() {
+      document.getElementById('settle-modal').classList.remove('active');
+    }
+
+    async function saveSettlement() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can update settlement.');
+      var input = document.getElementById('settle-paid-input');
+      var id = input.getAttribute('data-id');
+      var o = obligationsData.find(function(x) { return x.id === id; });
+      if (!o) return;
+      var amount = Math.max(0, parseFloat(o.amount) || 0);
+      var paidAmount = Math.min(amount, Math.max(0, parseFloat(input.value) || 0));
+      var beforeData = Object.assign({}, o);
+      var afterData = {
+        paidAmount: paidAmount,
+        balanceAmount: Math.max(0, amount - paidAmount),
+        status: (function() {
+          if (amount > 0 && paidAmount >= amount) return 'Paid';
+          if (paidAmount > 0) return 'Partially Paid';
+          return 'Unpaid';
+        })(),
+        updatedAt: new Date().toISOString()
+      };
+      var btn = document.getElementById('settle-save-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        await db.collection('churchObligations').doc(id).set(afterData, { merge: true });
+        await writeAuditLog(
+          'obligation_settlement_updated', 'churchObligations', id,
+          beforeData, Object.assign({}, beforeData, afterData),
+          'Updated settlement for church obligation: ' + (o.name || id)
+        );
+        closeSettleModal();
+        loadObligations();
+      } catch (err) {
+        console.error(err);
+        alert('Error updating settlement. Please try again.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Update Settlement';
+      }
+    }
+
+    async function saveObligation() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can save obligations.');
+      var name = document.getElementById('obl-name').value.trim();
+      var category = document.getElementById('obl-category').value;
+      var dueDate = document.getElementById('obl-date').value;
+      var amount = parseFloat(document.getElementById('obl-amount').value) || 0;
+      var paidAmount = Math.min(amount, Math.max(0, parseFloat(document.getElementById('obl-paid').value) || 0));
+      var notes = document.getElementById('obl-notes').value.trim();
+      if (!name) return alert('Obligation name is required.');
+      if (!dueDate) return alert('Due date is required.');
+      if (!amount) return alert('Total amount is required.');
+      var saveBtn = document.getElementById('obl-save-btn');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      var balanceAmount = Math.max(0, amount - paidAmount);
+      var status = (function() {
+        if (amount > 0 && paidAmount >= amount) return 'Paid';
+        if (paidAmount > 0) return 'Partially Paid';
+        return 'Unpaid';
+      })();
+      var payload = {
+        name: name,
+        category: category || '',
+        dueDate: dueDate,
+        amount: amount,
+        paidAmount: paidAmount,
+        balanceAmount: balanceAmount,
+        status: status,
+        notes: notes || '',
+        updatedAt: new Date().toISOString()
+      };
+      try {
+        if (editingId) {
+          var before = obligationsData.find(function(o) { return o.id === editingId; }) || {};
+          await db.collection('churchObligations').doc(editingId).set(payload, { merge: true });
+          await writeAuditLog(
+            'obligation_updated', 'churchObligations', editingId,
+            before, Object.assign({}, before, payload),
+            'Updated church obligation: ' + name
+          );
+        } else {
+          payload.createdAt = new Date().toISOString();
+          var ref = await db.collection('churchObligations').add(payload);
+          await writeAuditLog(
+            'obligation_created', 'churchObligations', ref.id,
+            null, payload,
+            'Created church obligation: ' + name
+          );
+        }
+        closeOblModal();
+        loadObligations();
+      } catch (err) {
+        console.error(err);
+        alert('Error saving obligation. Please try again.');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    }
+
+    function confirmDelete(id) {
+      var o = obligationsData.find(function(x) { return x.id === id; });
+      if (!o) return;
+      deletingId = id;
+      document.getElementById('delete-obl-name').textContent = o.name || 'this obligation';
+      document.getElementById('confirm-del-btn').textContent = 'Delete';
+      document.getElementById('confirm-del-btn').disabled = false;
+      document.getElementById('confirm-delete-modal').classList.add('active');
+    }
+
+    function cancelDelete() {
+      deletingId = null;
+      document.getElementById('confirm-delete-modal').classList.remove('active');
+    }
+
+    async function executeDelete() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete obligations.');
+      if (!deletingId) return;
+      var o = obligationsData.find(function(x) { return x.id === deletingId; });
+      var btn = document.getElementById('confirm-del-btn');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try {
+        await db.collection('churchObligations').doc(deletingId).delete();
+        await writeAuditLog(
+          'obligation_deleted', 'churchObligations', deletingId,
+          o || null, null,
+          'Deleted church obligation: ' + (o ? o.name : deletingId)
+        );
+        cancelDelete();
+        loadObligations();
+      } catch (err) {
+        console.error(err);
+        alert('Error deleting obligation. Please try again.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    }
+  </script>
+</body>
+</html>

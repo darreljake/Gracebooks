@@ -141,7 +141,7 @@ Status: Priority moved up; started as initial Special Projects ledger.
 - Create `special-projects.html`. Started with project setup, project funding/expense entries, summaries, dashboard access, and Firestore rules.
 - Special Projects workflow now includes project CRUD, cost breakdowns, funding sources, linked expenses, receipt/proof uploads, close/reopen, funding draft entries, and push/remove from print report.
 - Print report includes a Special Projects report selector for projects pushed from `special-projects.html`.
-- Create `connectional-ministries.html`.
+- Create `connectional-ministries.html`. Done — dedicated management page for the `churchObligations` Firestore collection: year-filtered obligation list, KPI cards (total obligated, settled, balance, progress %), overall progress bar, per-row progress bars, Add/Edit/Delete modals (Treasurer only), separate settlement update modal, and full audit log coverage. Dashboard menu entries added for Treasurer, Pastor, Auditor, District, Finance Chair, Chairperson, and Deaconess.
 - Improve Special Projects print report formatting as usage grows.
 
 ## Phase 4B - Upload Security Gates
