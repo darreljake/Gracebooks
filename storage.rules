@@ -14,6 +14,14 @@ service firebase.storage {
       return signedIn() && request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3';
     }
 
+    function role() {
+      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role;
+    }
+
+    function hasRole(roles) {
+      return signedIn() && role() in roles;
+    }
+
     function validReceiptFile() {
       return request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf');
