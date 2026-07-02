@@ -235,6 +235,53 @@
       cursor: pointer;
     }
     #install-app-btn:hover { background: #a30000; }
+
+    .notif-badge {
+      position: absolute;
+      top: -6px; right: -6px;
+      background: #e53935;
+      color: white;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 3px;
+      pointer-events: none;
+    }
+    .notif-dropdown {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      width: 300px;
+      max-height: 380px;
+      overflow-y: auto;
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      z-index: 9999;
+      color: #222;
+    }
+    .notif-header {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #8B0000;
+      border-bottom: 1px solid #f0f0f0;
+      position: sticky;
+      top: 0;
+      background: white;
+    }
+    .notif-item { padding: 11px 16px; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item.unread { background: #fdf7f7; }
+    .notif-msg { color: #222; margin-bottom: 3px; line-height: 1.4; }
+    .notif-ts { color: #888; font-size: 11px; }
+    .notif-empty { padding: 18px 16px; text-align: center; font-size: 12px; color: #888; }
   </style>
 </head>
 
@@ -267,9 +314,19 @@
         <img src="umc-logo.png" alt="Logo" class="topbar-logo">
         <h2>GraceBooks</h2>
       </div>
-      <div>
-        <span id="role-label" style="font-weight: 600; font-size: 13px; opacity: 0.9;"></span>
-        <button class="logout-btn" onclick="logout()" style="margin-left:16px">Logout</button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="role-label" style="font-weight:600;font-size:13px;opacity:0.9;"></span>
+        <div style="position:relative;">
+          <button class="logout-btn" id="notif-btn" onclick="toggleNotifications()" title="Notifications" style="padding:8px 11px;">
+            <i class="fa-solid fa-bell"></i>
+            <span id="notif-badge" class="notif-badge" style="display:none;"></span>
+          </button>
+          <div id="notif-dropdown" class="notif-dropdown" style="display:none;">
+            <div class="notif-header">Notifications</div>
+            <div id="notif-list"></div>
+          </div>
+        </div>
+        <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
     </div>
 
@@ -365,7 +422,8 @@
         { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' }
       ],
       'Membership Secretary': [
-        { iconClass: 'fa-calendar-check', label: 'Weekly Attendance', link: 'membership-attendance.html' }
+        { iconClass: 'fa-calendar-check', label: 'Weekly Attendance', link: 'membership-attendance.html' },
+        { iconClass: 'fa-users', label: 'Members', link: 'members.html' }
       ],
       'Deaconess': [
         { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
@@ -469,6 +527,8 @@
             <div class="label">${item.label}</div>
           </a>`;
       });
+
+      loadNotifications();
     }
 
     async function logout() {
@@ -490,6 +550,90 @@
     window.addEventListener('pageshow', (event) => {
       if (event.persisted && !firebase.auth().currentUser) {
         window.location.href = 'index.html';
+      }
+    });
+
+    let notificationsData = [];
+
+    async function loadNotifications() {
+      if (!currentUser) return;
+      try {
+        const snap = await firebase.firestore()
+          .collection('notifications')
+          .where('recipientRole', '==', currentUser.role)
+          .get();
+        notificationsData = snap.docs
+          .map(d => d.data())
+          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+          .slice(0, 30);
+        updateNotifBadge();
+      } catch (e) {
+        console.warn('Notifications unavailable', e);
+      }
+    }
+
+    function notifSeenKey() {
+      return 'gb_notif_seen_' + (currentUser ? currentUser.role : '');
+    }
+
+    function updateNotifBadge() {
+      const lastSeen = localStorage.getItem(notifSeenKey()) || '';
+      const count = notificationsData.filter(n => (n.createdAt || '') > lastSeen).length;
+      const badge = document.getElementById('notif-badge');
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = count > 9 ? '9+' : String(count);
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    function toggleNotifications() {
+      const dropdown = document.getElementById('notif-dropdown');
+      if (!dropdown) return;
+      const isOpen = dropdown.style.display !== 'none';
+      if (isOpen) {
+        dropdown.style.display = 'none';
+      } else {
+        renderNotifList();
+        dropdown.style.display = 'block';
+        localStorage.setItem(notifSeenKey(), new Date().toISOString());
+        const badge = document.getElementById('notif-badge');
+        if (badge) badge.style.display = 'none';
+      }
+    }
+
+    function renderNotifList() {
+      const lastSeen = localStorage.getItem(notifSeenKey()) || '';
+      const list = document.getElementById('notif-list');
+      if (!list) return;
+      if (!notificationsData.length) {
+        list.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+        return;
+      }
+      list.innerHTML = notificationsData.map(n => {
+        const unread = (n.createdAt || '') > lastSeen;
+        const dateStr = n.createdAt ? new Date(n.createdAt).toLocaleString('en-PH') : '';
+        const meta = [n.periodLabel || n.reportId || '', n.actorName || ''].filter(Boolean).join(' • ');
+        return '<div class="notif-item' + (unread ? ' unread' : '') + '">' +
+          '<div class="notif-msg">' + safeHtml(n.message || 'Workflow update') + '</div>' +
+          '<div class="notif-ts">' + safeHtml(meta) + (meta ? ' • ' : '') + safeHtml(dateStr) + '</div>' +
+          '</div>';
+      }).join('');
+    }
+
+    function safeHtml(v) {
+      return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+      });
+    }
+
+    document.addEventListener('click', function(e) {
+      const btn = document.getElementById('notif-btn');
+      const dropdown = document.getElementById('notif-dropdown');
+      if (dropdown && btn && !btn.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
       }
     });
 </script>

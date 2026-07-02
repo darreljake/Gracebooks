@@ -56,6 +56,7 @@ Status: Done, except Financial Overview listener conversion is intentionally ski
 - Reports attendance input restricted to Membership Secretary.
 - Membership Secretary role now uses a dedicated weekly attendance entry page with member-name selection and cannot see finance/report data.
 - Membership Secretary can access and maintain the member database.
+  - Fix: `index.html` dashboard menu for the Membership Secretary role was missing the "Members" link (only "Weekly Attendance" was listed), even though `firestore.rules` already granted this role full read/create/update/delete on `members`. Added the menu entry so the role can actually reach `members.html`.
 - Reports church obligations section with input mechanism.
 - Reports church obligation input restricted to Treasurer.
 - Firestore role rules for income, expenses, members, attendance, church obligations, budgets, settings, and audit logs.
@@ -109,19 +110,26 @@ Status: In progress.
   - Remove local credential/import files from daily use or move them to secure storage.
 ## Phase 3 - New HTML: Liquidation and Reimbursements
 
-Status: Started.
+Status: Done.
 
 - Create `liquidation-reimbursements.html`. Done as initial staff request + Treasurer review page.
-- Handle request, review, approval, release, reconciliation, and receipts.
-- Auto-create expense entry after approval where appropriate.
+- Cash advance assignment: Done — Treasurer has an "Assign Cash Advance" card that lists Pastor/Deaconess/Admin Assistant profiles (new Treasurer read access on `userProfiles`) and creates a pre-approved `liquidationRequests` doc on the staff member's behalf (`assignedBy`/`assignedAt`), ready for release with no receipts required up front.
+- Request types clarified: staff now choose **Cash Advance** (no receipts yet, liquidate later) or **Reimbursement** (already paid out of pocket, receipts attached at submission, supports multiple files). Legacy `Liquidation`-typed docs are treated as cash advances.
+- Staff liquidation flow: Done — owners of a Released cash advance get a "Submit Liquidation" modal (itemized date/description/amount lines, multiple receipt uploads to `liquidation-receipts/{requestId}/`, running released-vs-spent balance) which sets status `Liquidation Submitted`; the Treasurer then reviews and reconciles (reconcile modal now shows the liquidation balance). Firestore rules allow owner updates only for the constrained transitions Submitted→Submitted/Cancelled and Released→Liquidation Submitted (amount/type immutable).
+- Release semantics: cash advances stay `Released` until liquidated/reconciled; reimbursements move straight to `Completed` on release. Owners can cancel their own request while it is still `Submitted`.
+- Overview summary boxes (pending review, outstanding advances, awaiting reconciliation, completed) plus a shared request details modal (items, receipts, balances, reconciliation notes) for staff, Treasurer, and Auditor visibility.
+- Status-change notifications: submissions/approvals/releases/liquidations/reconciliations write role-targeted `notifications` docs picked up by the dashboard bell.
+- Handle request, review, approval, release, reconciliation, and receipts. Done — requesters can attach an optional receipt/proof at submission (new `liquidation-receipts/{requestId}/...` Storage path, owner-or-Treasurer write, same image/PDF ≤5MB allowlist as other receipts). Treasurer flow now has explicit per-status actions: Submitted → Approve/Reject, Approved → "Release Payment" (picks a source of fund), Released → "Mark Reconciled" (optional notes). All transitions write `auditLogs` entries.
+- Auto-create expense entry after approval where appropriate. Done — implemented at the **Release** step (not Approve), since that's when cash actually leaves the church: confirming release creates a linked `expenses` doc (category `Non-Budgeted - Staff Liquidation/Reimbursement`, `linkedLiquidationRequestId`) and stores `linkedExpenseId` back on the request, both audit-logged.
 
 ## Staff Payroll Access
 
-Status: Started.
+Status: Done.
 
 - Pastor, Deaconess, and Admin Assistant accounts.
 - Staff dashboard entries for payslips and liquidation/reimbursements.
 - Initial `payslips.html` reads payroll-generated expense records for the signed-in staff role.
+- Company-style payslips: Done — payroll expense rows are now grouped into one payslip per staff per pay period (payrollMonth + payrollWeek), with a printable payslip sheet per period: church letterhead, payslip reference number, employee/position/pay-period/pay-date/fund metadata, itemized Earnings (salary + allowances) and Deductions (Worker's Tithe, SSS/PhilHealth employee share, other), employer contributions (benefit shares) shown separately as non-deducted, net pay in words, and Prepared by / Received by signature lines. List view adds YTD net totals and a staff filter for the Treasurer; a payslip can be printed individually or as a list.
 
 ## Phase 4 - New HTML: Special Projects and Ministries
 
@@ -144,12 +152,12 @@ Status: Storage rules tightening started; remaining items not started.
   - Keep strict file size caps.
   - Keep file type allowlist to images and PDFs only for receipts/proofs, images only for signatures.
   - Prevent silent overwrites where possible; prefer create-only uploads with replacement audit records.
-- Add upload audit records:
+- Add upload audit records: Done — `expenses.html`, `special-projects.html`, and `liquidation-reimbursements.html` upload functions now write a dedicated `receipt_uploaded`, `receipt_replaced`, or `proof_uploaded` `auditLogs` entry immediately after each successful `put()`, capturing uploader UID/role (via writeAuditLog actor fields), file path, original filename, file size, file type, linked docId/collection, and (for replacements) the old receipt path in `before`.
   - Uploader UID, role, timestamp, file path, linked transaction/project, action type, and replacement/removal reason.
 - Add safer file handling:
-  - Generate server/app-side storage paths instead of trusting original filenames.
-  - Store original filename only as display metadata.
-  - Do not render uploaded PDFs or files as executable HTML.
+  - Generate server/app-side storage paths instead of trusting original filenames. Done — `expenses.html`, `special-projects.html` (both its expense-receipt and project-proof uploaders), and `liquidation-reimbursements.html` now build the Storage path from a `crypto.randomUUID()`-based token (`Date.now()`+random fallback) plus a sanitized extension only; the original filename is no longer embedded in the path.
+  - Store original filename only as display metadata. Done as part of the above — `receiptName`/`proofName` already carried the original filename for display; it's now purely metadata, not part of the path.
+  - Do not render uploaded PDFs or files as executable HTML. Done — `expenses.html`'s receipt viewer was the only page still embedding receipt PDFs in-page via `<iframe src="...">`; it now shows an "Open PDF in New Tab" link instead, matching the existing link-out pattern already used by `special-projects.html` and `liquidation-reimbursements.html` for their proof/receipt files. Image previews are unchanged.
 - Add malware/content validation later:
   - Cloud Function triggered after upload.
   - Inspect actual file signature/magic bytes, not only filename or browser MIME type.
@@ -184,11 +192,9 @@ Status: Started.
 ### Next Enhancements
 
 - Notifications:
-  - Add in-app and/or email notifications when a report is routed, returned, or finalized.
-  - Notify the next responsible role immediately after each workflow transition.
-- Finalized report locking:
-  - Lock a report after Pastor finalization.
-  - Require Treasurer/admin reopen action before any finalized workflow can be edited again.
+  - In-app notifications: Done. `report-workflow.html` calls `writeNotification()` after each `saveTransition()` to write a doc to the new `notifications` Firestore collection (recipientRole, message, reportId, periodLabel, transition, actorName, actorRole, createdAt). `index.html` dashboard shows a bell icon in the topbar with a red badge count for unread notifications; clicking opens a dropdown listing recent notifications. "Unread" is tracked via `localStorage` per role (no Firestore write needed). Firestore rules allow any signed-in user to read/create notifications; updates and deletes are denied.
+  - Email notifications: Needs a human decision on which email/notification provider to use (Firebase Extensions, SendGrid, etc.). Not implemented.
+- Finalized report locking: Done. `report-workflow.html` already had no per-role action available once `status === 'finalized'` (every action button is gated to a specific non-finalized status), so finalized reports were already implicitly locked. Added an explicit Treasurer-only "Reopen Report" action (requires a reason note + confirmation) that resets status back to `draft` so the full approval chain must run again; reopen is logged to both workflow history and `auditLogs` via the existing `saveTransition`/`writeAuditLog` pattern. No Firestore rule change needed — Treasurer already has `update` rights on `reportReviews`.
 - Better return notes: Done. `report-workflow.html` shows a prominent latest-return-note banner (who returned it, when, and the note text) whenever a report is in `returned_by_auditor` or `returned_by_finance` status. Return-note history was already visible per entry in the Routing History timeline.
 
 ## Phase 6 - Role and Access Enhancements

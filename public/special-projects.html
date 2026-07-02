@@ -571,12 +571,22 @@
       return true;
     }
 
+    function generateStorageToken() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function safeFileExtension(fileName) {
+      const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+      return match ? `.${match[1].toLowerCase()}` : '';
+    }
+
     async function uploadReceiptForExpense(expenseId, receiptFile) {
       if (!receiptFile) return null;
-      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const receiptPath = `expense-receipts/${expenseId}/${Date.now()}-${safeName}`;
+      const receiptPath = `expense-receipts/${expenseId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
+      await writeAuditLog('receipt_uploaded', 'expenses', expenseId, null, { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type }, `Uploaded receipt for expense ${expenseId}`);
       const receiptUrl = await receiptRef.getDownloadURL();
       return {
         receiptName: receiptFile.name,
@@ -588,10 +598,10 @@
 
     async function uploadProofForProjectEntry(entryId, proofFile) {
       if (!proofFile) return null;
-      const safeName = proofFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const proofPath = `project-proofs/${entryId}/${Date.now()}-${safeName}`;
+      const proofPath = `project-proofs/${entryId}/${generateStorageToken()}${safeFileExtension(proofFile.name)}`;
       const proofRef = storage.ref(proofPath);
       await proofRef.put(proofFile);
+      await writeAuditLog('proof_uploaded', 'specialProjectEntries', entryId, null, { proofName: proofFile.name, proofPath, fileSize: proofFile.size, fileType: proofFile.type }, `Uploaded proof for project entry ${entryId}`);
       const proofUrl = await proofRef.getDownloadURL();
       return {
         proofName: proofFile.name,

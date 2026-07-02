@@ -37,7 +37,7 @@ service cloud.firestore {
     }
 
     match /userProfiles/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && (request.auth.uid == uid || role() == 'Treasurer');
       allow write: if false;
     }
 
@@ -81,11 +81,31 @@ service cloud.firestore {
       allow delete: if hasRole(['Treasurer']);
     }
 
+    match /notifications/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
     match /liquidationRequests/{docId} {
       allow read: if hasRole(['Treasurer', 'Auditor']) || isLiquidationOwner();
-      allow create: if hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
-        && request.resource.data.requesterUid == request.auth.uid;
-      allow update: if hasRole(['Treasurer']);
+      allow create: if (hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
+          && request.resource.data.requesterUid == request.auth.uid)
+        || hasRole(['Treasurer']);
+      allow update: if hasRole(['Treasurer'])
+        || (isLiquidationOwner()
+          && request.resource.data.requesterUid == resource.data.requesterUid
+          && (
+            // Edit or cancel own request while it is still awaiting review.
+            (resource.data.status == 'Submitted'
+              && request.resource.data.status in ['Submitted', 'Cancelled'])
+            // Submit liquidation for a released cash advance; the released
+            // amount and request type cannot be altered by the requester.
+            || (resource.data.status == 'Released'
+              && request.resource.data.status == 'Liquidation Submitted'
+              && request.resource.data.amount == resource.data.amount
+              && request.resource.data.type == resource.data.type)
+          ));
       allow delete: if hasRole(['Treasurer']);
     }
 

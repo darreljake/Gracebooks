@@ -567,12 +567,28 @@
       updateReceiptPreview();
   }
 
+  function generateStorageToken() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function safeFileExtension(fileName) {
+      const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+      return match ? `.${match[1].toLowerCase()}` : '';
+  }
+
   async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath) {
       if (!receiptFile) return null;
-      const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const receiptPath = `expense-receipts/${docRef.id}/${Date.now()}-${safeName}`;
+      const receiptPath = `expense-receipts/${docRef.id}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
+      await writeAuditLog(
+          oldReceiptPath ? 'receipt_replaced' : 'receipt_uploaded',
+          docRef.id,
+          oldReceiptPath ? { receiptPath: oldReceiptPath } : null,
+          { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
+          oldReceiptPath ? `Replaced receipt for expense ${docRef.id}` : `Uploaded receipt for expense ${docRef.id}`
+      );
       const receiptUrl = await receiptRef.getDownloadURL();
       if (oldReceiptPath) {
           try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }
@@ -665,8 +681,11 @@
       document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt / Voucher';
       const isPdf = (record.receiptName || '').toLowerCase().endsWith('.pdf');
       document.getElementById('receipt-viewer-body').innerHTML = isPdf
-          ? `<iframe class="receipt-frame" src="${record.receiptUrl}" title="Receipt PDF"></iframe>`
-          : `<img class="receipt-frame" src="${record.receiptUrl}" alt="Receipt image">`;
+          ? `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+               <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+               <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger view">Open PDF in New Tab</a>
+             </div>`
+          : `<img class="receipt-frame" src="${escapeHtml(record.receiptUrl)}" alt="Receipt image">`;
       document.getElementById('receiptViewerModal').style.display = 'flex';
   }
 
