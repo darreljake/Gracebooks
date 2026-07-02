@@ -110,19 +110,26 @@ Status: In progress.
   - Remove local credential/import files from daily use or move them to secure storage.
 ## Phase 3 - New HTML: Liquidation and Reimbursements
 
-Status: Started.
+Status: Done.
 
 - Create `liquidation-reimbursements.html`. Done as initial staff request + Treasurer review page.
+- Cash advance assignment: Done — Treasurer has an "Assign Cash Advance" card that lists Pastor/Deaconess/Admin Assistant profiles (new Treasurer read access on `userProfiles`) and creates a pre-approved `liquidationRequests` doc on the staff member's behalf (`assignedBy`/`assignedAt`), ready for release with no receipts required up front.
+- Request types clarified: staff now choose **Cash Advance** (no receipts yet, liquidate later) or **Reimbursement** (already paid out of pocket, receipts attached at submission, supports multiple files). Legacy `Liquidation`-typed docs are treated as cash advances.
+- Staff liquidation flow: Done — owners of a Released cash advance get a "Submit Liquidation" modal (itemized date/description/amount lines, multiple receipt uploads to `liquidation-receipts/{requestId}/`, running released-vs-spent balance) which sets status `Liquidation Submitted`; the Treasurer then reviews and reconciles (reconcile modal now shows the liquidation balance). Firestore rules allow owner updates only for the constrained transitions Submitted→Submitted/Cancelled and Released→Liquidation Submitted (amount/type immutable).
+- Release semantics: cash advances stay `Released` until liquidated/reconciled; reimbursements move straight to `Completed` on release. Owners can cancel their own request while it is still `Submitted`.
+- Overview summary boxes (pending review, outstanding advances, awaiting reconciliation, completed) plus a shared request details modal (items, receipts, balances, reconciliation notes) for staff, Treasurer, and Auditor visibility.
+- Status-change notifications: submissions/approvals/releases/liquidations/reconciliations write role-targeted `notifications` docs picked up by the dashboard bell.
 - Handle request, review, approval, release, reconciliation, and receipts. Done — requesters can attach an optional receipt/proof at submission (new `liquidation-receipts/{requestId}/...` Storage path, owner-or-Treasurer write, same image/PDF ≤5MB allowlist as other receipts). Treasurer flow now has explicit per-status actions: Submitted → Approve/Reject, Approved → "Release Payment" (picks a source of fund), Released → "Mark Reconciled" (optional notes). All transitions write `auditLogs` entries.
 - Auto-create expense entry after approval where appropriate. Done — implemented at the **Release** step (not Approve), since that's when cash actually leaves the church: confirming release creates a linked `expenses` doc (category `Non-Budgeted - Staff Liquidation/Reimbursement`, `linkedLiquidationRequestId`) and stores `linkedExpenseId` back on the request, both audit-logged.
 
 ## Staff Payroll Access
 
-Status: Started.
+Status: Done.
 
 - Pastor, Deaconess, and Admin Assistant accounts.
 - Staff dashboard entries for payslips and liquidation/reimbursements.
 - Initial `payslips.html` reads payroll-generated expense records for the signed-in staff role.
+- Company-style payslips: Done — payroll expense rows are now grouped into one payslip per staff per pay period (payrollMonth + payrollWeek), with a printable payslip sheet per period: church letterhead, payslip reference number, employee/position/pay-period/pay-date/fund metadata, itemized Earnings (salary + allowances) and Deductions (Worker's Tithe, SSS/PhilHealth employee share, other), employer contributions (benefit shares) shown separately as non-deducted, net pay in words, and Prepared by / Received by signature lines. List view adds YTD net totals and a staff filter for the Treasurer; a payslip can be printed individually or as a list.
 
 ## Phase 4 - New HTML: Special Projects and Ministries
 
