@@ -150,8 +150,21 @@
             </select>
           </div>
           <div>
+            <label>Pay Period</label>
+            <select id="period-filter" onchange="onPeriodChange()">
+              <option value="weekly">Weekly</option>
+              <option value="semimonthly">Bi-Monthly (Semi-Monthly)</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+          <div id="month-filter-wrap">
             <label>Month</label>
             <input type="month" id="month-filter" onchange="renderPayslips()" />
+          </div>
+          <div id="year-filter-wrap" style="display:none;">
+            <label>Year</label>
+            <input type="number" id="year-filter" min="2000" max="2100" step="1" onchange="renderPayslips()" />
           </div>
           <div>
             <label>Status</label>
@@ -294,17 +307,41 @@
       return [profileRole];
     }
 
+    // Determines which half of the month a payroll row belongs to for the
+    // semi-monthly (bi-monthly) view. Falls back to the payroll week number
+    // when a row has no date (weeks 1-2 -> first half, 3+ -> second half).
+    function semiMonthHalfFor(row) {
+      const dayMatch = /^\d{4}-\d{2}-(\d{2})$/.exec(row.date || '');
+      if (dayMatch) return parseInt(dayMatch[1], 10) <= 15 ? '1' : '2';
+      const week = parseInt(row.payrollWeek, 10);
+      if (!isNaN(week)) return week <= 2 ? '1' : '2';
+      return '1';
+    }
+
     // Groups the individual payroll expense rows (salary, allowances,
-    // employer benefit shares) into one payslip per staff per pay period,
-    // the way a company payslip presents them.
-    function buildPayslipGroups(rows) {
+    // employer benefit shares) into one payslip per staff per pay period.
+    // periodType controls how much of a staff member's payroll rows are
+    // merged into a single payslip, matching common corporate payroll
+    // cycles: weekly, semi-monthly (bi-monthly), monthly, or yearly.
+    function buildPayslipGroups(rows, periodType) {
       const groups = new Map();
       rows.forEach(row => {
         const month = row.payrollMonth || String(row.date || '').slice(0, 7);
+        const year = month.slice(0, 4);
         const week = row.payrollWeek || '';
-        const key = `${row.role || ''}|${month}|${week}`;
+        const half = semiMonthHalfFor(row);
+        let key;
+        if (periodType === 'semimonthly') {
+          key = `${row.role || ''}|${month}|H${half}`;
+        } else if (periodType === 'monthly') {
+          key = `${row.role || ''}|${month}`;
+        } else if (periodType === 'yearly') {
+          key = `${row.role || ''}|${year}`;
+        } else {
+          key = `${row.role || ''}|${month}|${week}`;
+        }
         if (!groups.has(key)) {
-          groups.set(key, { key, role: row.role || '', month, week, earnings: [], benefits: [] });
+          groups.set(key, { key, role: row.role || '', month, year, week, half, periodType, earnings: [], benefits: [] });
         }
         const group = groups.get(key);
         (row.isBenefit ? group.benefits : group.earnings).push(row);
@@ -324,11 +361,38 @@
         group.status = earned.length === 0 ? 'Paid'
           : paidCount === earned.length ? 'Paid'
           : paidCount === 0 ? 'Pending' : 'Partial';
-        group.refNo = `PS-${(group.month || '0000-00').replace('-', '')}` +
-          (group.week ? `-W${group.week}` : '') +
-          `-${(group.role || 'X').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase()}`;
+
+        const roleAbbrev = (group.role || 'X').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
+        if (group.periodType === 'semimonthly') {
+          group.refNo = `PS-${group.month.replace('-', '')}-H${group.half}-${roleAbbrev}`;
+        } else if (group.periodType === 'monthly') {
+          group.refNo = `PS-${group.month.replace('-', '')}-${roleAbbrev}`;
+        } else if (group.periodType === 'yearly') {
+          group.refNo = `PS-${group.year}-${roleAbbrev}`;
+        } else {
+          group.refNo = `PS-${group.month.replace('-', '')}${group.week ? '-W' + group.week : ''}-${roleAbbrev}`;
+        }
         return group;
       }).sort((a, b) => (b.payDate || '').localeCompare(a.payDate || ''));
+    }
+
+    // Short label used in the results table's Pay Period column.
+    function periodShortLabel(group) {
+      if (group.periodType === 'semimonthly') return group.half === '1' ? '1st Half (1-15)' : '2nd Half (16-31)';
+      if (group.periodType === 'monthly') return 'Full Month';
+      if (group.periodType === 'yearly') return 'Full Year';
+      return group.week ? 'Week ' + group.week : 'Full Period';
+    }
+
+    // Full "Pay Period" description shown on the printable payslip.
+    function periodFullLabel(group) {
+      if (group.periodType === 'yearly') return `${group.year} (Full Year)`;
+      const month = monthLabel(group.month);
+      if (group.periodType === 'semimonthly') {
+        return `${month} · ${group.half === '1' ? '1st Half (Days 1-15)' : '2nd Half (Days 16-31)'}`;
+      }
+      if (group.periodType === 'monthly') return `${month} (Full Month)`;
+      return `${month}${group.week ? ' · Week ' + group.week : ''}`;
     }
 
     function employeeNameFor(group) {
@@ -347,6 +411,7 @@
       document.getElementById('staff-name').textContent = isTreasurer ? 'Payroll Records' : (activeProfile.name || activeProfile.role);
       document.getElementById('staff-role').textContent = isTreasurer ? 'Treasurer view: all generated payroll records' : activeProfile.role;
       document.getElementById('month-filter').value = new Date().toISOString().slice(0, 7);
+      document.getElementById('year-filter').value = new Date().getFullYear();
       if (isTreasurer) document.getElementById('staff-filter-wrap').style.display = '';
 
       const roles = payrollRolesFor(activeProfile.role);
@@ -357,43 +422,56 @@
           .get()
       ));
       payrollRows = snapshots.flatMap(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      payslipGroups = buildPayslipGroups(payrollRows);
+      renderPayslips();
+    }
+
+    function onPeriodChange() {
+      const isYearly = document.getElementById('period-filter').value === 'yearly';
+      document.getElementById('month-filter-wrap').style.display = isYearly ? 'none' : '';
+      document.getElementById('year-filter-wrap').style.display = isYearly ? '' : 'none';
       renderPayslips();
     }
 
     function renderPayslips() {
+      const period = document.getElementById('period-filter').value;
       const month = document.getElementById('month-filter').value;
+      const year = document.getElementById('year-filter').value || String(new Date().getFullYear());
       const status = document.getElementById('status-filter').value;
       const staff = document.getElementById('staff-filter').value;
+
+      payslipGroups = buildPayslipGroups(payrollRows, period);
+
       visibleGroups = payslipGroups.filter(group => {
         const roleMatch = !staff || group.role === staff ||
           (staff === 'Admin' && group.role === 'Admin Assistant');
         const statusMatch = !status ||
           (status === 'Paid' ? group.status === 'Paid' : group.status !== 'Paid');
-        return (!month || group.month === month) && statusMatch && roleMatch;
+        const periodMatch = period === 'yearly' ? group.year === year : (!month || group.month === month);
+        return periodMatch && statusMatch && roleMatch;
       });
 
       const gross = visibleGroups.reduce((sum, group) => sum + group.gross, 0);
       const deductions = visibleGroups.reduce((sum, group) => sum + group.deductions, 0);
       const net = visibleGroups.reduce((sum, group) => sum + group.net, 0);
-      const year = (month || new Date().toISOString().slice(0, 7)).slice(0, 4);
-      const ytd = payslipGroups
-        .filter(group => group.month.slice(0, 4) === year
-          && (!staff || group.role === staff || (staff === 'Admin' && group.role === 'Admin Assistant')))
-        .reduce((sum, group) => sum + group.net, 0);
+      const ytdYear = period === 'yearly' ? year : (month || new Date().toISOString().slice(0, 7)).slice(0, 4);
+      const ytd = payrollRows
+        .filter(row => String(row.payrollMonth || row.date || '').slice(0, 4) === ytdYear
+          && (!staff || row.role === staff || (staff === 'Admin' && row.role === 'Admin Assistant'))
+          && !row.isBenefit)
+        .reduce((sum, row) => sum + Number(row.netPay || 0), 0);
 
       document.getElementById('sum-gross').textContent = '₱' + fmt(gross);
       document.getElementById('sum-deductions').textContent = '₱' + fmt(deductions);
       document.getElementById('sum-net').textContent = '₱' + fmt(net);
       document.getElementById('sum-ytd').textContent = '₱' + fmt(ytd);
-      document.getElementById('sum-ytd-label').textContent = `Net Pay YTD (${year})`;
+      document.getElementById('sum-ytd-label').textContent = `Net Pay YTD (${ytdYear})`;
 
       const badgeClasses = { 'Paid': 'badge-paid', 'Pending': 'badge-pending', 'Partial': 'badge-partial' };
       document.getElementById('payslip-body').innerHTML = visibleGroups.map((group, index) => `
           <tr>
             <td>
-              <strong>${escapeHtml(monthLabel(group.month))}</strong>
-              <div class="muted">${group.week ? 'Week ' + escapeHtml(group.week) : 'Full period'} · ${escapeHtml(group.refNo)}</div>
+              <strong>${escapeHtml(period === 'yearly' ? group.year : monthLabel(group.month))}</strong>
+              <div class="muted">${escapeHtml(periodShortLabel(group))} · ${escapeHtml(group.refNo)}</div>
             </td>
             <td>${escapeHtml(group.payDate || '-')}</td>
             <td>${escapeHtml(employeeNameFor(group))}<div class="muted">${escapeHtml(ROLE_LABELS[group.role] || group.role)}</div></td>
@@ -447,7 +525,7 @@
           <div><span class="k">Status</span><span class="v">${escapeHtml(group.status)}</span></div>
           <div><span class="k">Employee</span><span class="v">${escapeHtml(employeeNameFor(group))}</span></div>
           <div><span class="k">Position</span><span class="v">${escapeHtml(ROLE_LABELS[group.role] || group.role)}</span></div>
-          <div><span class="k">Pay Period</span><span class="v">${escapeHtml(monthLabel(group.month))}${group.week ? ' · Week ' + escapeHtml(group.week) : ''}</span></div>
+          <div><span class="k">Pay Period</span><span class="v">${escapeHtml(periodFullLabel(group))}</span></div>
           <div><span class="k">Pay Date</span><span class="v">${escapeHtml(group.payDate || '-')}</span></div>
           <div><span class="k">Paid From</span><span class="v">${escapeHtml(fundLabel(group.payment))}</span></div>
           <div><span class="k">Generated</span><span class="v">${escapeHtml(new Date().toLocaleDateString('en-PH'))}</span></div>

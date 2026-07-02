@@ -130,6 +130,8 @@ Status: Done.
 - Staff dashboard entries for payslips and liquidation/reimbursements.
 - Initial `payslips.html` reads payroll-generated expense records for the signed-in staff role.
 - Company-style payslips: Done — payroll expense rows are now grouped into one payslip per staff per pay period (payrollMonth + payrollWeek), with a printable payslip sheet per period: church letterhead, payslip reference number, employee/position/pay-period/pay-date/fund metadata, itemized Earnings (salary + allowances) and Deductions (Worker's Tithe, SSS/PhilHealth employee share, other), employer contributions (benefit shares) shown separately as non-deducted, net pay in words, and Prepared by / Received by signature lines. List view adds YTD net totals and a staff filter for the Treasurer; a payslip can be printed individually or as a list.
+- Downloadable PDF: Done — a "Download PDF" button next to Print on the payslip modal renders the open payslip to an A4 PDF via `html2pdf.js` (CDN), named after the payslip reference number; falls back to a message pointing at Print → Save as PDF if the library hasn't loaded.
+- Configurable pay-period merging: Done — a "Pay Period" selector (Weekly / Semi-Monthly / Monthly / Yearly) re-groups each staff member's payroll rows at the chosen granularity, corporate-payroll style. Semi-monthly buckets by day-of-month (1-15 vs 16-31, falling back to payroll week when a row has no date); monthly merges all weeks in a month; yearly merges the whole year and swaps the Month filter for a Year filter. Reference numbers, the Pay Period column, and the printable payslip's period line all adapt to the selected granularity.
 
 ## Phase 4 - New HTML: Special Projects and Ministries
 
