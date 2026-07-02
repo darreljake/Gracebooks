@@ -44,40 +44,66 @@
     .span-2 { grid-column: span 2; }
     .btn {
       background: #8B0000; color: white; border: none; border-radius: 7px;
-      padding: 11px 14px; font-weight: bold; cursor: pointer;
+      padding: 11px 14px; font-weight: bold; cursor: pointer; font-size: 13px;
     }
     .btn:disabled { background: #aaa; cursor: not-allowed; }
     .btn-secondary { background: #1a5276; }
+    .btn-ghost { background: #7d8b94; }
+    .btn-small { padding: 7px 10px; font-size: 12px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+    .summary-box { background: #fff7f7; border-left: 4px solid #8B0000; border-radius: 8px; padding: 14px; }
+    .summary-box .num { color: #8B0000; font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+    .summary-box .label { color: #6f7a82; font-size: 11px; text-transform: uppercase; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 920px; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; min-width: 940px; font-size: 13px; }
     th { background: #8B0000; color: white; text-align: left; padding: 11px; white-space: nowrap; }
     td { border-bottom: 1px solid #edf2f5; padding: 11px; vertical-align: top; }
     tr:hover td { background: #fffafa; }
     .amount { text-align: right; font-weight: bold; white-space: nowrap; }
     .muted { color: #7d8b94; font-size: 12px; }
-    .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: bold; }
-    .badge-draft { background: #eef3f7; color: #51616d; }
+    .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: bold; white-space: nowrap; }
     .badge-submitted { background: #fcf3cf; color: #9a6a00; }
     .badge-approved { background: #d5f5e3; color: #1e8449; }
     .badge-rejected { background: #fadbd8; color: #a93226; }
     .badge-released { background: #d6eaf8; color: #1a5276; }
+    .badge-liquidation { background: #fdebd0; color: #af601a; }
     .badge-reconciled { background: #e8daef; color: #6c3483; }
+    .badge-completed { background: #d4efdf; color: #145a32; }
+    .badge-cancelled { background: #eef3f7; color: #51616d; }
     .empty { color: #8a99a5; text-align: center; padding: 26px; }
     .treasurer-only { display: none; }
     .receipt-link { color: #1a5276; font-weight: 700; text-decoration: none; font-size: 12px; }
     .receipt-link:hover { text-decoration: underline; }
+    .actions-cell { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
     .modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-      align-items: center; justify-content: center; z-index: 50; padding: 16px;
+      align-items: flex-start; justify-content: center; z-index: 50; padding: 16px; overflow-y: auto;
     }
     .modal-overlay.open { display: flex; }
     .modal-box {
-      background: white; border-radius: 10px; padding: 22px; width: 100%; max-width: 420px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+      background: white; border-radius: 10px; padding: 22px; width: 100%; max-width: 440px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.25); margin: 20px 0;
     }
+    .modal-box.wide { max-width: 640px; }
     .modal-box h3 { color: #8B0000; margin-bottom: 14px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-    @media (max-width: 700px) { .span-2 { grid-column: span 1; } }
+    table.inner-table { min-width: 0; font-size: 12px; margin-top: 6px; }
+    .inner-table th { padding: 7px 9px; font-size: 11px; }
+    .inner-table td { padding: 7px 9px; }
+    .liq-balance {
+      background: #fff7f7; border-left: 4px solid #8B0000; border-radius: 8px;
+      padding: 12px 14px; margin-top: 12px; font-size: 13px;
+    }
+    .liq-balance strong { color: #8B0000; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; font-size: 13px; margin-bottom: 12px; }
+    .detail-grid div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #dde5ea; padding: 4px 0; }
+    .detail-grid .k { color: #6f7a82; font-size: 11px; text-transform: uppercase; font-weight: bold; }
+    .detail-grid .v { font-weight: bold; text-align: right; }
+    .section-label {
+      font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+      color: #8B0000; margin: 14px 0 4px; border-bottom: 1px solid #edf2f5; padding-bottom: 4px;
+    }
+    @media (max-width: 700px) { .span-2 { grid-column: span 1; } .detail-grid { grid-template-columns: 1fr; } }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -94,19 +120,66 @@
   </div>
 
   <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>Overview</h3>
+          <div class="muted" id="summary-subtitle">Loading...</div>
+        </div>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-box"><div class="num" id="sum-pending">0</div><div class="label">Pending Review</div></div>
+        <div class="summary-box"><div class="num" id="sum-outstanding">&#8369;0.00</div><div class="label">Outstanding Advances</div></div>
+        <div class="summary-box"><div class="num" id="sum-liquidation">0</div><div class="label">Awaiting Reconciliation</div></div>
+        <div class="summary-box"><div class="num" id="sum-done">0</div><div class="label">Completed / Reconciled</div></div>
+      </div>
+    </div>
+
+    <div class="card treasurer-only" id="assign-card">
+      <div class="card-header">
+        <div>
+          <h3>Assign Cash Advance</h3>
+          <div class="muted">Release requested amounts to the Pastor, Deaconess, or Admin Assistant even without receipts — they will liquidate afterward.</div>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>Staff Member</label>
+          <select id="assign-staff"><option value="">Loading staff...</option></select>
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" id="assign-date" />
+        </div>
+        <div>
+          <label>Amount Requested</label>
+          <input type="number" id="assign-amount" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div>
+          <label>Particulars</label>
+          <input type="text" id="assign-title" placeholder="e.g. Cash advance for district conference" />
+        </div>
+        <div class="span-2">
+          <label>Notes</label>
+          <textarea id="assign-notes" placeholder="Purpose, event, or agreement details"></textarea>
+        </div>
+        <button class="btn" id="assign-btn" onclick="assignAdvance()">Assign Cash Advance</button>
+      </div>
+    </div>
+
     <div class="card" id="request-card">
       <div class="card-header">
         <div>
           <h3>New Request</h3>
-          <div class="muted">Submit liquidation or reimbursement requests for Treasurer review.</div>
+          <div class="muted">Request a cash advance (liquidate later) or a reimbursement for expenses you already paid.</div>
         </div>
       </div>
       <div class="form-grid">
         <div>
           <label>Type</label>
-          <select id="req-type">
-            <option value="Liquidation">Liquidation</option>
-            <option value="Reimbursement">Reimbursement</option>
+          <select id="req-type" onchange="onRequestTypeChange()">
+            <option value="Cash Advance">Cash Advance (no receipts yet)</option>
+            <option value="Reimbursement">Reimbursement (I already paid)</option>
           </select>
         </div>
         <div>
@@ -126,9 +199,9 @@
           <textarea id="req-notes" placeholder="Purpose, event, reference number, or other details"></textarea>
         </div>
         <div class="span-2">
-          <label>Receipt / Proof (optional)</label>
-          <input type="file" id="req-receipt" accept="image/*,.pdf" />
-          <div class="muted">Attach a receipt or supporting document if you already have one.</div>
+          <label>Receipt / Proof <span id="receipt-hint" class="muted" style="text-transform:none;"></span></label>
+          <input type="file" id="req-receipt" accept="image/*,.pdf" multiple />
+          <div class="muted" id="receipt-note">Cash advances need no receipt now — you will attach them during liquidation.</div>
         </div>
         <button class="btn" id="submit-btn" onclick="submitRequest()">Submit Request</button>
       </div>
@@ -140,14 +213,17 @@
           <h3 id="list-title">My Requests</h3>
           <div class="muted" id="list-subtitle">Loading...</div>
         </div>
-        <div class="treasurer-only">
+        <div>
           <select id="status-filter" onchange="renderRequests()">
             <option value="">All Statuses</option>
             <option value="Submitted">Submitted</option>
             <option value="Approved">Approved</option>
             <option value="Released">Released</option>
+            <option value="Liquidation Submitted">Liquidation Submitted</option>
             <option value="Reconciled">Reconciled</option>
+            <option value="Completed">Completed</option>
             <option value="Rejected">Rejected</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
         </div>
       </div>
@@ -161,8 +237,8 @@
               <th>Particulars</th>
               <th>Status</th>
               <th>Amount</th>
-              <th>Receipt</th>
-              <th class="treasurer-only">Action</th>
+              <th>Liquidated</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody id="requests-body">
@@ -177,6 +253,7 @@
     <div class="modal-box">
       <h3>Release Payment</h3>
       <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div class="muted" id="release-context"></div>
         <div>
           <label>Source of Fund</label>
           <select id="release-fund">
@@ -188,7 +265,7 @@
             <option value="investment">Investments/TD</option>
           </select>
         </div>
-        <div class="muted">This records a linked expense entry for the disbursed amount and marks the request as Released.</div>
+        <div class="muted">This records a linked expense entry for the disbursed amount. Cash advances stay open until the requester submits liquidation; reimbursements are completed on release.</div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeReleaseModal()">Cancel</button>
@@ -201,14 +278,52 @@
     <div class="modal-box">
       <h3>Mark Reconciled</h3>
       <div class="form-grid" style="grid-template-columns: 1fr;">
+        <div class="liq-balance" id="reconcile-summary"></div>
         <div>
           <label>Reconciliation Notes (optional)</label>
-          <textarea id="reconcile-notes" placeholder="Confirm receipts matched the released amount, or note any discrepancy."></textarea>
+          <textarea id="reconcile-notes" placeholder="Confirm receipts matched the released amount, or note how any balance was settled."></textarea>
         </div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeReconcileModal()">Cancel</button>
         <button class="btn" id="reconcile-confirm-btn" onclick="confirmReconcile()">Confirm Reconciled</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="liquidationModal">
+    <div class="modal-box wide">
+      <h3>Submit Liquidation</h3>
+      <div class="muted" id="liq-context"></div>
+      <div class="section-label">Itemized Expenses</div>
+      <div class="table-wrap">
+        <table class="inner-table">
+          <thead>
+            <tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr>
+          </thead>
+          <tbody id="liq-items"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="addLiqItem()">+ Add Item</button>
+      <div class="liq-balance" id="liq-balance"></div>
+      <div class="section-label">Receipts / Proof</div>
+      <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple />
+      <div class="muted">Attach the official receipts covering the items above (images or PDF, max 5 MB each).</div>
+      <div class="section-label">Notes</div>
+      <textarea id="liq-notes" placeholder="Explain any unspent balance or overspending, lost receipts, etc."></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeLiquidationModal()">Cancel</button>
+        <button class="btn" id="liq-submit-btn" onclick="submitLiquidation()">Submit Liquidation</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="detailsModal">
+    <div class="modal-box wide">
+      <h3>Request Details</h3>
+      <div id="details-content"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
       </div>
     </div>
   </div>
@@ -223,10 +338,18 @@
     const db = firebase.firestore();
     const storage = firebase.storage();
 
+    const STAFF_ROLES = ['Pastor', 'Deaconess', 'Admin Assistant'];
+    const FUND_LABELS = {
+      'cash-hand': 'Cash on Hand', 'cash-bank': 'Cash in Bank', 'petty-cash': 'Petty Cash Fund',
+      'building': 'Building Fund', 'mission': 'Mission Fund', 'investment': 'Investments/TD'
+    };
+
     let activeProfile = null;
     let requestRows = [];
+    let staffProfiles = [];
 
     document.getElementById('req-date').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('assign-date').value = new Date().toISOString().slice(0, 10);
 
     function fmt(value) {
       return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -240,6 +363,21 @@
 
     function roleIs(...roles) {
       return activeProfile && roles.includes(activeProfile.role);
+    }
+
+    function isOwner(row) {
+      const user = firebase.auth().currentUser;
+      return user && row.requesterUid === user.uid;
+    }
+
+    // Older requests were stored with type "Liquidation"; treat them as
+    // cash advances so they follow the same release-then-liquidate flow.
+    function isCashAdvance(row) {
+      return row.type === 'Cash Advance' || row.type === 'Liquidation';
+    }
+
+    function typeLabel(row) {
+      return isCashAdvance(row) ? 'Cash Advance' : (row.type || '');
     }
 
     async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
@@ -259,15 +397,30 @@
       });
     }
 
+    async function notifyRole(recipientRole, message) {
+      if (!recipientRole) return;
+      try {
+        await db.collection('notifications').add({
+          recipientRole,
+          message,
+          actorName: activeProfile ? (activeProfile.name || activeProfile.role) : '',
+          source: 'liquidation-reimbursements',
+          createdAt: new Date().toISOString()
+        });
+      } catch (error) {
+        console.warn('Notification not sent', error);
+      }
+    }
+
     function validateReceiptFile(receiptFile) {
       if (!receiptFile) return true;
       const isAllowed = receiptFile.type.startsWith('image/') || receiptFile.type === 'application/pdf';
       if (!isAllowed) {
-        alert('Receipt must be an image or PDF file.');
+        alert(`"${receiptFile.name}" must be an image or PDF file.`);
         return false;
       }
       if (receiptFile.size > 5 * 1024 * 1024) {
-        alert('Receipt must be 5 MB or smaller.');
+        alert(`"${receiptFile.name}" must be 5 MB or smaller.`);
         return false;
       }
       return true;
@@ -284,11 +437,12 @@
     }
 
     async function uploadReceiptForRequest(requestId, receiptFile) {
-      if (!receiptFile) return null;
       const receiptPath = `liquidation-receipts/${requestId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
-      await writeAuditLog('receipt_uploaded', 'liquidationRequests', requestId, null, { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type }, `Uploaded receipt for liquidation request ${requestId}`);
+      await writeAuditLog('receipt_uploaded', 'liquidationRequests', requestId, null,
+        { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
+        `Uploaded receipt for liquidation request ${requestId}`);
       const receiptUrl = await receiptRef.getDownloadURL();
       return {
         receiptName: receiptFile.name,
@@ -298,14 +452,45 @@
       };
     }
 
+    function onRequestTypeChange() {
+      const type = document.getElementById('req-type').value;
+      document.getElementById('receipt-note').textContent = type === 'Reimbursement'
+        ? 'Attach the receipts for the expenses you paid out of pocket.'
+        : 'Cash advances need no receipt now — you will attach them during liquidation.';
+      document.getElementById('receipt-hint').textContent = type === 'Reimbursement' ? '(recommended)' : '(optional)';
+    }
+
     async function initPage() {
       activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
       const isTreasurer = roleIs('Treasurer');
       document.querySelectorAll('.treasurer-only').forEach(el => el.style.display = isTreasurer ? '' : 'none');
       document.getElementById('request-card').style.display = isTreasurer ? 'none' : 'block';
       document.getElementById('list-title').textContent = isTreasurer ? 'Submitted Requests' : 'My Requests';
-      document.getElementById('list-subtitle').textContent = isTreasurer ? 'Review staff liquidation and reimbursement requests.' : activeProfile.role;
+      document.getElementById('list-subtitle').textContent = isTreasurer
+        ? 'Review staff cash advances, liquidations, and reimbursement requests.'
+        : activeProfile.role;
+      document.getElementById('summary-subtitle').textContent = isTreasurer
+        ? 'All staff cash advances and reimbursements.'
+        : 'Your cash advances and reimbursements.';
+      onRequestTypeChange();
+      if (isTreasurer) loadStaffOptions();
       await loadRequests();
+    }
+
+    async function loadStaffOptions() {
+      const select = document.getElementById('assign-staff');
+      try {
+        const snapshot = await db.collection('userProfiles').where('role', 'in', STAFF_ROLES).get();
+        staffProfiles = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        staffProfiles.sort((a, b) => String(a.role).localeCompare(String(b.role)));
+        select.innerHTML = '<option value="">Select staff member...</option>' + staffProfiles.map(profile =>
+          `<option value="${escapeHtml(profile.uid)}">${escapeHtml(profile.name || profile.role)} (${escapeHtml(profile.role)})</option>`
+        ).join('');
+        if (!staffProfiles.length) select.innerHTML = '<option value="">No staff profiles found</option>';
+      } catch (error) {
+        select.innerHTML = '<option value="">Unable to load staff profiles</option>';
+        console.warn('Staff profiles unavailable', error);
+      }
     }
 
     async function loadRequests() {
@@ -326,7 +511,15 @@
       const amount = parseFloat(document.getElementById('req-amount').value) || 0;
       const type = document.getElementById('req-type').value;
       const notes = document.getElementById('req-notes').value.trim();
+      const receiptFiles = Array.from(document.getElementById('req-receipt').files || []);
       if (!title || !date || amount <= 0) return alert('Please complete date, particulars, and amount.');
+      for (const file of receiptFiles) {
+        if (!validateReceiptFile(file)) return;
+      }
+      if (type === 'Reimbursement' && !receiptFiles.length
+        && !confirm('No receipt attached. Reimbursements are normally supported by receipts of what you paid. Submit anyway?')) {
+        return;
+      }
 
       button.disabled = true;
       button.textContent = 'Submitting...';
@@ -347,15 +540,18 @@
           updatedAt: new Date().toISOString()
         };
         const ref = await db.collection('liquidationRequests').add(payload);
-        const receiptFile = document.getElementById('req-receipt').files[0];
         let finalPayload = payload;
-        if (receiptFile) {
-          if (!validateReceiptFile(receiptFile)) { button.disabled = false; button.textContent = 'Submit Request'; return; }
-          const receiptData = await uploadReceiptForRequest(ref.id, receiptFile);
-          await ref.update(receiptData);
+        if (receiptFiles.length) {
+          const uploads = [];
+          for (const file of receiptFiles) {
+            uploads.push(await uploadReceiptForRequest(ref.id, file));
+          }
+          const receiptData = { ...uploads[0], supportingReceipts: uploads };
+          await db.collection('liquidationRequests').doc(ref.id).set(receiptData, { merge: true });
           finalPayload = { ...payload, ...receiptData };
         }
         await writeAuditLog('liquidation_request_created', 'liquidationRequests', ref.id, null, finalPayload, `Submitted ${type}: ${title}`);
+        await notifyRole('Treasurer', `${payload.requesterName} submitted a ${type.toLowerCase()} request: ${title} (₱${fmt(amount)})`);
         document.getElementById('req-title').value = '';
         document.getElementById('req-amount').value = '';
         document.getElementById('req-notes').value = '';
@@ -366,6 +562,57 @@
       }
       button.disabled = false;
       button.textContent = 'Submit Request';
+    }
+
+    async function assignAdvance() {
+      if (!roleIs('Treasurer')) return;
+      const button = document.getElementById('assign-btn');
+      const staffUid = document.getElementById('assign-staff').value;
+      const date = document.getElementById('assign-date').value;
+      const amount = parseFloat(document.getElementById('assign-amount').value) || 0;
+      const title = document.getElementById('assign-title').value.trim();
+      const notes = document.getElementById('assign-notes').value.trim();
+      const staff = staffProfiles.find(profile => profile.uid === staffUid);
+      if (!staff) return alert('Please select the staff member receiving the advance.');
+      if (!title || !date || amount <= 0) return alert('Please complete date, particulars, and amount.');
+
+      button.disabled = true;
+      button.textContent = 'Assigning...';
+      try {
+        const now = new Date().toISOString();
+        const payload = {
+          type: 'Cash Advance',
+          title,
+          date,
+          amount,
+          notes,
+          status: 'Approved',
+          requesterUid: staff.uid,
+          requesterEmail: staff.email || '',
+          requesterName: staff.name || staff.role,
+          requesterRole: staff.role,
+          assignedBy: activeProfile.name || 'Treasurer',
+          assignedByUid: firebase.auth().currentUser.uid,
+          assignedAt: now,
+          reviewedBy: activeProfile.name || 'Treasurer',
+          reviewedAt: now,
+          createdAt: now,
+          updatedAt: now
+        };
+        const ref = await db.collection('liquidationRequests').add(payload);
+        await writeAuditLog('cash_advance_assigned', 'liquidationRequests', ref.id, null, payload,
+          `Assigned cash advance to ${payload.requesterName}: ${title} (₱${fmt(amount)})`);
+        await notifyRole(staff.role, `A cash advance of ₱${fmt(amount)} was approved for you: ${title}. It will be released shortly.`);
+        document.getElementById('assign-amount').value = '';
+        document.getElementById('assign-title').value = '';
+        document.getElementById('assign-notes').value = '';
+        document.getElementById('assign-staff').value = '';
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Assign Cash Advance';
     }
 
     async function updateRequestStatus(id, status) {
@@ -380,15 +627,43 @@
       };
       await db.collection('liquidationRequests').doc(id).set(after, { merge: true });
       await writeAuditLog('liquidation_request_reviewed', 'liquidationRequests', id, row, { ...row, ...after }, `${status} request: ${row.title || id}`);
+      await notifyRole(row.requesterRole, `Your ${typeLabel(row).toLowerCase()} request "${row.title || ''}" was ${status.toLowerCase()}.`);
       await loadRequests();
+    }
+
+    async function cancelRequest(id) {
+      const row = requestRows.find(item => item.id === id);
+      if (!row || !isOwner(row) || row.status !== 'Submitted') return;
+      if (!confirm(`Cancel your request "${row.title || ''}"?`)) return;
+      const after = {
+        status: 'Cancelled',
+        cancelledAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      try {
+        await db.collection('liquidationRequests').doc(id).set(after, { merge: true });
+        await writeAuditLog('liquidation_request_cancelled', 'liquidationRequests', id, row, { ...row, ...after }, `Cancelled request: ${row.title || id}`);
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
     }
 
     let releaseTargetId = null;
     let reconcileTargetId = null;
+    let liquidationTargetId = null;
 
     function openReleaseModal(id) {
       if (!roleIs('Treasurer')) return;
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
+      if (row.type === 'Reimbursement' && !row.receiptUrl
+        && !confirm('This reimbursement has no receipt attached. Release anyway?')) {
+        return;
+      }
       releaseTargetId = id;
+      document.getElementById('release-context').innerHTML =
+        `Releasing <strong>₱${fmt(row.amount)}</strong> (${escapeHtml(typeLabel(row))}) to <strong>${escapeHtml(row.requesterName || row.requesterRole || '')}</strong> for "${escapeHtml(row.title || '')}".`;
       document.getElementById('releaseModal').classList.add('open');
     }
 
@@ -407,6 +682,7 @@
       try {
         const fund = document.getElementById('release-fund').value;
         const now = new Date().toISOString();
+        const advance = isCashAdvance(row);
         const expensePayload = {
           date: now.slice(0, 10),
           category: 'Non-Budgeted - Staff Liquidation/Reimbursement',
@@ -415,16 +691,20 @@
           amount: row.amount,
           payment: fund,
           status: 'Paid',
-          notes: row.notes || '',
+          notes: `${typeLabel(row)}${row.notes ? ' - ' + row.notes : ''}`,
           linkedLiquidationRequestId: row.id,
           createdAt: now,
           updatedAt: now
         };
         const expenseRef = await db.collection('expenses').add(expensePayload);
-        await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, expensePayload, `Recorded payout for ${row.type || 'liquidation'}: ${row.title || ''}`);
+        await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, expensePayload,
+          `Recorded payout for ${typeLabel(row).toLowerCase()}: ${row.title || ''}`);
 
+        // A reimbursement is finished once paid; a cash advance stays open
+        // until the requester submits liquidation and it is reconciled.
+        const nextStatus = advance ? 'Released' : 'Completed';
         const after = {
-          status: 'Released',
+          status: nextStatus,
           linkedExpenseId: expenseRef.id,
           releasedFund: fund,
           releasedBy: activeProfile.name || 'Treasurer',
@@ -433,6 +713,9 @@
         };
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
         await writeAuditLog('liquidation_request_released', 'liquidationRequests', row.id, row, { ...row, ...after }, `Released payment for ${row.title || row.id}`);
+        await notifyRole(row.requesterRole, advance
+          ? `Your cash advance "${row.title || ''}" (₱${fmt(row.amount)}) was released. Please liquidate it with receipts once spent.`
+          : `Your reimbursement "${row.title || ''}" (₱${fmt(row.amount)}) was released and completed.`);
         closeReleaseModal();
         await loadRequests();
       } catch (error) {
@@ -442,10 +725,123 @@
       button.textContent = 'Confirm Release';
     }
 
+    /* ---------- Staff liquidation flow ---------- */
+
+    function openLiquidationModal(id) {
+      const row = requestRows.find(item => item.id === id);
+      if (!row || !isOwner(row) || row.status !== 'Released' || !isCashAdvance(row)) return;
+      liquidationTargetId = id;
+      document.getElementById('liq-context').innerHTML =
+        `Liquidating cash advance <strong>"${escapeHtml(row.title || '')}"</strong> — released amount <strong>₱${fmt(row.amount)}</strong> on ${escapeHtml((row.releasedAt || '').slice(0, 10))}. List what was actually spent and attach the receipts.`;
+      document.getElementById('liq-items').innerHTML = '';
+      document.getElementById('liq-receipts').value = '';
+      document.getElementById('liq-notes').value = '';
+      addLiqItem();
+      updateLiqBalance();
+      document.getElementById('liquidationModal').classList.add('open');
+    }
+
+    function closeLiquidationModal() {
+      liquidationTargetId = null;
+      document.getElementById('liquidationModal').classList.remove('open');
+    }
+
+    function addLiqItem() {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="date" class="liq-date" value="${new Date().toISOString().slice(0, 10)}" /></td>
+        <td><input type="text" class="liq-desc" placeholder="e.g. Bus fare, meals, supplies" /></td>
+        <td><input type="number" class="liq-amt" min="0" step="0.01" placeholder="0.00" oninput="updateLiqBalance()" /></td>
+        <td><button class="btn btn-ghost btn-small" onclick="this.closest('tr').remove(); updateLiqBalance();">✕</button></td>`;
+      document.getElementById('liq-items').appendChild(tr);
+    }
+
+    function readLiqItems() {
+      return Array.from(document.querySelectorAll('#liq-items tr')).map(tr => ({
+        date: tr.querySelector('.liq-date').value,
+        description: tr.querySelector('.liq-desc').value.trim(),
+        amount: parseFloat(tr.querySelector('.liq-amt').value) || 0
+      })).filter(item => item.description || item.amount > 0);
+    }
+
+    function updateLiqBalance() {
+      const row = requestRows.find(item => item.id === liquidationTargetId);
+      if (!row) return;
+      const total = readLiqItems().reduce((sum, item) => sum + item.amount, 0);
+      const balance = Number(row.amount || 0) - total;
+      const balanceText = balance > 0
+        ? `Unspent balance to return: <strong>₱${fmt(balance)}</strong>`
+        : balance < 0
+          ? `Overspent — for additional reimbursement: <strong>₱${fmt(Math.abs(balance))}</strong>`
+          : '<strong>Fully liquidated — no balance.</strong>';
+      document.getElementById('liq-balance').innerHTML =
+        `Released: <strong>₱${fmt(row.amount)}</strong> · Total spent: <strong>₱${fmt(total)}</strong><br>${balanceText}`;
+    }
+
+    async function submitLiquidation() {
+      const row = requestRows.find(item => item.id === liquidationTargetId);
+      if (!row) return;
+      const items = readLiqItems();
+      if (!items.length) return alert('Add at least one liquidation item.');
+      if (items.some(item => !item.description || item.amount <= 0)) {
+        return alert('Every item needs a description and an amount greater than zero.');
+      }
+      const files = Array.from(document.getElementById('liq-receipts').files || []);
+      for (const file of files) {
+        if (!validateReceiptFile(file)) return;
+      }
+      const notes = document.getElementById('liq-notes').value.trim();
+      if (!files.length && !confirm('No receipts attached. Submit the liquidation without receipts?')) return;
+
+      const button = document.getElementById('liq-submit-btn');
+      button.disabled = true;
+      button.textContent = 'Submitting...';
+      try {
+        const uploads = [];
+        for (const file of files) {
+          uploads.push(await uploadReceiptForRequest(row.id, file));
+        }
+        const total = items.reduce((sum, item) => sum + item.amount, 0);
+        const now = new Date().toISOString();
+        const after = {
+          status: 'Liquidation Submitted',
+          liquidationItems: items,
+          liquidationTotal: total,
+          liquidationBalance: Number(row.amount || 0) - total,
+          liquidationNotes: notes,
+          liquidationReceipts: (row.liquidationReceipts || []).concat(uploads),
+          liquidationSubmittedAt: now,
+          updatedAt: now
+        };
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_submitted', 'liquidationRequests', row.id, row, { ...row, ...after },
+          `Submitted liquidation for "${row.title || row.id}": spent ₱${fmt(total)} of ₱${fmt(row.amount)}`);
+        await notifyRole('Treasurer', `${row.requesterName || row.requesterRole} submitted liquidation for "${row.title || ''}" — spent ₱${fmt(total)} of ₱${fmt(row.amount)}.`);
+        closeLiquidationModal();
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Submit Liquidation';
+    }
+
+    /* ---------- Reconciliation ---------- */
+
     function openReconcileModal(id) {
       if (!roleIs('Treasurer')) return;
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
       reconcileTargetId = id;
       document.getElementById('reconcile-notes').value = '';
+      const spent = Number(row.liquidationTotal || 0);
+      const balance = Number(row.amount || 0) - spent;
+      document.getElementById('reconcile-summary').innerHTML = row.liquidationSubmittedAt
+        ? `Released: <strong>₱${fmt(row.amount)}</strong> · Liquidated: <strong>₱${fmt(spent)}</strong> · ` +
+          (balance > 0 ? `To be returned: <strong>₱${fmt(balance)}</strong>`
+            : balance < 0 ? `Overspent (reimbursable): <strong>₱${fmt(Math.abs(balance))}</strong>`
+            : '<strong>Fully liquidated.</strong>')
+        : `Released: <strong>₱${fmt(row.amount)}</strong> · No liquidation submitted in the system — confirm the paper liquidation before reconciling.`;
       document.getElementById('reconcileModal').classList.add('open');
     }
 
@@ -473,6 +869,7 @@
         };
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
         await writeAuditLog('liquidation_request_reconciled', 'liquidationRequests', row.id, row, { ...row, ...after }, `Reconciled request: ${row.title || row.id}`);
+        await notifyRole(row.requesterRole, `Your liquidation for "${row.title || ''}" was reconciled by the Treasurer.`);
         closeReconcileModal();
         await loadRequests();
       } catch (error) {
@@ -482,48 +879,152 @@
       button.textContent = 'Confirm Reconciled';
     }
 
+    /* ---------- Details ---------- */
+
+    function openDetailsModal(id) {
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
+      const merged = (row.supportingReceipts || []).concat(row.liquidationReceipts || []);
+      const receipts = merged.filter((receipt, index) =>
+        merged.findIndex(other => other.receiptUrl === receipt.receiptUrl) === index);
+      if (row.receiptUrl && !receipts.some(receipt => receipt.receiptUrl === row.receiptUrl)) {
+        receipts.unshift({ receiptName: row.receiptName || 'Receipt', receiptUrl: row.receiptUrl });
+      }
+      const receiptsHtml = receipts.length
+        ? receipts.map(receipt =>
+            `<div><a class="receipt-link" href="${escapeHtml(receipt.receiptUrl)}" target="_blank" rel="noopener">📎 ${escapeHtml(receipt.receiptName || 'Receipt')}</a></div>`
+          ).join('')
+        : '<div class="muted">No receipts attached.</div>';
+
+      const itemsHtml = (row.liquidationItems || []).length ? `
+        <div class="section-label">Liquidation Items</div>
+        <div class="table-wrap">
+          <table class="inner-table">
+            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>
+              ${row.liquidationItems.map(item => `
+                <tr>
+                  <td>${escapeHtml(item.date || '')}</td>
+                  <td>${escapeHtml(item.description || '')}</td>
+                  <td class="amount">₱${fmt(item.amount)}</td>
+                </tr>`).join('')}
+              <tr><td colspan="2"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
+            </tbody>
+          </table>
+        </div>` : '';
+
+      const balance = Number(row.amount || 0) - Number(row.liquidationTotal || 0);
+      const balanceHtml = row.liquidationSubmittedAt ? `
+        <div class="liq-balance">
+          ${balance > 0 ? `Unspent balance to return: <strong>₱${fmt(balance)}</strong>`
+            : balance < 0 ? `Overspent — reimbursable to requester: <strong>₱${fmt(Math.abs(balance))}</strong>`
+            : '<strong>Fully liquidated — no balance.</strong>'}
+        </div>` : '';
+
+      document.getElementById('details-content').innerHTML = `
+        <div class="detail-grid">
+          <div><span class="k">Type</span><span class="v">${escapeHtml(typeLabel(row))}</span></div>
+          <div><span class="k">Status</span><span class="v">${escapeHtml(row.status || '')}</span></div>
+          <div><span class="k">Requester</span><span class="v">${escapeHtml(row.requesterName || row.requesterRole || '')}</span></div>
+          <div><span class="k">Date</span><span class="v">${escapeHtml(row.date || '')}</span></div>
+          <div><span class="k">Amount</span><span class="v">₱${fmt(row.amount)}</span></div>
+          <div><span class="k">Released From</span><span class="v">${escapeHtml(FUND_LABELS[row.releasedFund] || row.releasedFund || '-')}</span></div>
+          ${row.assignedBy ? `<div><span class="k">Assigned By</span><span class="v">${escapeHtml(row.assignedBy)}</span></div>` : ''}
+          ${row.releasedAt ? `<div><span class="k">Released At</span><span class="v">${escapeHtml(row.releasedAt.slice(0, 10))}</span></div>` : ''}
+          ${row.reconciledAt ? `<div><span class="k">Reconciled</span><span class="v">${escapeHtml(row.reconciledAt.slice(0, 10))} · ${escapeHtml(row.reconciledBy || '')}</span></div>` : ''}
+        </div>
+        <div class="section-label">Particulars</div>
+        <div><strong>${escapeHtml(row.title || '')}</strong></div>
+        ${row.notes ? `<div class="muted">${escapeHtml(row.notes)}</div>` : ''}
+        ${itemsHtml}
+        ${balanceHtml}
+        ${row.liquidationNotes ? `<div class="section-label">Liquidation Notes</div><div class="muted">${escapeHtml(row.liquidationNotes)}</div>` : ''}
+        <div class="section-label">Receipts</div>
+        ${receiptsHtml}
+        ${row.reconciliationNotes ? `<div class="section-label">Reconciliation Notes</div><div class="muted">${escapeHtml(row.reconciliationNotes)}</div>` : ''}`;
+      document.getElementById('detailsModal').classList.add('open');
+    }
+
+    function closeDetailsModal() {
+      document.getElementById('detailsModal').classList.remove('open');
+    }
+
+    /* ---------- Rendering ---------- */
+
     function badgeClassFor(status) {
       if (status === 'Approved') return 'badge-approved';
       if (status === 'Rejected') return 'badge-rejected';
       if (status === 'Released') return 'badge-released';
+      if (status === 'Liquidation Submitted') return 'badge-liquidation';
       if (status === 'Reconciled') return 'badge-reconciled';
+      if (status === 'Completed') return 'badge-completed';
+      if (status === 'Cancelled') return 'badge-cancelled';
       return 'badge-submitted';
     }
 
-    function renderActionsFor(row, isTreasurer) {
-      if (!isTreasurer) return '-';
-      if (row.status === 'Submitted') {
-        return `<button class="btn btn-secondary" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>
-              <button class="btn" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`;
+    function renderActionsFor(row) {
+      const actions = [];
+      if (roleIs('Treasurer')) {
+        if (row.status === 'Submitted') {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>`);
+          actions.push(`<button class="btn btn-small" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`);
+        }
+        if (row.status === 'Approved') {
+          actions.push(`<button class="btn btn-small" onclick="openReleaseModal('${row.id}')">Release Payment</button>`);
+        }
+        if (row.status === 'Released' || row.status === 'Liquidation Submitted') {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="openReconcileModal('${row.id}')">${row.status === 'Liquidation Submitted' ? 'Review & Reconcile' : 'Mark Reconciled'}</button>`);
+        }
+      } else if (isOwner(row)) {
+        if (row.status === 'Submitted') {
+          actions.push(`<button class="btn btn-ghost btn-small" onclick="cancelRequest('${row.id}')">Cancel</button>`);
+        }
+        if (row.status === 'Released' && isCashAdvance(row)) {
+          actions.push(`<button class="btn btn-small" onclick="openLiquidationModal('${row.id}')">Submit Liquidation</button>`);
+        }
       }
-      if (row.status === 'Approved') {
-        return `<button class="btn" onclick="openReleaseModal('${row.id}')">Release Payment</button>`;
-      }
-      if (row.status === 'Released') {
-        return `<button class="btn btn-secondary" onclick="openReconcileModal('${row.id}')">Mark Reconciled</button>`;
-      }
-      return '-';
+      actions.push(`<button class="btn btn-secondary btn-small" onclick="openDetailsModal('${row.id}')">Details</button>`);
+      return `<div class="actions-cell">${actions.join('')}</div>`;
+    }
+
+    function renderSummary() {
+      const pending = requestRows.filter(row => row.status === 'Submitted').length;
+      const outstanding = requestRows
+        .filter(row => isCashAdvance(row) && (row.status === 'Released' || row.status === 'Liquidation Submitted'))
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const awaiting = requestRows.filter(row => row.status === 'Liquidation Submitted').length;
+      const done = requestRows.filter(row => row.status === 'Reconciled' || row.status === 'Completed').length;
+      document.getElementById('sum-pending').textContent = String(pending);
+      document.getElementById('sum-outstanding').textContent = '₱' + fmt(outstanding);
+      document.getElementById('sum-liquidation').textContent = String(awaiting);
+      document.getElementById('sum-done').textContent = String(done);
     }
 
     function renderRequests() {
-      const statusFilter = document.getElementById('status-filter') ? document.getElementById('status-filter').value : '';
+      renderSummary();
+      const statusFilter = document.getElementById('status-filter').value;
       const rows = requestRows.filter(row => !statusFilter || row.status === statusFilter);
-      const isTreasurer = roleIs('Treasurer');
       document.getElementById('requests-body').innerHTML = rows.map(row => {
         const badgeClass = badgeClassFor(row.status);
-        const receiptCell = row.receiptUrl
-          ? `<a class="receipt-link" href="${escapeHtml(row.receiptUrl)}" target="_blank" rel="noopener">View</a>`
-          : '<span class="muted">None</span>';
+        const liquidatedCell = row.liquidationSubmittedAt
+          ? `₱${fmt(row.liquidationTotal)}<div class="muted">${Number(row.liquidationBalance || 0) > 0
+              ? 'Return ₱' + fmt(row.liquidationBalance)
+              : Number(row.liquidationBalance || 0) < 0
+                ? 'Owed ₱' + fmt(Math.abs(row.liquidationBalance))
+                : 'Balanced'}</div>`
+          : isCashAdvance(row) && row.status === 'Released'
+            ? '<span class="muted">For liquidation</span>'
+            : '<span class="muted">-</span>';
         return `
           <tr>
             <td>${escapeHtml(row.date || '')}</td>
-            <td>${escapeHtml(row.requesterName || row.requesterRole || '-')}<div class="muted">${escapeHtml(row.requesterEmail || '')}</div></td>
-            <td>${escapeHtml(row.type || '')}</td>
+            <td>${escapeHtml(row.requesterName || row.requesterRole || '-')}<div class="muted">${escapeHtml(row.requesterRole || '')}</div></td>
+            <td>${escapeHtml(typeLabel(row))}${row.assignedBy ? '<div class="muted">Assigned</div>' : ''}</td>
             <td><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div></td>
             <td><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Submitted')}</span></td>
             <td class="amount">₱${fmt(row.amount)}</td>
-            <td>${receiptCell}</td>
-            <td class="treasurer-only" style="${isTreasurer ? '' : 'display:none;'}">${renderActionsFor(row, isTreasurer)}</td>
+            <td class="amount">${liquidatedCell}</td>
+            <td>${renderActionsFor(row)}</td>
           </tr>`;
       }).join('') || '<tr><td colspan="8" class="empty">No requests found.</td></tr>';
     }

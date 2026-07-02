@@ -50,12 +50,72 @@
     .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: bold; }
     .badge-paid { background: #d5f5e3; color: #1e8449; }
     .badge-pending { background: #fcf3cf; color: #9a6a00; }
+    .badge-partial { background: #d6eaf8; color: #1a5276; }
     .empty { color: #8a99a5; text-align: center; padding: 26px; }
+    .btn {
+      background: #8B0000; color: white; border: none; border-radius: 7px;
+      padding: 8px 12px; font-weight: bold; cursor: pointer; font-size: 12px;
+    }
+    .btn-secondary { background: #1a5276; }
+
+    /* Payslip modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      align-items: flex-start; justify-content: center; z-index: 50; padding: 16px; overflow-y: auto;
+    }
+    .modal-overlay.open { display: flex; }
+    .payslip-sheet {
+      background: white; border-radius: 10px; width: 100%; max-width: 640px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3); margin: 20px 0; overflow: hidden;
+    }
+    .payslip-toolbar {
+      display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px;
+      background: #f7f9fb; border-bottom: 1px solid #e3eaf0;
+    }
+    .payslip-body { padding: 26px 30px; }
+    .ps-org { text-align: center; border-bottom: 3px double #8B0000; padding-bottom: 12px; margin-bottom: 14px; }
+    .ps-org h1 { font-size: 18px; color: #8B0000; letter-spacing: 0.5px; text-transform: uppercase; }
+    .ps-org .sub { font-size: 12px; color: #667; margin-top: 2px; }
+    .ps-org .doc-title { font-size: 13px; font-weight: bold; letter-spacing: 3px; margin-top: 8px; color: #263238; }
+    .ps-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; font-size: 13px; margin-bottom: 16px; }
+    .ps-meta div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #dde5ea; padding: 4px 0; }
+    .ps-meta .k { color: #6f7a82; font-size: 11px; text-transform: uppercase; font-weight: bold; }
+    .ps-meta .v { font-weight: bold; text-align: right; }
+    .ps-section-title {
+      background: #8B0000; color: white; font-size: 11px; font-weight: bold;
+      text-transform: uppercase; letter-spacing: 1px; padding: 6px 10px; border-radius: 4px 4px 0 0;
+    }
+    table.ps-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+    .ps-table td { padding: 7px 10px; border: 1px solid #e3eaf0; border-top: none; }
+    .ps-table td.amt { text-align: right; white-space: nowrap; font-weight: bold; }
+    .ps-table tr.total-row td { background: #fff7f7; font-weight: bold; color: #8B0000; }
+    .ps-net {
+      background: #8B0000; color: white; border-radius: 8px; padding: 14px 18px;
+      display: flex; justify-content: space-between; align-items: center; margin: 6px 0 4px;
+    }
+    .ps-net .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .ps-net .value { font-size: 22px; font-weight: bold; }
+    .ps-words { font-size: 12px; color: #556; font-style: italic; margin-bottom: 16px; }
+    .ps-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 34px; font-size: 12px; }
+    .ps-signatures .sig { text-align: center; }
+    .ps-signatures .line { border-top: 1px solid #263238; margin-top: 34px; padding-top: 5px; font-weight: bold; }
+    .ps-signatures .role { color: #7d8b94; font-size: 11px; }
+    .ps-footer { margin-top: 18px; font-size: 10px; color: #97a4ad; text-align: center; }
+
     @media print {
-      .topbar, .filters { display: none; }
       body { background: white; }
-      .container { margin: 0; max-width: none; }
-      .card { box-shadow: none; }
+      body.printing-payslip .topbar,
+      body.printing-payslip .container { display: none !important; }
+      body.printing-payslip .modal-overlay.open {
+        display: block; position: static; background: white; padding: 0; overflow: visible;
+      }
+      body.printing-payslip .payslip-sheet { box-shadow: none; max-width: none; margin: 0; border-radius: 0; }
+      body.printing-payslip .payslip-toolbar { display: none; }
+      body:not(.printing-payslip) .topbar, body:not(.printing-payslip) .filters { display: none; }
+      body:not(.printing-payslip) .container { margin: 0; max-width: none; }
+      body:not(.printing-payslip) .card { box-shadow: none; }
+      body:not(.printing-payslip) .modal-overlay { display: none !important; }
+      .btn { display: none; }
     }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -79,6 +139,15 @@
           <div class="muted" id="staff-role">Loading...</div>
         </div>
         <div class="filters">
+          <div id="staff-filter-wrap" style="display:none;">
+            <label>Staff</label>
+            <select id="staff-filter" onchange="renderPayslips()">
+              <option value="">All Staff</option>
+              <option value="Pastor">Pastor</option>
+              <option value="Deaconess">Deaconess</option>
+              <option value="Admin">Admin Assistant</option>
+            </select>
+          </div>
           <div>
             <label>Month</label>
             <input type="month" id="month-filter" onchange="renderPayslips()" />
@@ -91,14 +160,15 @@
               <option value="Pending">Pending</option>
             </select>
           </div>
-          <button class="back-btn" style="background:#8B0000;" onclick="window.print()">Print</button>
+          <button class="back-btn" style="background:#8B0000;" onclick="window.print()">Print List</button>
         </div>
       </div>
 
       <div class="summary-grid">
-        <div class="summary-box"><div class="num" id="sum-gross">&#8369;0.00</div><div class="label">Gross Pay</div></div>
+        <div class="summary-box"><div class="num" id="sum-gross">&#8369;0.00</div><div class="label">Gross Earnings</div></div>
         <div class="summary-box"><div class="num" id="sum-deductions">&#8369;0.00</div><div class="label">Deductions</div></div>
         <div class="summary-box"><div class="num" id="sum-net">&#8369;0.00</div><div class="label">Net Pay</div></div>
+        <div class="summary-box"><div class="num" id="sum-ytd">&#8369;0.00</div><div class="label" id="sum-ytd-label">Net Pay YTD</div></div>
       </div>
     </div>
 
@@ -107,14 +177,14 @@
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Particulars</th>
+              <th>Pay Period</th>
+              <th>Pay Date</th>
+              <th>Employee</th>
               <th>Status</th>
-              <th>Gross</th>
-              <th>Tithe</th>
-              <th>SSS</th>
-              <th>Other</th>
+              <th>Earnings</th>
+              <th>Deductions</th>
               <th>Net Pay</th>
+              <th>Payslip</th>
             </tr>
           </thead>
           <tbody id="payslip-body">
@@ -122,6 +192,16 @@
           </tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="payslipModal">
+    <div class="payslip-sheet">
+      <div class="payslip-toolbar">
+        <button class="btn btn-secondary" onclick="closePayslipModal()">Close</button>
+        <button class="btn" onclick="printPayslip()">Print Payslip</button>
+      </div>
+      <div class="payslip-body" id="payslip-detail"></div>
     </div>
   </div>
 
@@ -136,6 +216,19 @@
 
     let activeProfile = null;
     let payrollRows = [];
+    let payslipGroups = [];
+    let visibleGroups = [];
+
+    const FUND_LABELS = {
+      'cash-hand': 'Cash on Hand',
+      'cash-bank': 'Cash in Bank',
+      'petty-cash': 'Petty Cash Fund',
+      'building': 'Building Fund',
+      'mission': 'Mission Fund',
+      'investment': 'Investments/TD'
+    };
+
+    const ROLE_LABELS = { 'Admin': 'Admin Assistant' };
 
     function fmt(value) {
       return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -147,10 +240,102 @@
       }[char]));
     }
 
+    function fundLabel(code) {
+      return FUND_LABELS[code] || code || '-';
+    }
+
+    function monthLabel(monthStr) {
+      if (!monthStr || monthStr.length < 7) return monthStr || '-';
+      const [year, month] = monthStr.split('-');
+      const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      return `${names[parseInt(month, 10) - 1] || month} ${year}`;
+    }
+
+    // Converts an amount into words for the payslip, e.g.
+    // "One Thousand Two Hundred Fifty Pesos and 50/100 Only".
+    function amountInWords(amount) {
+      const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+        'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+      const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+      function below1000(n) {
+        let words = '';
+        if (n >= 100) { words += ones[Math.floor(n / 100)] + ' Hundred'; n %= 100; if (n) words += ' '; }
+        if (n >= 20) { words += tens[Math.floor(n / 10)]; n %= 10; if (n) words += '-' + ones[n]; }
+        else if (n > 0) { words += ones[n]; }
+        return words;
+      }
+      let pesos = Math.floor(Math.abs(Number(amount) || 0));
+      const centavos = Math.round((Math.abs(Number(amount) || 0) - pesos) * 100);
+      if (pesos === 0 && centavos === 0) return 'Zero Pesos Only';
+      const scales = [['Million', 1000000], ['Thousand', 1000]];
+      let words = '';
+      for (const [name, size] of scales) {
+        if (pesos >= size) {
+          words += (words ? ' ' : '') + below1000(Math.floor(pesos / size)) + ' ' + name;
+          pesos %= size;
+        }
+      }
+      if (pesos > 0) words += (words ? ' ' : '') + below1000(pesos);
+      words = (words || 'Zero') + (words === 'One' ? ' Peso' : ' Pesos');
+      words += centavos > 0 ? ` and ${String(centavos).padStart(2, '0')}/100` : '';
+      return words + ' Only';
+    }
+
+    function otherDeductionOf(row) {
+      return Math.max(0, Number(row.amount || 0) - Number(row.netPay || 0)
+        - Number(row.workersTithe || 0) - Number(row.sssDeduction || 0));
+    }
+
     function payrollRolesFor(profileRole) {
       if (profileRole === 'Treasurer') return ['Pastor', 'Deaconess', 'Admin', 'Admin Assistant'];
       if (profileRole === 'Admin Assistant') return ['Admin', 'Admin Assistant'];
       return [profileRole];
+    }
+
+    // Groups the individual payroll expense rows (salary, allowances,
+    // employer benefit shares) into one payslip per staff per pay period,
+    // the way a company payslip presents them.
+    function buildPayslipGroups(rows) {
+      const groups = new Map();
+      rows.forEach(row => {
+        const month = row.payrollMonth || String(row.date || '').slice(0, 7);
+        const week = row.payrollWeek || '';
+        const key = `${row.role || ''}|${month}|${week}`;
+        if (!groups.has(key)) {
+          groups.set(key, { key, role: row.role || '', month, week, earnings: [], benefits: [] });
+        }
+        const group = groups.get(key);
+        (row.isBenefit ? group.benefits : group.earnings).push(row);
+      });
+      return Array.from(groups.values()).map(group => {
+        const earned = group.earnings;
+        group.gross = earned.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        group.tithe = earned.reduce((sum, row) => sum + Number(row.workersTithe || 0), 0);
+        group.sss = earned.reduce((sum, row) => sum + Number(row.sssDeduction || 0), 0);
+        group.other = earned.reduce((sum, row) => sum + otherDeductionOf(row), 0);
+        group.net = earned.reduce((sum, row) => sum + Number(row.netPay || 0), 0);
+        group.deductions = group.tithe + group.sss + group.other;
+        const allRows = earned.concat(group.benefits);
+        group.payDate = allRows.map(row => row.date || '').sort().pop() || '';
+        group.payment = (allRows.find(row => row.payment) || {}).payment || '';
+        const paidCount = earned.filter(row => row.status === 'Paid').length;
+        group.status = earned.length === 0 ? 'Paid'
+          : paidCount === earned.length ? 'Paid'
+          : paidCount === 0 ? 'Pending' : 'Partial';
+        group.refNo = `PS-${(group.month || '0000-00').replace('-', '')}` +
+          (group.week ? `-W${group.week}` : '') +
+          `-${(group.role || 'X').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase()}`;
+        return group;
+      }).sort((a, b) => (b.payDate || '').localeCompare(a.payDate || ''));
+    }
+
+    function employeeNameFor(group) {
+      const roleLabel = ROLE_LABELS[group.role] || group.role || '-';
+      const ownRoles = payrollRolesFor(activeProfile.role);
+      if (activeProfile.role !== 'Treasurer' && ownRoles.includes(group.role)) {
+        return activeProfile.name || roleLabel;
+      }
+      return roleLabel;
     }
 
     async function loadPayslips() {
@@ -160,6 +345,7 @@
       document.getElementById('staff-name').textContent = isTreasurer ? 'Payroll Records' : (activeProfile.name || activeProfile.role);
       document.getElementById('staff-role').textContent = isTreasurer ? 'Treasurer view: all generated payroll records' : activeProfile.role;
       document.getElementById('month-filter').value = new Date().toISOString().slice(0, 7);
+      if (isTreasurer) document.getElementById('staff-filter-wrap').style.display = '';
 
       const roles = payrollRolesFor(activeProfile.role);
       const snapshots = await Promise.all(roles.map(role =>
@@ -169,47 +355,140 @@
           .get()
       ));
       payrollRows = snapshots.flatMap(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      payrollRows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      payslipGroups = buildPayslipGroups(payrollRows);
       renderPayslips();
     }
 
     function renderPayslips() {
       const month = document.getElementById('month-filter').value;
       const status = document.getElementById('status-filter').value;
-      const rows = payrollRows.filter(row => {
-        const rowMonth = row.payrollMonth || String(row.date || '').slice(0, 7);
-        return (!month || rowMonth === month) && (!status || row.status === status);
+      const staff = document.getElementById('staff-filter').value;
+      visibleGroups = payslipGroups.filter(group => {
+        const roleMatch = !staff || group.role === staff ||
+          (staff === 'Admin' && group.role === 'Admin Assistant');
+        const statusMatch = !status ||
+          (status === 'Paid' ? group.status === 'Paid' : group.status !== 'Paid');
+        return (!month || group.month === month) && statusMatch && roleMatch;
       });
 
-      const gross = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-      const tithe = rows.reduce((sum, row) => sum + Number(row.workersTithe || 0), 0);
-      const sss = rows.reduce((sum, row) => sum + Number(row.sssDeduction || 0), 0);
-      const net = rows.reduce((sum, row) => sum + Number(row.netPay || 0), 0);
-      const deductions = gross - net || tithe + sss;
+      const gross = visibleGroups.reduce((sum, group) => sum + group.gross, 0);
+      const deductions = visibleGroups.reduce((sum, group) => sum + group.deductions, 0);
+      const net = visibleGroups.reduce((sum, group) => sum + group.net, 0);
+      const year = (month || new Date().toISOString().slice(0, 7)).slice(0, 4);
+      const ytd = payslipGroups
+        .filter(group => group.month.slice(0, 4) === year
+          && (!staff || group.role === staff || (staff === 'Admin' && group.role === 'Admin Assistant')))
+        .reduce((sum, group) => sum + group.net, 0);
 
       document.getElementById('sum-gross').textContent = '₱' + fmt(gross);
       document.getElementById('sum-deductions').textContent = '₱' + fmt(deductions);
       document.getElementById('sum-net').textContent = '₱' + fmt(net);
+      document.getElementById('sum-ytd').textContent = '₱' + fmt(ytd);
+      document.getElementById('sum-ytd-label').textContent = `Net Pay YTD (${year})`;
 
-      document.getElementById('payslip-body').innerHTML = rows.map(row => {
-        const otherDeduction = Math.max(0, Number(row.amount || 0) - Number(row.netPay || 0) - Number(row.workersTithe || 0) - Number(row.sssDeduction || 0));
-        const badgeClass = row.status === 'Paid' ? 'badge-paid' : 'badge-pending';
-        return `
+      const badgeClasses = { 'Paid': 'badge-paid', 'Pending': 'badge-pending', 'Partial': 'badge-partial' };
+      document.getElementById('payslip-body').innerHTML = visibleGroups.map((group, index) => `
           <tr>
-            <td>${escapeHtml(row.date || '')}</td>
             <td>
-              <strong>${escapeHtml(row.payrollParticulars || row.sub || 'Payroll')}</strong>
-              <div class="muted">Week ${escapeHtml(row.payrollWeek || '-')} · ${escapeHtml(row.payment || '')}</div>
+              <strong>${escapeHtml(monthLabel(group.month))}</strong>
+              <div class="muted">${group.week ? 'Week ' + escapeHtml(group.week) : 'Full period'} · ${escapeHtml(group.refNo)}</div>
             </td>
-            <td><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Pending')}</span></td>
-            <td class="amount">₱${fmt(row.amount)}</td>
-            <td class="amount">₱${fmt(row.workersTithe)}</td>
-            <td class="amount">₱${fmt(row.sssDeduction)}</td>
-            <td class="amount">₱${fmt(otherDeduction)}</td>
-            <td class="amount">₱${fmt(row.netPay)}</td>
-          </tr>`;
-      }).join('') || '<tr><td colspan="8" class="empty">No payslip records found for this filter.</td></tr>';
+            <td>${escapeHtml(group.payDate || '-')}</td>
+            <td>${escapeHtml(employeeNameFor(group))}<div class="muted">${escapeHtml(ROLE_LABELS[group.role] || group.role)}</div></td>
+            <td><span class="badge ${badgeClasses[group.status] || 'badge-pending'}">${escapeHtml(group.status)}</span></td>
+            <td class="amount">₱${fmt(group.gross)}</td>
+            <td class="amount">₱${fmt(group.deductions)}</td>
+            <td class="amount">₱${fmt(group.net)}</td>
+            <td><button class="btn" onclick="openPayslipModal(${index})">View</button></td>
+          </tr>`).join('') ||
+        '<tr><td colspan="8" class="empty">No payslip records found for this filter.</td></tr>';
     }
+
+    function openPayslipModal(index) {
+      const group = visibleGroups[index];
+      if (!group) return;
+
+      const earningRows = group.earnings.map(row => `
+        <tr>
+          <td>${escapeHtml(row.payrollParticulars || row.sub || 'Payroll')}<div class="muted">${escapeHtml(row.date || '')}</div></td>
+          <td class="amt">₱${fmt(row.amount)}</td>
+        </tr>`).join('');
+
+      const deductionRows = [
+        group.tithe > 0 ? `<tr><td>Worker's Tithe</td><td class="amt">₱${fmt(group.tithe)}</td></tr>` : '',
+        group.sss > 0 ? `<tr><td>SSS / PhilHealth (Employee Share)</td><td class="amt">₱${fmt(group.sss)}</td></tr>` : '',
+        group.other > 0 ? `<tr><td>Other Deductions</td><td class="amt">₱${fmt(group.other)}</td></tr>` : ''
+      ].join('') || '<tr><td colspan="2" class="muted">No deductions for this period.</td></tr>';
+
+      const benefitSection = group.benefits.length ? `
+        <div class="ps-section-title">Employer Contributions (Not Deducted From Pay)</div>
+        <table class="ps-table">
+          ${group.benefits.map(row => `
+            <tr>
+              <td>${escapeHtml(row.payrollParticulars || row.payee || 'Employer Share')}<div class="muted">${escapeHtml(row.date || '')}</div></td>
+              <td class="amt">₱${fmt(row.amount)}</td>
+            </tr>`).join('')}
+          <tr class="total-row"><td>Total Employer Contributions</td><td class="amt">₱${fmt(group.benefits.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</td></tr>
+        </table>` : '';
+
+      document.getElementById('payslip-detail').innerHTML = `
+        <div class="ps-org">
+          <h1>Tagaytay United Methodist Church</h1>
+          <div class="sub">GraceBooks Finance &amp; Membership Management</div>
+          <div class="doc-title">EMPLOYEE PAYSLIP</div>
+        </div>
+        <div class="ps-meta">
+          <div><span class="k">Payslip No.</span><span class="v">${escapeHtml(group.refNo)}</span></div>
+          <div><span class="k">Status</span><span class="v">${escapeHtml(group.status)}</span></div>
+          <div><span class="k">Employee</span><span class="v">${escapeHtml(employeeNameFor(group))}</span></div>
+          <div><span class="k">Position</span><span class="v">${escapeHtml(ROLE_LABELS[group.role] || group.role)}</span></div>
+          <div><span class="k">Pay Period</span><span class="v">${escapeHtml(monthLabel(group.month))}${group.week ? ' · Week ' + escapeHtml(group.week) : ''}</span></div>
+          <div><span class="k">Pay Date</span><span class="v">${escapeHtml(group.payDate || '-')}</span></div>
+          <div><span class="k">Paid From</span><span class="v">${escapeHtml(fundLabel(group.payment))}</span></div>
+          <div><span class="k">Generated</span><span class="v">${escapeHtml(new Date().toLocaleDateString('en-PH'))}</span></div>
+        </div>
+
+        <div class="ps-section-title">Earnings</div>
+        <table class="ps-table">
+          ${earningRows || '<tr><td colspan="2" class="muted">No earnings recorded.</td></tr>'}
+          <tr class="total-row"><td>Total Earnings</td><td class="amt">₱${fmt(group.gross)}</td></tr>
+        </table>
+
+        <div class="ps-section-title">Deductions</div>
+        <table class="ps-table">
+          ${deductionRows}
+          <tr class="total-row"><td>Total Deductions</td><td class="amt">₱${fmt(group.deductions)}</td></tr>
+        </table>
+
+        <div class="ps-net">
+          <span class="label">Net Pay</span>
+          <span class="value">₱${fmt(group.net)}</span>
+        </div>
+        <div class="ps-words">${escapeHtml(amountInWords(group.net))}</div>
+
+        ${benefitSection}
+
+        <div class="ps-signatures">
+          <div class="sig"><div class="line">Prepared by</div><div class="role">Treasurer</div></div>
+          <div class="sig"><div class="line">Received by</div><div class="role">${escapeHtml(employeeNameFor(group))} · Date: ____________</div></div>
+        </div>
+        <div class="ps-footer">This is a system-generated payslip from GraceBooks. Figures are drawn from the church payroll ledger.</div>`;
+      document.getElementById('payslipModal').classList.add('open');
+    }
+
+    function closePayslipModal() {
+      document.getElementById('payslipModal').classList.remove('open');
+    }
+
+    function printPayslip() {
+      document.body.classList.add('printing-payslip');
+      window.print();
+      document.body.classList.remove('printing-payslip');
+    }
+
+    document.getElementById('payslipModal').addEventListener('click', event => {
+      if (event.target === event.currentTarget) closePayslipModal();
+    });
 
     loadPayslips().catch(error => {
       document.getElementById('payslip-body').innerHTML = `<tr><td colspan="8" class="empty">${escapeHtml(error.message)}</td></tr>`;
