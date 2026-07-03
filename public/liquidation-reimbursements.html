@@ -712,13 +712,19 @@
       if (!roleIs('Treasurer')) return;
       const row = requestRows.find(item => item.id === id);
       if (!row) return;
-      if (row.type === 'Reimbursement' && !row.receiptUrl
+      // Auto-created overspend reimbursements carry their receipts on the
+      // originating cash advance request (sourceLiquidationRequestId), not
+      // on this doc - skip the "no receipt" warning for those.
+      if (row.type === 'Reimbursement' && !row.receiptUrl && !row.sourceLiquidationRequestId
         && !confirm('This reimbursement has no receipt attached. Release anyway?')) {
         return;
       }
       releaseTargetId = id;
       document.getElementById('release-context').innerHTML =
-        `Releasing <strong>₱${fmt(row.amount)}</strong> (${escapeHtml(typeLabel(row))}) to <strong>${escapeHtml(row.requesterName || row.requesterRole || '')}</strong> for "${escapeHtml(row.title || '')}".`;
+        `Releasing <strong>₱${fmt(row.amount)}</strong> (${escapeHtml(typeLabel(row))}) to <strong>${escapeHtml(row.requesterName || row.requesterRole || '')}</strong> for "${escapeHtml(row.title || '')}".` +
+        (row.sourceLiquidationRequestId ? ' <span class="muted">(Auto-created from an overspent cash advance — see that request for receipts.)</span>' : '');
+
+      document.getElementById('release-fund').value = row.presetFund || 'cash-hand';
 
       // Reimbursement receipts are already attached at submission, so the
       // Treasurer can classify the expense category right away. Cash
@@ -727,7 +733,7 @@
       const showCategory = row.type === 'Reimbursement';
       document.getElementById('release-category-wrap').style.display = showCategory ? '' : 'none';
       if (showCategory) {
-        document.getElementById('release-category').innerHTML = categoryDropdownHTML('');
+        document.getElementById('release-category').innerHTML = categoryDropdownHTML(row.presetCategory || '');
       }
       document.getElementById('releaseModal').classList.add('open');
     }
@@ -995,7 +1001,7 @@
         const fund = row.releasedFund || 'cash-hand';
         const classifiedExpenseIds = [];
         let returnedIncomeId = null;
-        let topupExpenseId = null;
+        let topupRequestId = null;
 
         if (categorizedItems.length) {
           // The Release step already recorded one lump expense under a
@@ -1057,27 +1063,35 @@
             await writeAuditLog('income_created_from_liquidation_return', 'income', incomeRef.id, null, incomePayload,
               `Recorded ₱${fmt(balance)} unused cash advance returned by ${row.requesterName || row.requesterRole || ''}`);
           } else if (balance < -0.004) {
-            const topupPayload = {
+            // The employee spent more than what was released. Rather than
+            // silently paying this out as a raw expense, auto-create a
+            // trackable Reimbursement request for the shortfall - it still
+            // needs an explicit "Release Payment" click before any cash
+            // actually moves, same as every other request in this system.
+            const reimbursementPayload = {
+              type: 'Reimbursement',
+              title: `Additional reimbursement - ${row.title || ''}`,
               date: now.slice(0, 10),
-              category: topupCategory,
-              budgetCategory: topupCategory,
-              sub: `Additional reimbursement - ${row.title || ''}`,
-              payee: row.requesterName || row.requesterRole || '',
               amount: Math.abs(balance),
-              payment: fund,
-              targetAccId: fund,
-              status: 'Paid',
-              notes: `Employee spent more than the cash advance released for "${row.title || ''}"`,
-              linkedLiquidationRequestId: row.id,
-              budgetYear: now.slice(0, 4),
-              expenseMonth: now.slice(0, 7),
+              notes: `Auto-created: the liquidated total for "${row.title || ''}" exceeded the released cash advance by ₱${fmt(Math.abs(balance))}.`,
+              status: 'Approved',
+              requesterUid: row.requesterUid,
+              requesterEmail: row.requesterEmail || '',
+              requesterName: row.requesterName || row.requesterRole || '',
+              requesterRole: row.requesterRole,
+              presetCategory: topupCategory,
+              presetFund: fund,
+              sourceLiquidationRequestId: row.id,
+              reviewedBy: activeProfile.name || 'Treasurer',
+              reviewedAt: now,
               createdAt: now,
               updatedAt: now
             };
-            const topupRef = await db.collection('expenses').add(topupPayload);
-            topupExpenseId = topupRef.id;
-            await writeAuditLog('expense_created_from_liquidation_topup', 'expenses', topupRef.id, null, topupPayload,
-              `Recorded ₱${fmt(Math.abs(balance))} additional reimbursement for ${row.requesterName || row.requesterRole || ''}`);
+            const reimbursementRef = await db.collection('liquidationRequests').add(reimbursementPayload);
+            topupRequestId = reimbursementRef.id;
+            await writeAuditLog('liquidation_request_created', 'liquidationRequests', reimbursementRef.id, null, reimbursementPayload,
+              `Auto-created reimbursement request for overspend on "${row.title || ''}" (₱${fmt(Math.abs(balance))})`);
+            await notifyRole(row.requesterRole, `An additional reimbursement request of ₱${fmt(Math.abs(balance))} was created for "${row.title || ''}" — the Treasurer will release it separately.`);
           }
         }
 
@@ -1093,7 +1107,7 @@
           after.liquidationItems = categorizedItems;
           after.classifiedExpenseIds = classifiedExpenseIds;
           after.returnedIncomeId = returnedIncomeId;
-          after.topupExpenseId = topupExpenseId;
+          after.topupRequestId = topupRequestId;
           after.linkedExpenseId = null;
         }
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
@@ -1150,8 +1164,8 @@
       const balance = Number(row.amount || 0) - Number(row.liquidationTotal || 0);
       const settlementHtml = row.status === 'Reconciled' && row.returnedIncomeId
         ? `Unspent balance of <strong>₱${fmt(balance)}</strong> was recorded as returned to the fund.`
-        : row.status === 'Reconciled' && row.topupExpenseId
-          ? `An additional <strong>₱${fmt(Math.abs(balance))}</strong> reimbursement was recorded for the overspent amount.`
+        : row.status === 'Reconciled' && row.topupRequestId
+          ? `An additional reimbursement request for <strong>₱${fmt(Math.abs(balance))}</strong> was automatically created for the overspent amount — check the requests list for its release status.`
           : '';
       const balanceHtml = row.liquidationSubmittedAt ? `
         <div class="liq-balance">
@@ -1170,6 +1184,7 @@
           <div><span class="k">Amount</span><span class="v">₱${fmt(row.amount)}</span></div>
           <div><span class="k">Released From</span><span class="v">${escapeHtml(FUND_LABELS[row.releasedFund] || row.releasedFund || '-')}</span></div>
           ${row.assignedBy ? `<div><span class="k">Assigned By</span><span class="v">${escapeHtml(row.assignedBy)}</span></div>` : ''}
+          ${row.sourceLiquidationRequestId ? `<div><span class="k">Source</span><span class="v">Overspend on request ${escapeHtml(row.sourceLiquidationRequestId.slice(0, 8))}…</span></div>` : ''}
           ${row.releasedAt ? `<div><span class="k">Released At</span><span class="v">${escapeHtml(row.releasedAt.slice(0, 10))}</span></div>` : ''}
           ${row.reconciledAt ? `<div><span class="k">Reconciled</span><span class="v">${escapeHtml(row.reconciledAt.slice(0, 10))} · ${escapeHtml(row.reconciledBy || '')}</span></div>` : ''}
         </div>
@@ -1259,7 +1274,7 @@
           <tr>
             <td>${escapeHtml(row.date || '')}</td>
             <td>${escapeHtml(row.requesterName || row.requesterRole || '-')}<div class="muted">${escapeHtml(row.requesterRole || '')}</div></td>
-            <td>${escapeHtml(typeLabel(row))}${row.assignedBy ? '<div class="muted">Assigned</div>' : ''}</td>
+            <td>${escapeHtml(typeLabel(row))}${row.assignedBy ? '<div class="muted">Assigned</div>' : ''}${row.sourceLiquidationRequestId ? '<div class="muted">Auto (overspend)</div>' : ''}</td>
             <td><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div></td>
             <td><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Submitted')}</span></td>
             <td class="amount">₱${fmt(row.amount)}</td>
