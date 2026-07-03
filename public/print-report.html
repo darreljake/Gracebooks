@@ -1648,7 +1648,14 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
     const fundingTotal = projectFundingTotal(project.id);
     const remainingNeed = Math.max(0, costTotal - fundingTotal);
     const surplus = Math.max(0, fundingTotal - costTotal);
-    const periodText = `${project.projectType || 'Special Project'}${project.startDate ? ' · Started ' + project.startDate : ''}`;
+    const isClosed = project.status === 'Closed';
+    const closedDateStr = isClosed && project.finishedAt
+      ? new Date(project.finishedAt).toLocaleDateString('en-PH') : '';
+    const fundingPct = costTotal > 0 ? Math.min(100, Math.round(fundingTotal / costTotal * 100)) : null;
+
+    const actualCostTotal = projectCosts.filter(c => c.basis === 'Actual').reduce((s, c) => s + Number(c.amount || 0), 0);
+    const estimatedCostTotal = projectCosts.filter(c => c.basis !== 'Actual').reduce((s, c) => s + Number(c.amount || 0), 0);
+    const hasMixedBasis = actualCostTotal > 0 && estimatedCostTotal > 0;
 
     const costGroups = groupRows(projectCosts, c => c.mainCategory);
     const costRows = Object.keys(costGroups).sort().map(main => {
@@ -1662,7 +1669,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
         </tr>
         ${rows.map(r => `
           <tr>
-            <td class="col-desc indent-2">${escapeHtml(r.detail || 'Cost Item')} <span style="color:#777;font-size:11px;">${escapeHtml(r.basis || '')}</span></td>
+            <td class="col-desc indent-2">${escapeHtml(r.detail || 'Cost Item')} <span style="font-size:10px;font-weight:700;color:${r.basis === 'Actual' ? '#1e8449' : '#9a5b00'};">${escapeHtml(r.basis || 'Estimated')}</span></td>
             <td class="col-sub">₱ ${fmt(r.amount || 0)}</td>
             <td class="col-main"></td>
           </tr>`).join('')}`;
@@ -1704,19 +1711,30 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
             <div class="rpt-church-name">Tagaytay United Methodist Church</div>
             <div class="rpt-church-address">Maglabe Drive, Asisan, Tagaytay City</div>
             <div class="rpt-title">${escapeHtml(project.name || 'Special Project Report')}</div>
-            <div class="rpt-period">${escapeHtml(periodText)}</div>
+            <div class="rpt-period">Special Project Report</div>
           </div>
         </div>
 
         <table class="fs-table" id="export-table">
-          <tr class="section-header"><td colspan="3">Project Summary</td></tr>
+          <tr class="section-header"><td colspan="3">Project Details</td></tr>
+          <tr><td class="col-desc indent-1" style="color:#667085;">Type</td><td class="col-sub"></td><td class="col-main" style="color:#334;">${escapeHtml(project.projectType || 'Special Project')}</td></tr>
+          <tr><td class="col-desc indent-1" style="color:#667085;">Status</td><td class="col-sub"></td><td class="col-main" style="color:${isClosed ? '#667085' : '#1e8449'};font-weight:700;">${isClosed ? 'Closed' + (closedDateStr ? ' — ' + closedDateStr : '') : 'Open'}</td></tr>
+          ${project.startDate ? `<tr><td class="col-desc indent-1" style="color:#667085;">Started</td><td class="col-sub"></td><td class="col-main" style="color:#334;">${escapeHtml(project.startDate)}</td></tr>` : ''}
+          ${project.notes ? `<tr><td class="col-desc indent-1" style="color:#667085;vertical-align:top;">Notes</td><td class="col-sub"></td><td class="col-main" style="color:#334;white-space:pre-wrap;">${escapeHtml(project.notes)}</td></tr>` : ''}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header"><td colspan="3">Financial Summary</td></tr>
           <tr class="bold-row"><td class="col-desc">Total Project Cost</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(costTotal)}</td></tr>
           <tr class="bold-row"><td class="col-desc">Total Funding Secured</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(fundingTotal)}</td></tr>
+          ${fundingPct !== null ? `<tr><td class="col-desc indent-1" style="color:#667085;">Funding Progress</td><td class="col-sub"></td><td class="col-main" style="color:${fundingPct >= 100 ? '#1e8449' : '#9a5b00'};font-weight:700;">${fundingPct}%</td></tr>` : ''}
           <tr class="total-row"><td class="col-desc">${surplus > 0 ? 'Project Surplus' : 'Remaining Need'}</td><td class="col-sub"></td><td class="col-main ${remainingNeed > 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(surplus > 0 ? surplus : remainingNeed)}</td></tr>
-          ${project.notes ? `<tr><td class="col-desc indent-1" colspan="3" style="padding-top:10px;">${escapeHtml(project.notes)}</td></tr>` : ''}
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header"><td colspan="3">Cost Breakdown</td></tr>
+          ${hasMixedBasis ? `
+          <tr><td class="col-desc indent-1" style="color:#667085;">Actual</td><td class="col-sub"></td><td class="col-main" style="color:#1e8449;">₱ ${fmt(actualCostTotal)}</td></tr>
+          <tr><td class="col-desc indent-1" style="color:#667085;">Estimated</td><td class="col-sub"></td><td class="col-main" style="color:#9a5b00;">₱ ${fmt(estimatedCostTotal)}</td></tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>` : ''}
           ${costRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No cost breakdown recorded.</td></tr>'}
           <tr class="spacer-row"><td colspan="3"></td></tr>
 

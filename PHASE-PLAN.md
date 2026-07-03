@@ -150,7 +150,7 @@ Status: Priority moved up; started as initial Special Projects ledger.
 - Special Projects workflow now includes project CRUD, cost breakdowns, funding sources, linked expenses, receipt/proof uploads, close/reopen, funding draft entries, and push/remove from print report.
 - Print report includes a Special Projects report selector for projects pushed from `special-projects.html`.
 - Create `connectional-ministries.html`. Done — dedicated management page for the `churchObligations` Firestore collection: year-filtered obligation list, KPI cards (total obligated, settled, balance, progress %), overall progress bar, per-row progress bars, Add/Edit/Delete modals (Treasurer only), separate settlement update modal, and full audit log coverage. Dashboard menu entries added for Treasurer, Pastor, Auditor, District, Finance Chair, Chairperson, and Deaconess.
-- Improve Special Projects print report formatting as usage grows.
+- Improve Special Projects print report formatting as usage grows. Done — `print-report.html` now shows a dedicated "Project Details" section (type, status with close date, start date, notes) above a renamed "Financial Summary" section; adds a funding-progress percentage row; Estimated vs Actual cost subtotals appear when a project has both; cost detail rows style the Estimated/Actual label in colour-coded bold text.
 
 ## Phase 4B - Upload Security Gates
 
@@ -180,40 +180,33 @@ Status: Storage rules tightening started; remaining items not started.
 
 ## Phase 5 - Report Review, Audit Approval, and Signature Workflow
 
-Status: Started.
+Status: Done.
 
 - Report workflow:
-  - Treasurer reviews the generated report.
-  - Treasurer submits the report to the Finance Chair and Auditor. Started in `report-workflow.html`.
-  - Auditor audits and approves the report. Started in `report-workflow.html`.
-  - Finance Chair approves Chairperson notes and Pastor notes. Started in `report-workflow.html`.
-  - Pastor may add notes and later sign, but does not audit or approve. Started in `report-workflow.html`.
+  - Treasurer reviews the generated report. Done — `report-workflow.html`.
+  - Treasurer submits the report to the Auditor. Done — `treasurerSubmit()` action with electronic or manual signing, writes to `reportReviews`.
+  - Auditor audits and approves, then routes to Finance Chair, or returns to Treasurer. Done — `auditorApprove()` / `returnToTreasurer()`.
+  - Finance Chair approves and routes to Chairperson, or returns to Treasurer. Done — `financeApprove()` / `returnToTreasurer()`.
+  - Pastor affixes signature to finalize. Done — `pastorSign()` sets status to `finalized`.
 - Signatories on the printed report:
-  - Chairperson
-  - Finance Chair
-  - Treasurer
-  - Auditor
-  - Pastor
-- Signature chain:
-  - After Auditor and Finance Chair approve, route the report to all signatories.
-  - Attach signatures only after each party signs. Started as workflow records in Firestore.
-  - Final print report carries only completed/approved signatures.
+  - Chairperson, Finance Chair, Treasurer, Auditor, Pastor. Done — `print-report.html` loads `workflowSignatures` from `reportReviews` and renders each party's electronic signature image (if signed electronically) or an empty line (for manual or pending).
+- Signature chain: Done — each step in `report-workflow.html` stores `signatures[key]` (name, role, uid, mode, signatureUrl, signedAt); re-routing clears downstream signatures via `removeSignaturesAfter()`; the print report only renders signature images for completed electronic signatures.
 
 ### Next Enhancements
 
 - Notifications:
   - In-app notifications: Done. `report-workflow.html` calls `writeNotification()` after each `saveTransition()` to write a doc to the new `notifications` Firestore collection (recipientRole, message, reportId, periodLabel, transition, actorName, actorRole, createdAt). `index.html` dashboard shows a bell icon in the topbar with a red badge count for unread notifications; clicking opens a dropdown listing recent notifications. "Unread" is tracked via `localStorage` per role (no Firestore write needed). Firestore rules allow any signed-in user to read/create notifications; updates and deletes are denied.
-  - Email notifications: Needs a human decision on which email/notification provider to use (Firebase Extensions, SendGrid, etc.). Not implemented.
+  - Email notifications: Needs a human decision on which email/notification provider to use (Firebase Extensions, SendGrid, etc.). Not implemented. **Decision needed: choose a notification provider before implementation can proceed.**
 - Finalized report locking: Done. `report-workflow.html` already had no per-role action available once `status === 'finalized'` (every action button is gated to a specific non-finalized status), so finalized reports were already implicitly locked. Added an explicit Treasurer-only "Reopen Report" action (requires a reason note + confirmation) that resets status back to `draft` so the full approval chain must run again; reopen is logged to both workflow history and `auditLogs` via the existing `saveTransition`/`writeAuditLog` pattern. No Firestore rule change needed — Treasurer already has `update` rights on `reportReviews`.
 - Better return notes: Done. `report-workflow.html` shows a prominent latest-return-note banner (who returned it, when, and the note text) whenever a report is in `returned_by_auditor` or `returned_by_finance` status. Return-note history was already visible per entry in the Routing History timeline.
 
 ## Phase 6 - Role and Access Enhancements
 
-Status: Not started.
+Status: Done (completed via Phase 2 and subsequent work).
 
-- Membership Secretary role.
-- Attendance entry access.
-- View-only role restrictions where needed.
+- Membership Secretary role. Done in Phase 2 — dedicated `membership-attendance.html` page, role-gated Firestore rules, dashboard entries.
+- Attendance entry access. Done in Phase 2 — restricted to Membership Secretary; Deaconess granted read-only access.
+- View-only role restrictions where needed. Done — all mutating actions (expenses, special projects, connectional ministries, budgets, liquidation/reimbursements) are gated to Treasurer via `roleIs('Treasurer')` checks and `.treasurer-only` CSS; Pastor, Auditor, District, Finance Chair, Chairperson, and Counter accounts see read-only views across all financial pages.
 
 ## Phase 7 - Security Hardening and Reporting/Budget/Entry Enhancements
 
