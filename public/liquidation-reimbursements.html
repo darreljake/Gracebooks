@@ -513,7 +513,7 @@
     async function initPage() {
       activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
       const isTreasurer = roleIs('Treasurer');
-      document.querySelectorAll('.treasurer-only').forEach(el => el.style.display = isTreasurer ? '' : 'none');
+      document.querySelectorAll('.treasurer-only').forEach(el => el.style.display = isTreasurer ? 'block' : 'none');
       document.getElementById('request-card').style.display = isTreasurer ? 'none' : 'block';
       document.getElementById('list-title').textContent = isTreasurer ? 'Submitted Requests' : 'My Requests';
       document.getElementById('list-subtitle').textContent = isTreasurer
