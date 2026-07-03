@@ -307,12 +307,13 @@
       <div class="table-wrap">
         <table class="inner-table">
           <thead>
-            <tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr>
+            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Suggested Category</th><th></th></tr>
           </thead>
           <tbody id="liq-items"></tbody>
         </table>
       </div>
       <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="addLiqItem()">+ Add Item</button>
+      <div class="muted" style="margin-top:6px;">Category is a suggestion for the Treasurer's review — the Treasurer has final say when reconciling.</div>
       <div class="liq-balance" id="liq-balance"></div>
       <div class="section-label">Receipts / Proof</div>
       <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple />
@@ -523,10 +524,11 @@
         ? 'All staff cash advances and reimbursements.'
         : 'Your cash advances and reimbursements.';
       onRequestTypeChange();
-      if (isTreasurer) {
-        loadStaffOptions();
-        await loadCategoriesForYear(new Date().getFullYear());
-      }
+      if (isTreasurer) loadStaffOptions();
+      // Staff also need the category list so they can suggest a category
+      // per item when submitting their liquidation; the Treasurer still
+      // has final say when reconciling.
+      await loadCategoriesForYear(new Date().getFullYear());
       await loadRequests();
     }
 
@@ -824,6 +826,7 @@
         <td><input type="date" class="liq-date" value="${new Date().toISOString().slice(0, 10)}" /></td>
         <td><input type="text" class="liq-desc" placeholder="e.g. Bus fare, meals, supplies" /></td>
         <td><input type="number" class="liq-amt" min="0" step="0.01" placeholder="0.00" oninput="updateLiqBalance()" /></td>
+        <td><select class="liq-cat">${categoryDropdownHTML('')}</select></td>
         <td><button class="btn btn-ghost btn-small" onclick="this.closest('tr').remove(); updateLiqBalance();">✕</button></td>`;
       document.getElementById('liq-items').appendChild(tr);
     }
@@ -832,7 +835,8 @@
       return Array.from(document.querySelectorAll('#liq-items tr')).map(tr => ({
         date: tr.querySelector('.liq-date').value,
         description: tr.querySelector('.liq-desc').value.trim(),
-        amount: parseFloat(tr.querySelector('.liq-amt').value) || 0
+        amount: parseFloat(tr.querySelector('.liq-amt').value) || 0,
+        suggestedCategory: tr.querySelector('.liq-cat').value
       })).filter(item => item.description || item.amount > 0);
     }
 
@@ -920,6 +924,7 @@
       if (items.length) {
         itemsWrap.innerHTML = `
           <div class="section-label">Classify Each Item Into an Expense Category</div>
+          <div class="muted">Dropdowns are pre-filled with the staff member's suggested category where given — this is only a suggestion; adjust any of them before confirming.</div>
           <div class="table-wrap">
             <table class="inner-table">
               <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Expense Category</th></tr></thead>
@@ -929,7 +934,10 @@
                     <td>${escapeHtml(item.date || '')}</td>
                     <td>${escapeHtml(item.description || '')}</td>
                     <td class="amount">₱${fmt(item.amount)}</td>
-                    <td><select id="reconcile-cat-${index}">${categoryDropdownHTML('')}</select></td>
+                    <td>
+                      <select id="reconcile-cat-${index}">${categoryDropdownHTML(item.suggestedCategory || '')}</select>
+                      ${item.suggestedCategory ? '<div class="muted">Suggested by staff</div>' : ''}
+                    </td>
                   </tr>`).join('')}
               </tbody>
             </table>
@@ -1118,20 +1126,23 @@
         : '<div class="muted">No receipts attached.</div>';
 
       const isClassified = row.status === 'Reconciled' && (row.classifiedExpenseIds || []).length;
+      const hasSuggestions = !isClassified && (row.liquidationItems || []).some(item => item.suggestedCategory);
+      const categoryColLabel = isClassified ? 'Expense Category' : 'Staff-Suggested Category';
       const itemsHtml = (row.liquidationItems || []).length ? `
         <div class="section-label">Liquidation Items</div>
         <div class="table-wrap">
           <table class="inner-table">
-            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th>${isClassified ? '<th>Expense Category</th>' : ''}</tr></thead>
+            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th>${(isClassified || hasSuggestions) ? `<th>${categoryColLabel}</th>` : ''}</tr></thead>
             <tbody>
               ${row.liquidationItems.map(item => `
                 <tr>
                   <td>${escapeHtml(item.date || '')}</td>
                   <td>${escapeHtml(item.description || '')}</td>
                   <td class="amount">₱${fmt(item.amount)}</td>
-                  ${isClassified ? `<td>${escapeHtml(item.category || '-')}</td>` : ''}
+                  ${isClassified ? `<td>${escapeHtml(item.category || '-')}</td>`
+                    : hasSuggestions ? `<td>${escapeHtml(item.suggestedCategory || '-')}</td>` : ''}
                 </tr>`).join('')}
-              <tr><td colspan="${isClassified ? 3 : 2}"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
+              <tr><td colspan="${(isClassified || hasSuggestions) ? 3 : 2}"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
             </tbody>
           </table>
         </div>` : '';
