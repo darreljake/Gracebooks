@@ -156,6 +156,17 @@
           <input type="number" id="assign-amount" min="0" step="0.01" placeholder="0.00" />
         </div>
         <div>
+          <label>Source of Fund</label>
+          <select id="assign-fund">
+            <option value="cash-hand">Cash on Hand</option>
+            <option value="cash-bank">Cash in Bank</option>
+            <option value="petty-cash">Petty Cash Fund</option>
+            <option value="building">Building Fund</option>
+            <option value="mission">Mission Fund</option>
+            <option value="investment">Investments/TD</option>
+          </select>
+        </div>
+        <div>
           <label>Particulars</label>
           <input type="text" id="assign-title" placeholder="e.g. Cash advance for district conference" />
         </div>
@@ -165,6 +176,7 @@
         </div>
         <button class="btn" id="assign-btn" onclick="assignAdvance()">Assign Cash Advance</button>
       </div>
+      <div class="muted" style="margin-top:10px;">This does not deduct anything yet. After assigning, click "Release Payment" on the request below to actually disburse it — the fund you pick here will already be pre-selected there.</div>
     </div>
 
     <div class="card" id="request-card">
@@ -625,6 +637,7 @@
       const staffUid = document.getElementById('assign-staff').value;
       const date = document.getElementById('assign-date').value;
       const amount = parseFloat(document.getElementById('assign-amount').value) || 0;
+      const fund = document.getElementById('assign-fund').value;
       const title = document.getElementById('assign-title').value.trim();
       const notes = document.getElementById('assign-notes').value.trim();
       const staff = staffProfiles.find(profile => profile.uid === staffUid);
@@ -646,6 +659,7 @@
           requesterEmail: staff.email || '',
           requesterName: staff.name || staff.role,
           requesterRole: staff.role,
+          presetFund: fund,
           assignedBy: activeProfile.name || 'Treasurer',
           assignedByUid: firebase.auth().currentUser.uid,
           assignedAt: now,
@@ -656,12 +670,13 @@
         };
         const ref = await db.collection('liquidationRequests').add(payload);
         await writeAuditLog('cash_advance_assigned', 'liquidationRequests', ref.id, null, payload,
-          `Assigned cash advance to ${payload.requesterName}: ${title} (₱${fmt(amount)})`);
+          `Assigned cash advance to ${payload.requesterName}: ${title} (₱${fmt(amount)}) from ${FUND_LABELS[fund] || fund}`);
         await notifyRole(staff.role, `A cash advance of ₱${fmt(amount)} was approved for you: ${title}. It will be released shortly.`);
         document.getElementById('assign-amount').value = '';
         document.getElementById('assign-title').value = '';
         document.getElementById('assign-notes').value = '';
         document.getElementById('assign-staff').value = '';
+        document.getElementById('assign-fund').value = 'cash-hand';
         await loadRequests();
       } catch (error) {
         alert(error.message);
