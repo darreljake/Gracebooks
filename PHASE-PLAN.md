@@ -154,7 +154,7 @@ Status: Priority moved up; started as initial Special Projects ledger.
 
 ## Phase 4B - Upload Security Gates
 
-Status: Storage rules tightening started; remaining items not started.
+Status: Mostly done. Malware scanning and role-restricted Storage reads are the only remaining items; both need a human decision before they can proceed (see notes below).
 
 - Tighten Firebase Storage rules:
   - Receipts and project proofs: Treasurer-only upload/update/delete. Done — `storage.rules` now gates create/update/delete on `expense-receipts/` and `project-proofs/` with `isTreasurer()` plus file validation; read stays open to any signed-in user so other roles can still view receipts during report review. Do not use `firestore.get()` in Storage rules; it caused receipt uploads to be denied.
@@ -173,10 +173,11 @@ Status: Storage rules tightening started; remaining items not started.
   - Inspect actual file signature/magic bytes, not only filename or browser MIME type.
   - Mark uploads as `pending_scan`, `safe`, or `blocked`.
   - Quarantine/delete blocked uploads and show clear UI status.
+  - **Decision needed**: this requires provisioning a Cloud Function in Firebase (a separate infrastructure step outside the static-hosting repo). Choose whether to use Firebase Extensions (e.g. Scan Files with VirusTotal), a custom Cloud Function, or defer indefinitely.
 - Review download exposure:
-  - Avoid public file access.
-  - Restrict reads to authenticated authorized roles.
-  - Consider short-lived access URLs later for sensitive proofs.
+  - Avoid public file access. Done — all Storage paths already require `signedIn()` for reads; no unauthenticated access is possible.
+  - Restrict reads to authenticated authorized roles. **Decision needed**: roles are not stored in Firebase Auth custom claims (they live in Firestore `userProfiles`), so role-gating Storage reads requires a `firestore.get()` call inside Storage rules. This is explicitly avoided for `expense-receipts/` and `project-proofs/` because a prior attempt caused receipt uploads to be denied (see note above). Options: (a) add role info to Firebase Auth custom claims so Storage rules can check `request.auth.token.role` without a Firestore lookup — requires a Cloud Function to set claims on user creation/role change; (b) carefully test whether `firestore.get()` is safe for read-only Storage rules on these paths (lower risk than for writes, but untested); (c) defer until short-lived signed URLs are implemented. Without a decision here, reads remain open to any signed-in user, which is low-risk given all pages already enforce role checks client-side and no unauthenticated access is possible.
+  - Consider short-lived access URLs later for sensitive proofs. Deferred.
 
 ## Phase 5 - Report Review, Audit Approval, and Signature Workflow
 
