@@ -86,7 +86,9 @@ Status: Done, except Financial Overview listener conversion is intentionally ski
 
 ## Current Enhancement Blueprint
 
-Status: In progress.
+Status: Done. All implementable sub-items were completed across subsequent phases (Phases 2–7). Two admin cleanup items remain as human/operational tasks:
+- Confirm Firebase Auth users in the Firebase Console.
+- Remove or secure local credential/import files from daily use.
 
 - Expense document management:
   - Optional receipt/voucher upload and real-time camera capture.
@@ -104,10 +106,10 @@ Status: In progress.
 - Role and access:
   - Keep Treasurer as the primary editor for expenses.
   - Add clearer view-only behavior for Pastor, Auditor, District, and Counter accounts. Done for current reports/finance writes.
-  - Move toward server-enforced role rules after the workflow is settled. Started for current core collections.
+  - Move toward server-enforced role rules after the workflow is settled. Done — all Firestore collections (income, expenses, members, attendance, churchObligations, reportReviews, notifications, liquidationRequests, specialProjects/Entries/Costs, auditLogs, budgets, settings, userProfiles, userSignatures) now have explicit role-gated rules with a catch-all deny.
 - Admin cleanup:
-  - Confirm Firebase Auth users.
-  - Remove local credential/import files from daily use or move them to secure storage.
+  - Confirm Firebase Auth users. (Human task — requires Firebase Console access.)
+  - Remove local credential/import files from daily use or move them to secure storage. (Human/operational task.)
 ## Phase 3 - New HTML: Liquidation and Reimbursements
 
 Status: Done.
@@ -143,10 +145,10 @@ Status: Done.
 
 ## Phase 4 - New HTML: Special Projects and Ministries
 
-Status: Priority moved up; started as initial Special Projects ledger.
+Status: Done.
 
 - Treat Special Projects as the next operational priority because past-month project activity needs to be encoded and reported.
-- Create `special-projects.html`. Started with project setup, project funding/expense entries, summaries, dashboard access, and Firestore rules.
+- Create `special-projects.html`. Done — project setup, project funding/expense entries, summaries, dashboard access, and Firestore rules.
 - Special Projects workflow now includes project CRUD, cost breakdowns, funding sources, linked expenses, receipt/proof uploads, close/reopen, funding draft entries, and push/remove from print report.
 - Print report includes a Special Projects report selector for projects pushed from `special-projects.html`.
 - Create `connectional-ministries.html`. Done — dedicated management page for the `churchObligations` Firestore collection: year-filtered obligation list, KPI cards (total obligated, settled, balance, progress %), overall progress bar, per-row progress bars, Add/Edit/Delete modals (Treasurer only), separate settlement update modal, and full audit log coverage. Dashboard menu entries added for Treasurer, Pastor, Auditor, District, Finance Chair, Chairperson, and Deaconess.
