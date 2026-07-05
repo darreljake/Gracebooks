@@ -110,6 +110,7 @@ Status: Done. All implementable sub-items were completed across subsequent phase
 - Admin cleanup:
   - Confirm Firebase Auth users. (Human task — requires Firebase Console access.)
   - Remove local credential/import files from daily use or move them to secure storage. (Human/operational task.)
+
 ## Phase 3 - New HTML: Liquidation and Reimbursements
 
 Status: Done.
