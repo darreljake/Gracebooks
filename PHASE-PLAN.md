@@ -234,3 +234,19 @@ Status: Deferred.
 - Add duplicate detection.
 - Add preview/confirm before import.
 - Add rollback-safe audit logging.
+
+## Architecture Review Follow-up
+
+Status: Partially actioned; several items intentionally deferred by explicit decision.
+
+- `ARCHITECTURE-REVIEW.md` added at repo root — a from-scratch whole-repo survey (tech stack, data model, page inventory, connectivity diagrams, ranked findings) written as a handoff for independent review.
+- Findings actioned:
+  - `income-log.html` was still loading the old namespaced Firebase v8.10.1 SDK while every other page uses v10.7.1 compat. Since it only used namespaced-style calls (`firebase.firestore()`, `.collection().get()`) that compat preserves exactly, swapped the four `<script>` tags to the matching v10.7.1 compat build — no JS logic changes needed.
+  - `expenses.html`'s two expense-writing paths (manual single-entry `dbPayload`, batch payroll generator `payrollPayload`) were missing `targetAccId`, the same fund-bucketing gap already fixed in `liquidation-reimbursements.html` — `financial-overview.html`'s account-resolution fallback silently miscategorizes any write without it into Cash on Hand unless `payment` is literally `'Bank Transfer'`/`'Petty Cash'`. Both payloads now set `targetAccId` alongside `payment`. Note: this only fixes new writes going forward — existing historical expense docs without `targetAccId` are unaffected; no backfill was attempted since that's a data migration decision, not a code fix.
+  - `special-projects.html` was audited for the same gap and found already correct (`targetAccId: item.sourceAccount` already set on its linked-expense writes) — no change needed.
+  - Removed the unused `guardrails` npm script from `package.json` (referenced `scripts/guardrails/check-storage-rules.js`, which never existed in the repo).
+  - Deleted `apphosting.yaml` and the root-level `index.html`/`404.html` — confirmed unused Firebase CLI scaffold files (`firebase.json` serves Hosting from `public/`, so these were never actually deployed).
+- Findings explicitly deferred by decision (do not "fix" without revisiting this decision first):
+  - **`storage.rules` hardcoded-UID Treasurer check** — `expense-receipts`/`project-proofs` gate on `isTreasurer() { return request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3'; }` instead of role-based `hasRole(['Treasurer'])` used everywhere else (including `liquidation-receipts` in the same file). This predates the liquidation/reimbursement work — not a merge accident. Left as-is because a standing note earlier in this doc records that `firestore.get()` inside Storage rules previously caused receipt uploads to fail outright, which is the likely reason the UID was hardcoded as a workaround in the first place; `liquidation-receipts` proves `hasRole()` works there today, but changing the two most heavily-used receipt paths without testing first risks silently breaking Treasurer receipt uploads. **Consequence of leaving as-is: if the Treasurer's Firebase Auth account is ever recreated or a new Treasurer takes over, receipt upload/replace/delete on `expense-receipts`/`project-proofs` will silently stop working until the hardcoded UID is updated in `storage.rules` and redeployed.**
+  - **`churchObligations` duplication** (`reports.html` vs `connectional-ministries.html` both fully implement create/update, the latter also has delete) — explicit decision to keep both as-is for now.
+  - **`review-confirm.html`** — confirmed dead/unreachable (zero Firestore calls, no auth gate, sessionStorage keys that don't match `tithe-entry.html`'s actual scheme, nothing links to it); best guess is an abandoned prototype of an intermediate review-before-posting step from before direct-Firestore-write forms existed. Left in place pending a decision on deletion.
