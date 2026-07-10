@@ -855,6 +855,7 @@
           linkedLiquidationRequestId: row.id,
           budgetYear: now.slice(0, 4),
           expenseMonth: now.slice(0, 7),
+          postedAt: now,
           createdAt: now,
           updatedAt: now
         };
@@ -1232,6 +1233,7 @@
               linkedLiquidationRequestId: row.id,
               budgetYear: itemDate.slice(0, 4),
               expenseMonth: itemDate.slice(0, 7),
+              postedAt: now,
               createdAt: now,
               updatedAt: now
             };
