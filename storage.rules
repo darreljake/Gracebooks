@@ -14,14 +14,6 @@ service firebase.storage {
       return signedIn() && request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3';
     }
 
-    function role() {
-      return firestore.get(/databases/(default)/documents/userProfiles/$(request.auth.uid)).data.role;
-    }
-
-    function hasRole(roles) {
-      return signedIn() && role() in roles;
-    }
-
     function validReceiptFile() {
       return request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf');
@@ -50,15 +42,14 @@ service firebase.storage {
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
-    function isLiquidationRequestOwner(requestId) {
-      return signedIn()
-        && firestore.get(/databases/(default)/documents/liquidationRequests/$(requestId)).data.requesterUid == request.auth.uid;
-    }
-
-    match /liquidation-receipts/{requestId}/{fileName} {
+    // Ownership is verified from the storage path itself (uid segment),
+    // not a firestore.get() lookup - the same firestore.get() pattern in
+    // this liquidation-receipts rule previously caused every non-Treasurer
+    // upload here to fail with storage/unauthorized.
+    match /liquidation-receipts/{requestId}/{uid}/{fileName} {
       allow read: if signedIn();
-      allow create, update: if (hasRole(['Treasurer']) || isLiquidationRequestOwner(requestId)) && validReceiptFile();
-      allow delete: if hasRole(['Treasurer']) || isLiquidationRequestOwner(requestId);
+      allow create, update: if (isTreasurer() || (signedIn() && request.auth.uid == uid)) && validReceiptFile();
+      allow delete: if isTreasurer() || (signedIn() && request.auth.uid == uid);
     }
   }
 }

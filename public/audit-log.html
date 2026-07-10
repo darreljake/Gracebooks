@@ -44,6 +44,10 @@
       display: none; background: #b9770e; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-fix-ledger {
+      display: none; background: #1a5276; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
     .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
@@ -112,6 +116,7 @@
     <div class="card-header">
       <h3>Activity History</h3>
       <div>
+        <button class="btn-fix-ledger" id="btn-fix-ledger" onclick="fixMissingLedgerVisibility()">Fix Missing Ledger Entries</button>
         <button class="btn-fix-fund" id="btn-fix-fund" onclick="fixMissingFundAssignment()">Fix Missing Fund Assignment</button>
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
         <button class="btn-export" onclick="exportCSV()">Export CSV</button>
@@ -138,7 +143,9 @@
         <option value="expense_backfilled">Existing Expense</option>
         <option value="income_backfilled">Existing Income</option>
         <option value="expense_fund_assignment_backfilled">Fund Assignment Fixed</option>
+        <option value="expense_ledger_visibility_backfilled">Ledger Visibility Fixed</option>
         <option value="liquidation_returned_for_correction">Liquidation Returned</option>
+        <option value="liquidation_request_deleted">Liquidation Request Deleted</option>
         <option value="income_created">Income Created</option>
         <option value="attendance_saved">Attendance Saved</option>
         <option value="obligation_created">Obligation Created</option>
@@ -230,7 +237,9 @@
       expense_backfilled: 'Existing Expense',
       income_backfilled: 'Existing Income',
       expense_fund_assignment_backfilled: 'Fund Assignment Fixed',
+      expense_ledger_visibility_backfilled: 'Ledger Visibility Fixed',
       liquidation_returned_for_correction: 'Liquidation Returned',
+      liquidation_request_deleted: 'Liquidation Request Deleted',
       income_created: 'Income Created',
       attendance_saved: 'Attendance Saved',
       obligation_created: 'Obligation Created'
@@ -250,6 +259,7 @@
       if (profile.role === 'Treasurer') {
         document.getElementById('btn-backfill').style.display = 'inline-block';
         document.getElementById('btn-fix-fund').style.display = 'inline-block';
+        document.getElementById('btn-fix-ledger').style.display = 'inline-block';
       }
       const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
       allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -443,6 +453,77 @@
     } finally {
       button.disabled = false;
       button.textContent = 'Fix Missing Fund Assignment';
+    }
+  }
+
+  // expenses.html's ledger queries db.collection('expenses')
+  // .orderBy('postedAt', 'desc') - Firestore silently excludes any
+  // document missing that field from orderBy results entirely, rather
+  // than erroring. Expenses created by liquidation-reimbursements.html
+  // before its postedAt fix never had this field, so they were
+  // invisible in the Expenses ledger even though they correctly showed
+  // up in Financial Overview, Reports, and Print Report. This is a
+  // one-time backfill for those existing records; safe to re-run.
+  async function fixMissingLedgerVisibility() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this fix.');
+    if (!confirm('This scans every expense record for a missing "postedAt" field (which makes it invisible in the Expenses ledger) and fills it in from the record\'s existing date. Records that already appear in the ledger are left untouched. Continue?')) return;
+
+    const button = document.getElementById('btn-fix-ledger');
+    button.disabled = true;
+    button.textContent = 'Fixing...';
+
+    try {
+      const expenseSnap = await db.collection('expenses').get();
+      const actor = firebase.auth().currentUser;
+      const now = new Date().toISOString();
+
+      let fixedCount = 0;
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+
+      for (const docSnap of expenseSnap.docs) {
+        const data = docSnap.data();
+        if (data.postedAt) continue;
+
+        const inferred = data.createdAt || (data.date ? `${data.date}T00:00:00.000Z` : now);
+        batch.update(docSnap.ref, { postedAt: inferred });
+
+        const auditRef = db.collection('auditLogs').doc();
+        batch.set(auditRef, {
+          action: 'expense_ledger_visibility_backfilled',
+          collection: 'expenses',
+          docId: docSnap.id,
+          summary: `Added missing postedAt to existing expense so it appears in the ledger: ${data.category || data.sub || 'expense'}`,
+          before: { postedAt: null },
+          after: { postedAt: inferred },
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt: now
+        });
+
+        fixedCount++;
+        operations += 2;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+      if (operations > 0) await batch.commit();
+
+      alert(fixedCount === 0
+        ? 'No expense records were missing from the ledger - nothing to fix.'
+        : `Fixed ${fixedCount} expense record(s) - they will now appear in the Expenses ledger.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Fix failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Fix Missing Ledger Entries';
     }
   }
 

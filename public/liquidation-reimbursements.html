@@ -49,6 +49,7 @@
     .btn:disabled { background: #aaa; cursor: not-allowed; }
     .btn-secondary { background: #1a5276; }
     .btn-ghost { background: #7d8b94; }
+    .btn-danger { background: #5c1414; }
     .btn-small { padding: 7px 10px; font-size: 12px; }
     .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
     .summary-box { background: #fff7f7; border-left: 4px solid #8B0000; border-radius: 8px; padding: 14px; }
@@ -537,7 +538,12 @@
     }
 
     async function uploadReceiptForRequest(requestId, receiptFile) {
-      const receiptPath = `liquidation-receipts/${requestId}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
+      // The storage rule verifies ownership from this uid path segment
+      // directly (no Firestore lookup) - this function is only ever
+      // called by the request's own owner, so the current user's uid
+      // is always the correct one to embed here.
+      const uid = firebase.auth().currentUser.uid;
+      const receiptPath = `liquidation-receipts/${requestId}/${uid}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
       await writeAuditLog('receipt_uploaded', 'liquidationRequests', requestId, null,
@@ -756,6 +762,30 @@
       }
     }
 
+    async function deleteRequest(id) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete requests.');
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
+      // Deleting the request only removes this tracking/workflow record -
+      // it never touches expenses/income already recorded from a release
+      // or reconciliation, so the books stay accurate either way. Warn
+      // clearly when money has already moved so it isn't mistaken for
+      // "this will undo the payment."
+      const hasLinkedMoney = row.linkedExpenseId || row.returnedIncomeId || row.topupRequestId
+        || (row.classifiedExpenseIds && row.classifiedExpenseIds.length);
+      const warning = hasLinkedMoney
+        ? 'This request already has a released or reconciled expense/income record linked to it. Deleting it only removes this tracking entry - the actual expense/income stays in Financial Overview and Reports and must be corrected separately on the Expenses page if it was truly erroneous.\n\n'
+        : '';
+      if (!confirm(`${warning}Permanently delete "${row.title || ''}" (${row.requesterName || row.requesterRole || ''})? This cannot be undone.`)) return;
+      try {
+        await db.collection('liquidationRequests').doc(id).delete();
+        await writeAuditLog('liquidation_request_deleted', 'liquidationRequests', id, row, null, `Deleted request: ${row.title || id}`);
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
     let releaseTargetId = null;
     let reconcileTargetId = null;
     let liquidationTargetId = null;
@@ -825,6 +855,7 @@
           linkedLiquidationRequestId: row.id,
           budgetYear: now.slice(0, 4),
           expenseMonth: now.slice(0, 7),
+          postedAt: now,
           createdAt: now,
           updatedAt: now
         };
@@ -1053,7 +1084,17 @@
           updatedAt: now
         };
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
-        await writeAuditLog('liquidation_submitted', 'liquidationRequests', row.id, row, { ...row, ...after },
+        // writeAuditLog() writes via .add() (a create, not a merge-set), so
+        // FieldValue.delete() sentinels from `after` are invalid inside it -
+        // build a plain-value snapshot for the log instead of spreading
+        // `after` directly.
+        const auditAfter = {
+          ...row, ...after,
+          liquidationReturnedNotes: null,
+          liquidationReturnedBy: null,
+          liquidationReturnedAt: null
+        };
+        await writeAuditLog('liquidation_submitted', 'liquidationRequests', row.id, row, auditAfter,
           `Submitted liquidation for "${row.title || row.id}": spent ₱${fmt(total)} of ₱${fmt(row.amount)}`);
         await notifyRole('Treasurer', `${row.requesterName || row.requesterRole} submitted liquidation for "${row.title || ''}" — spent ₱${fmt(total)} of ₱${fmt(row.amount)}.`);
         closeLiquidationModal();
@@ -1192,6 +1233,7 @@
               linkedLiquidationRequestId: row.id,
               budgetYear: itemDate.slice(0, 4),
               expenseMonth: itemDate.slice(0, 7),
+              postedAt: now,
               createdAt: now,
               updatedAt: now
             };
@@ -1445,6 +1487,7 @@
         if (row.status === 'Liquidation Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="openReturnModal('${row.id}')">Return for Correction</button>`);
         }
+        actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
       } else if (isOwner(row)) {
         if (row.status === 'Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="cancelRequest('${row.id}')">Cancel</button>`);
