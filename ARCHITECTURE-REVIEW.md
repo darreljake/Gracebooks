@@ -17,10 +17,10 @@ GraceBooks is a finance + membership management system for **Tagaytay United Met
 | Android CI | `.github/workflows/android-apk.yml` | Builds a **debug** APK on every push to `main` that touches `capacitor.config.json`, `android/**`, or `package.json`, using a checked-in-as-secret debug keystore. Uploads as a 30-day GitHub Actions artifact — no Play Store / release-signing pipeline present. |
 | Firebase Firestore | Firebase's document DB | Security rules in `firestore.rules`, all client reads/writes gated by role. |
 | Firebase Storage | File uploads | Rules in `storage.rules`, three upload surfaces (receipts, project proofs, signatures). |
-| Firebase App Hosting | `apphosting.yaml` present | **Open question for Fable:** this config is for Cloud Run-backed apps (Next.js/Angular Universal, etc.) — there's no server code in this repo to back it. Likely a leftover `firebase init` artifact, never actually used. Worth confirming and removing if dead. |
-| Node/npm | `package.json`, `package-lock.json` | Exists **only** to support the Capacitor Android build (`@capacitor/android`, `@capacitor/core`, dev deps for `cap sync`/`cap open`). The web app itself still has zero npm dependencies. `package.json` also declares a `guardrails` script (`node scripts/guardrails/check-storage-rules.js`) — **that script file does not exist in the repo** (`scripts/` directory not found). Broken/aspirational tooling reference. |
+| ~~Firebase App Hosting~~ | `apphosting.yaml` | **Deleted.** Confirmed unused — this config is for Cloud Run-backed apps (Next.js/Angular Universal, etc.) and there's no server code in this repo to back it. |
+| Node/npm | `package.json`, `package-lock.json` | Exists **only** to support the Capacitor Android build (`@capacitor/android`, `@capacitor/core`, dev deps for `cap sync`/`cap open`). The web app itself still has zero npm dependencies. Its `guardrails` script (pointed at a nonexistent `scripts/guardrails/check-storage-rules.js`) has been removed. |
 
-**Also present at repo root, apparently dead:** `index.html` and `404.html` at the **repository root** (not in `public/`) are the unmodified Firebase CLI scaffold templates from `firebase init hosting` (Firebase's stock "Welcome" and "Page Not Found" pages). Since `firebase.json`'s `hosting.public` is `"public"`, Firebase Hosting serves from `public/`, so these root files are **never actually deployed or served** — dead clutter that could confuse a future contributor into thinking they're live.
+**Also previously present at repo root, now deleted:** `index.html` and `404.html` at the repository root were the unmodified Firebase CLI scaffold templates from `firebase init hosting`. Since `firebase.json`'s `hosting.public` is `"public"`, Firebase Hosting serves from `public/`, so these root files were never actually deployed or served — confirmed dead and removed.
 
 ## 3. Auth & role model
 
@@ -114,7 +114,7 @@ Every page lives in `public/`, is a standalone HTML file, and (with listed excep
 | `reports.html` | 1568 | Analytics/KPIs, trend graphs, **also has its own `churchObligations` CRUD** | `income`, `expenses`, `attendance`, `churchObligations` | — |
 | `print-report.html` | 2135 | Consolidated printable report (monthly/annual/special-project) | `settings.*` (4 docs), `members`, `income`, `expenses`, `churchObligations`, `specialProjects*` (3), `reportReviews` (read) | — |
 | `report-workflow.html` | 882 | Approval-chain state machine + canvas signature capture | `reportReviews`, `userSignatures`, `auditLogs`, `notifications` | — |
-| `review-confirm.html` | 825 | **Unreachable/dead** — no Firestore calls at all, nothing links to it | — (sessionStorage only, keys don't match tithe-entry.html's actual scheme) | `tithe-entry.html`, `expenses.html` (back buttons; nothing links in) |
+| ~~`review-confirm.html`~~ | 825 | **Deleted.** Was unreachable/dead — no Firestore calls, nothing linked to it, sessionStorage keys didn't match tithe-entry.html's actual scheme. Removed after this review. | — | — |
 | `special-projects.html` | 1486 | Special-project fund ledger, linked expense/income entries | `specialProjects*` (3), `expenses`, `income`, `budgets`, `auditLogs` | — |
 | `budget-vs-actual.html` | 1332 | Annual budgeting + variance reporting | `budgets`, `settings.accountStructure`, `settings.yearsConfig`, `income`, `expenses` | — |
 | `connectional-ministries.html` | 702 | Obligation tracker — **parallel implementation of `reports.html`'s obligations feature, plus delete** | `churchObligations`, `auditLogs` | — |
@@ -152,11 +152,9 @@ flowchart LR
     TE -->|on submit| IL
     RW -.->|reads reportReviews| PR
     SP -.->|reads printReportPublished| PR
-    RC[review-confirm.html]:::dead -.->|nothing links here| Login
-    classDef dead fill:#f8d7da,stroke:#a93226,color:#611
 ```
 
-*(dotted arrows = data dependency without a hyperlink; `review-confirm.html` is shown greyed/dead — orphaned.)*
+*(dotted arrows = data dependency without a hyperlink. `review-confirm.html`, previously shown here as an orphaned dead page, was deleted after this review.)*
 
 ### 6.2 Money flow (where a peso actually goes)
 
@@ -221,20 +219,21 @@ stateDiagram-v2
 
 ## 7. Known issues & flaws found during this review
 
-Ranked roughly by real-world impact.
+Ranked roughly by real-world impact. **Update:** items 1, 5, 9 (partially), and 10 were actioned after this review; see the strikethrough/status notes below and `PHASE-PLAN.md`'s "Architecture Review Follow-up" section for exact detail. A new finding (0, below) surfaced while fixing item 9's `guardrails` script gap.
 
-1. **`income-log.html` runs on Firebase SDK v8.10.1** (the old namespaced `firebase-app.js`/`firebase-firestore.js`/`firebase-auth.js`, not even the v9+ "compat" library used by every other page). Every other page uses compat v10.7.1. This is a genuine, unexplained version fork — worth checking whether it still authenticates/queries correctly against the current Firebase project config, since two SDK majors apart can have subtle behavioral differences.
-2. **`review-confirm.html` is dead code.** Zero Firestore calls, no auth gate at all, operates on `sessionStorage` keys that don't match what `tithe-entry.html` actually uses, and nothing links to it. Its UI copy claims to "post to the Income Log and Financial Overview" but doesn't — if anyone ever finds this page by URL guess, it's actively misleading. Candidate for deletion or a decision about what it was supposed to become.
-3. **`reports.html` and `connectional-ministries.html` both fully own `churchObligations`.** Two independently-maintained CRUD implementations of the same collection, with `connectional-ministries.html` being the more complete one (has delete; `reports.html` doesn't). A fix applied to one won't propagate to the other — classic consolidation risk.
-4. **The `.treasurer-only { display: none; }` + `el.style.display = ''` bug pattern** (found and fixed in `liquidation-reimbursements.html` this session — setting an inline style to `''` doesn't override a CSS class's `display: none`). I checked every other page for the same pattern; found no other live instance, but this class of bug (CSS-default vs. JS-toggle mismatch) is exactly the kind of thing worth a second, independent pass.
-5. **Fragile fund-bucketing fallback in `financial-overview.html`.** Its listeners resolve which account an expense/income doc belongs to via `data.targetAccId || (data.payment === 'Bank Transfer' ? 'cash-bank' : data.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand')`. Any page that writes an expense/income doc **without** explicitly setting `targetAccId` silently miscategorizes into "Cash on Hand" unless `payment` happens to equal those exact two literal strings. This was already found and patched for `liquidation-reimbursements.html` this session (all its writes now set `targetAccId` explicitly) — but the underlying fallback in `financial-overview.html` itself is still fragile for **any future write path** that forgets to set it. Worth Fable auditing `expenses.html`'s and `special-projects.html`'s own expense/income writes for the same gap.
+0. **NEW — `storage.rules` hardcodes one Treasurer's Auth UID.** `expense-receipts` and `project-proofs` gate on `isTreasurer() { return request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3'; }` instead of role-based `hasRole(['Treasurer'])`, which the same file's own `liquidation-receipts` path already uses successfully. This predates the liquidation/reimbursement work in this repo — not a merge accident. **Deliberately left as-is**: an earlier standing note in `PHASE-PLAN.md` records that `firestore.get()` inside Storage rules previously caused receipt uploads to fail outright, which is the likely reason the UID was hardcoded as a workaround; changing the two most-used receipt paths without live testing risked silently breaking Treasurer receipt uploads. If the Treasurer's Auth account is ever recreated, this will need fixing then.
+1. ~~`income-log.html` runs on Firebase SDK v8.10.1~~ **Fixed** — upgraded to the same v10.7.1 compat build as every other page (drop-in script-tag swap; the page only used namespaced-style calls that compat preserves).
+2. ~~`review-confirm.html` is dead code.~~ **Deleted** — confirmed zero Firestore calls, no auth gate, unreachable, misleading UI copy.
+3. **`reports.html` and `connectional-ministries.html` both fully own `churchObligations`.** Two independently-maintained CRUD implementations of the same collection, with `connectional-ministries.html` being the more complete one (has delete; `reports.html` doesn't). **Decision: keep both for now** — not consolidated.
+4. **The `.treasurer-only { display: none; }` + `el.style.display = ''` bug pattern** (found and fixed in `liquidation-reimbursements.html` this session — setting an inline style to `''` doesn't override a CSS class's `display: none`). Checked every other page for the same pattern; found no other live instance, but this class of bug (CSS-default vs. JS-toggle mismatch) is exactly the kind of thing worth a second, independent pass.
+5. **Fragile fund-bucketing fallback in `financial-overview.html`.** Its listeners resolve which account an expense/income doc belongs to via `data.targetAccId || (data.payment === 'Bank Transfer' ? 'cash-bank' : data.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand')`. Any write **without** explicitly setting `targetAccId` silently miscategorizes into "Cash on Hand". **Fixed** in `expenses.html`'s two expense-writing paths (manual entry, batch payroll) — both now set `targetAccId`. `special-projects.html` was audited and found already correct. A historical-data backfill tool (`audit-log.html` → "Fix Missing Fund Assignment", Treasurer-only) was also added to correct existing `expenses` docs written before this fix; it's idempotent and safe to re-run. Not yet audited: whether `income` docs have an analogous gap on their `targetAccount` field.
 6. **No client-side role gate on several pages that should probably have one for UX consistency**, even though Firestore rules are the real enforcement: `members.html`, `budget-vs-actual.html`, `member-report.html`, `income-log.html`, `print-report.html`. Compare to `special-projects.html`/`connectional-ministries.html`'s consistent `roleIs(...)` + `can-manage` CSS class pattern. Not a security hole (rules cover it), but a wrong role reaching these pages via direct URL gets silent Firestore permission errors instead of a clear "you can't do this" message.
 7. **Firestore `testingAccessOpen()` time-bomb** expires 2027-01-01 with no visible replacement plan yet.
-8. **App Check is wired but not activated** (empty site key placeholder) — tracked as a known manual step, not a surprise, but still means the rate-limiting/scripted-abuse protection isn't actually live yet.
-9. **No automated tests, linting, or CI for the web app** — the only CI (`android-apk.yml`) builds the Android debug APK, nothing validates the Firestore/Storage rules or page JS before merge. `package.json`'s `guardrails` script (`node scripts/guardrails/check-storage-rules.js`) is referenced but the script file doesn't exist in the repo.
-10. **`apphosting.yaml` and root-level `index.html`/`404.html`** appear to be unused `firebase init` scaffold leftovers (see §2) — low risk, but worth confirming and cleaning up so the repo layout matches what's actually deployed.
+8. **App Check is wired but not activated** (empty site key placeholder) — requires a manual Firebase Console step I have no access to perform; tracked as a known gap, not a surprise.
+9. **No automated tests, linting, or CI for the web app** — the only CI (`android-apk.yml`) builds the Android debug APK, nothing validates the Firestore/Storage rules or page JS before merge. ~~`package.json`'s `guardrails` script referenced a file that doesn't exist~~ **Fixed** — the dead script entry was removed. A real automated storage-rules guardrail was not built (the finding-0 hardcoded-UID pattern would need a deliberate exception if one is written later, since it's now a known/accepted deviation).
+10. ~~`apphosting.yaml` and root-level `index.html`/`404.html` appear to be unused scaffold leftovers~~ **Deleted** — confirmed never served (Hosting serves from `public/`).
 11. **No pagination on several list reads** (e.g. `audit-log.html` caps at 500 via `.limit()`, but pages like `expenses.html`'s ledger and `special-projects.html` fetch full collections with `.get()`) — fine at current data volume for a single church, but a scale note worth having on record.
-12. **Role names are free-text strings in Firestore with no enum/validation**, matched by exact string comparison throughout the client code (occasionally case-normalized, e.g. `tithe-entry.html`'s `.toLowerCase().trim()`, but most pages compare raw `profile.role === 'Treasurer'`). A typo'd role in a `userProfiles` doc silently breaks all access for that user with no clear error — this is the same root-cause *class* of bug as the "Assign Cash Advance never visible" fix earlier this session, just at the data layer instead of the CSS layer.
+12. **Role names are free-text strings in Firestore with no enum/validation**, matched by exact string comparison throughout the client code (occasionally case-normalized, e.g. `tithe-entry.html`'s `.toLowerCase().trim()`, but most pages compare raw `profile.role === 'Treasurer'`). A typo'd role in a `userProfiles` doc silently breaks all access for that user with no clear error — the same root-cause *class* of bug as finding 4, just at the data layer instead of the CSS layer.
 
 ## 8. Missing / deferred features (from `PHASE-PLAN.md` + this review)
 
@@ -242,15 +241,18 @@ Ranked roughly by real-world impact.
 - **Email notifications** — only in-app (dashboard bell) notifications exist; no provider chosen yet (SendGrid, Firebase Extensions, etc.).
 - **Official membership database import** (CSV mapping, duplicate detection, rollback-safe audit log) — explicitly deferred.
 - **Android release signing / Play Store pipeline** — only a debug APK build exists; no path to a signed release build or store listing.
-- **Consolidation of the duplicate `churchObligations` UIs** (`reports.html` vs `connectional-ministries.html`) — not tracked anywhere as a to-do, found during this review.
-- **Decision on `review-confirm.html`** — delete, or finish wiring it to something real.
-- **`apphosting.yaml` / root scaffold files** — confirm unused and remove, or document why they're kept.
+- ~~Consolidation of the duplicate `churchObligations` UIs~~ — decided: keep both for now.
+- ~~Decision on `review-confirm.html`~~ — deleted.
+- ~~`apphosting.yaml` / root scaffold files~~ — deleted.
+- **`storage.rules` hardcoded-UID cleanup** — deliberately deferred (§7.0); needs a tested fix, not a blind one.
+- **`income` docs' `targetAccount` field** — not yet audited for the same gap as §7.5; scope was limited to `expenses` this round.
 
 ## 9. Suggested focus areas for Fable's review
 
-1. Audit `expenses.html` and `special-projects.html`'s own expense/income-writing code paths for the same `targetAccId` fund-bucketing gap already fixed in `liquidation-reimbursements.html` (§7.5).
-2. Decide the fate of `review-confirm.html` and the duplicate `churchObligations` implementations — both are consolidation/cleanup opportunities with no code-correctness risk either way.
-3. Verify `income-log.html`'s old SDK version still functions correctly against the current Firestore rules and Firebase project, or upgrade it to match the rest of the app.
+1. ~~Audit `expenses.html` and `special-projects.html`~~ **Done** — see §7.5. Consider auditing `income`-writing paths (`tithe-entry.html`, `financial-overview.html`'s transfer function) for the analogous `targetAccount` gap, which was not checked this round.
+2. `churchObligations` duplication — decision made (keep both); no further action unless that changes.
+3. ~~Verify `income-log.html`'s old SDK~~ **Done** — upgraded.
 4. Do an independent pass for the CSS-default vs. JS-toggle visibility bug class (§7.4) — I checked but a second set of eyes on a 19k-line, no-shared-component codebase is worth it.
 5. Consider whether role validation should move from free-text string comparison to something safer (enum check with a clear error state) given how easily a typo silently breaks access (§7.12).
-6. Confirm whether `apphosting.yaml`, root `index.html`/`404.html`, and the `guardrails` npm script reference are all genuinely dead, or whether something depends on them that this review missed.
+6. ~~Confirm whether `apphosting.yaml`, root scaffold, and the `guardrails` reference are dead~~ **Done** — confirmed and removed.
+7. **New:** decide whether/how to fix `storage.rules`' hardcoded-UID Treasurer check (§7.0) — needs a live test of receipt upload/replace/delete after switching to `hasRole(['Treasurer'])` before it can be safely changed.

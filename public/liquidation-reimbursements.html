@@ -328,13 +328,43 @@
       <div class="muted" style="margin-top:6px;">Category is a suggestion for the Treasurer's review — the Treasurer has final say when reconciling.</div>
       <div class="liq-balance" id="liq-balance"></div>
       <div class="section-label">Receipts / Proof</div>
-      <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple />
-      <div class="muted">Attach the official receipts covering the items above (images or PDF, max 5 MB each).</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple onchange="renderLiqReceiptsPreview()" style="flex:1; min-width:200px;" />
+        <button type="button" class="btn btn-secondary btn-small" onclick="openLiqCameraModal()">📷 Take Photo</button>
+      </div>
+      <div class="muted">Attach the official receipts covering the items above (images or PDF, max 5 MB each). Attach as many as you need, or take photos directly with your camera.</div>
+      <div id="liq-receipts-preview" style="margin-top:8px;"></div>
       <div class="section-label">Notes</div>
       <textarea id="liq-notes" placeholder="Explain any unspent balance or overspending, lost receipts, etc."></textarea>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeLiquidationModal()">Cancel</button>
         <button class="btn" id="liq-submit-btn" onclick="submitLiquidation()">Submit Liquidation</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="liqCameraModal">
+    <div class="modal-box" style="max-width:480px;">
+      <h3>Take a Photo</h3>
+      <video id="liq-camera-video" autoplay playsinline style="width:100%; border-radius:8px; background:#000; display:block;"></video>
+      <canvas id="liq-camera-canvas" style="display:none;"></canvas>
+      <div class="muted" id="liq-camera-count" style="margin-top:8px;">0 photo(s) captured this session.</div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeLiqCameraModal()">Done</button>
+        <button class="btn" onclick="captureLiqReceiptPhoto()">Capture</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="returnModal">
+    <div class="modal-box">
+      <h3>Return for Correction</h3>
+      <div class="muted" id="return-context" style="margin-bottom:10px;"></div>
+      <label>Reason (required)</label>
+      <textarea id="return-notes" placeholder="Explain what's missing or needs fixing, e.g. missing receipts, wrong amount, incomplete items."></textarea>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeReturnModal()">Cancel</button>
+        <button class="btn" id="return-confirm-btn" onclick="confirmReturn()">Send Back for Correction</button>
       </div>
     </div>
   </div>
@@ -477,7 +507,14 @@
 
     function validateReceiptFile(receiptFile) {
       if (!receiptFile) return true;
-      const isAllowed = receiptFile.type.startsWith('image/') || receiptFile.type === 'application/pdf';
+      // Some mobile browsers report an empty/generic MIME type for
+      // camera-captured photos (a common cause of "attachment won't
+      // attach" on phones, especially iOS HEIC photos). Fall back to
+      // the file extension in that case instead of rejecting a
+      // legitimate photo outright.
+      const hasRecognizedType = receiptFile.type && (receiptFile.type.startsWith('image/') || receiptFile.type === 'application/pdf');
+      const knownExtension = /\.(jpe?g|png|gif|webp|heic|heif|bmp|pdf)$/i.test(receiptFile.name || '');
+      const isAllowed = hasRecognizedType || (!receiptFile.type && knownExtension);
       if (!isAllowed) {
         alert(`"${receiptFile.name}" must be an image or PDF file.`);
         return false;
@@ -826,12 +863,22 @@
       const row = requestRows.find(item => item.id === id);
       if (!row || !isOwner(row) || row.status !== 'Released' || !isCashAdvance(row)) return;
       liquidationTargetId = id;
+      const returnNotice = row.liquidationReturnedNotes
+        ? `<div class="liq-balance" style="border-left-color:#a93226; margin-top:10px;"><strong>Returned for correction${row.liquidationReturnedBy ? ' by ' + escapeHtml(row.liquidationReturnedBy) : ''}:</strong> ${escapeHtml(row.liquidationReturnedNotes)}</div>`
+        : '';
       document.getElementById('liq-context').innerHTML =
-        `Liquidating cash advance <strong>"${escapeHtml(row.title || '')}"</strong> — released amount <strong>₱${fmt(row.amount)}</strong> on ${escapeHtml((row.releasedAt || '').slice(0, 10))}. List what was actually spent and attach the receipts.`;
+        `Liquidating cash advance <strong>"${escapeHtml(row.title || '')}"</strong> — released amount <strong>₱${fmt(row.amount)}</strong> on ${escapeHtml((row.releasedAt || '').slice(0, 10))}. List what was actually spent and attach the receipts.` + returnNotice;
       document.getElementById('liq-items').innerHTML = '';
       document.getElementById('liq-receipts').value = '';
       document.getElementById('liq-notes').value = '';
-      addLiqItem();
+      // If this is a resubmission after being returned, restore the
+      // previous entries so she can fix mistakes instead of starting over.
+      if (row.liquidationItems && row.liquidationItems.length) {
+        row.liquidationItems.forEach(item => addLiqItem(item));
+      } else {
+        addLiqItem();
+      }
+      renderLiqReceiptsPreview();
       updateLiqBalance();
       document.getElementById('liquidationModal').classList.add('open');
     }
@@ -841,15 +888,105 @@
       document.getElementById('liquidationModal').classList.remove('open');
     }
 
-    function addLiqItem() {
+    function addLiqItem(prefill) {
+      const item = prefill || {};
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><input type="date" class="liq-date" value="${new Date().toISOString().slice(0, 10)}" /></td>
-        <td><input type="text" class="liq-desc" placeholder="e.g. Bus fare, meals, supplies" /></td>
-        <td><input type="number" class="liq-amt" min="0" step="0.01" placeholder="0.00" oninput="updateLiqBalance()" /></td>
-        <td><select class="liq-cat">${categoryDropdownHTML('')}</select></td>
+        <td><input type="date" class="liq-date" value="${escapeHtml(item.date || new Date().toISOString().slice(0, 10))}" /></td>
+        <td><input type="text" class="liq-desc" placeholder="e.g. Bus fare, meals, supplies" value="${escapeHtml(item.description || '')}" /></td>
+        <td><input type="number" class="liq-amt" min="0" step="0.01" placeholder="0.00" value="${item.amount || ''}" oninput="updateLiqBalance()" /></td>
+        <td><select class="liq-cat">${categoryDropdownHTML(item.suggestedCategory || '')}</select></td>
         <td><button class="btn btn-ghost btn-small" onclick="this.closest('tr').remove(); updateLiqBalance();">✕</button></td>`;
       document.getElementById('liq-items').appendChild(tr);
+    }
+
+    /* ---------- Receipt attachments: multi-file preview + camera capture ---------- */
+
+    function getLiqReceiptFiles() {
+      return Array.from(document.getElementById('liq-receipts').files || []);
+    }
+
+    function setLiqReceiptFiles(files) {
+      const dataTransfer = new DataTransfer();
+      files.forEach(file => dataTransfer.items.add(file));
+      document.getElementById('liq-receipts').files = dataTransfer.files;
+    }
+
+    function renderLiqReceiptsPreview() {
+      const files = getLiqReceiptFiles();
+      const wrap = document.getElementById('liq-receipts-preview');
+      if (!files.length) {
+        wrap.innerHTML = '<div class="muted">No files attached yet.</div>';
+        return;
+      }
+      wrap.innerHTML = files.map((file, index) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; background:#f7f9fb; border:1px solid #edf2f5; border-radius:6px; margin-bottom:4px; font-size:12px;">
+          <span>📎 ${escapeHtml(file.name)} <span class="muted">(${Math.max(1, Math.round(file.size / 1024))} KB)</span></span>
+          <button type="button" class="btn btn-ghost btn-small" onclick="removeLiqReceiptFile(${index})">Remove</button>
+        </div>`).join('');
+    }
+
+    function removeLiqReceiptFile(index) {
+      const files = getLiqReceiptFiles();
+      files.splice(index, 1);
+      setLiqReceiptFiles(files);
+      renderLiqReceiptsPreview();
+    }
+
+    let liqCameraStream = null;
+    let liqCapturedCount = 0;
+
+    async function openLiqCameraModal() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Camera capture is not available in this browser. Please use file upload instead.');
+        return;
+      }
+      try {
+        liqCameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        const video = document.getElementById('liq-camera-video');
+        video.srcObject = liqCameraStream;
+        liqCapturedCount = 0;
+        document.getElementById('liq-camera-count').textContent = '0 photo(s) captured this session.';
+        document.getElementById('liqCameraModal').classList.add('open');
+      } catch (error) {
+        console.error(error);
+        alert('Unable to open camera. Please allow camera access or use file upload.');
+      }
+    }
+
+    function closeLiqCameraModal() {
+      if (liqCameraStream) {
+        liqCameraStream.getTracks().forEach(track => track.stop());
+        liqCameraStream = null;
+      }
+      document.getElementById('liq-camera-video').srcObject = null;
+      document.getElementById('liqCameraModal').classList.remove('open');
+    }
+
+    function captureLiqReceiptPhoto() {
+      const video = document.getElementById('liq-camera-video');
+      if (!video.videoWidth || !video.videoHeight) return alert('Camera is still loading. Please try again.');
+
+      const canvas = document.getElementById('liq-camera-canvas');
+      const maxWidth = 1600;
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+        if (!blob) return alert('Unable to capture photo. Please try again.');
+        const file = new File([blob], `receipt-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`, { type: 'image/jpeg' });
+        const files = getLiqReceiptFiles();
+        files.push(file);
+        setLiqReceiptFiles(files);
+        renderLiqReceiptsPreview();
+        liqCapturedCount++;
+        document.getElementById('liq-camera-count').textContent = `${liqCapturedCount} photo(s) captured this session.`;
+      }, 'image/jpeg', 0.82);
     }
 
     function readLiqItems() {
@@ -908,6 +1045,11 @@
           liquidationNotes: notes,
           liquidationReceipts: (row.liquidationReceipts || []).concat(uploads),
           liquidationSubmittedAt: now,
+          // Clear any prior "returned for correction" notice now that
+          // she's resubmitted - the audit log keeps the permanent record.
+          liquidationReturnedNotes: firebase.firestore.FieldValue.delete(),
+          liquidationReturnedBy: firebase.firestore.FieldValue.delete(),
+          liquidationReturnedAt: firebase.firestore.FieldValue.delete(),
           updatedAt: now
         };
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
@@ -1137,6 +1279,60 @@
       button.textContent = 'Confirm Reconciled';
     }
 
+    /* ---------- Return for correction ---------- */
+
+    let returnTargetId = null;
+
+    function openReturnModal(id) {
+      if (!roleIs('Treasurer')) return;
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
+      returnTargetId = id;
+      document.getElementById('return-context').innerHTML =
+        `Sending "<strong>${escapeHtml(row.title || '')}</strong>" back to <strong>${escapeHtml(row.requesterName || row.requesterRole || '')}</strong> so they can fix and resubmit. Their existing entries and receipts stay in place for editing.`;
+      document.getElementById('return-notes').value = '';
+      document.getElementById('returnModal').classList.add('open');
+    }
+
+    function closeReturnModal() {
+      returnTargetId = null;
+      document.getElementById('returnModal').classList.remove('open');
+    }
+
+    async function confirmReturn() {
+      if (!returnTargetId) return;
+      const row = requestRows.find(item => item.id === returnTargetId);
+      if (!row) return closeReturnModal();
+      const reason = document.getElementById('return-notes').value.trim();
+      if (!reason) return alert('Please explain what needs to be corrected.');
+
+      const button = document.getElementById('return-confirm-btn');
+      button.disabled = true;
+      button.textContent = 'Sending...';
+      try {
+        const now = new Date().toISOString();
+        // Send it back to Released so she can reopen "Submit Liquidation"
+        // and fix it - her existing items/receipts are left in place.
+        const after = {
+          status: 'Released',
+          liquidationReturnedNotes: reason,
+          liquidationReturnedBy: activeProfile.name || 'Treasurer',
+          liquidationReturnedAt: now,
+          updatedAt: now
+        };
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_returned_for_correction', 'liquidationRequests', row.id, row, { ...row, ...after },
+          `Returned liquidation for correction: ${row.title || row.id}`);
+        await notifyRole(row.requesterRole, `Your liquidation for "${row.title || ''}" was returned for correction: ${reason}`);
+        closeReturnModal();
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Send Back for Correction';
+    }
+
     /* ---------- Details ---------- */
 
     function openDetailsModal(id) {
@@ -1209,6 +1405,7 @@
         ${itemsHtml}
         ${balanceHtml}
         ${row.liquidationNotes ? `<div class="section-label">Liquidation Notes</div><div class="muted">${escapeHtml(row.liquidationNotes)}</div>` : ''}
+        ${row.liquidationReturnedNotes ? `<div class="section-label">Returned for Correction</div><div class="muted">${escapeHtml(row.liquidationReturnedNotes)} — ${escapeHtml((row.liquidationReturnedAt || '').slice(0, 10))} by ${escapeHtml(row.liquidationReturnedBy || '')}</div>` : ''}
         <div class="section-label">Receipts</div>
         ${receiptsHtml}
         ${row.reconciliationNotes ? `<div class="section-label">Reconciliation Notes</div><div class="muted">${escapeHtml(row.reconciliationNotes)}</div>` : ''}`;
@@ -1244,6 +1441,9 @@
         }
         if (row.status === 'Released' || row.status === 'Liquidation Submitted') {
           actions.push(`<button class="btn btn-secondary btn-small" onclick="openReconcileModal('${row.id}')">${row.status === 'Liquidation Submitted' ? 'Review & Reconcile' : 'Mark Reconciled'}</button>`);
+        }
+        if (row.status === 'Liquidation Submitted') {
+          actions.push(`<button class="btn btn-ghost btn-small" onclick="openReturnModal('${row.id}')">Return for Correction</button>`);
         }
       } else if (isOwner(row)) {
         if (row.status === 'Submitted') {

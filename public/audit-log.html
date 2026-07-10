@@ -40,6 +40,10 @@
       display: none; background: #7d3c98; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-fix-fund {
+      display: none; background: #b9770e; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
     .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
@@ -108,6 +112,7 @@
     <div class="card-header">
       <h3>Activity History</h3>
       <div>
+        <button class="btn-fix-fund" id="btn-fix-fund" onclick="fixMissingFundAssignment()">Fix Missing Fund Assignment</button>
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
         <button class="btn-export" onclick="exportCSV()">Export CSV</button>
       </div>
@@ -132,6 +137,8 @@
         <option value="receipt_removed">Receipt Removed</option>
         <option value="expense_backfilled">Existing Expense</option>
         <option value="income_backfilled">Existing Income</option>
+        <option value="expense_fund_assignment_backfilled">Fund Assignment Fixed</option>
+        <option value="liquidation_returned_for_correction">Liquidation Returned</option>
         <option value="income_created">Income Created</option>
         <option value="attendance_saved">Attendance Saved</option>
         <option value="obligation_created">Obligation Created</option>
@@ -222,6 +229,8 @@
       receipt_removed: 'Receipt Removed',
       expense_backfilled: 'Existing Expense',
       income_backfilled: 'Existing Income',
+      expense_fund_assignment_backfilled: 'Fund Assignment Fixed',
+      liquidation_returned_for_correction: 'Liquidation Returned',
       income_created: 'Income Created',
       attendance_saved: 'Attendance Saved',
       obligation_created: 'Obligation Created'
@@ -238,7 +247,10 @@
   async function loadAuditLogs() {
     try {
       const profile = window.graceBooksUser || await window.graceBooksAuthReady;
-      if (profile.role === 'Treasurer') document.getElementById('btn-backfill').style.display = 'inline-block';
+      if (profile.role === 'Treasurer') {
+        document.getElementById('btn-backfill').style.display = 'inline-block';
+        document.getElementById('btn-fix-fund').style.display = 'inline-block';
+      }
       const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
       allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       populateActorFilter();
@@ -349,6 +361,88 @@
     } finally {
       button.disabled = false;
       button.textContent = 'Backfill Existing Records';
+    }
+  }
+
+  // financial-overview.html resolves an expense's fund via
+  // data.targetAccId, falling back to 'cash-hand' unless payment is
+  // literally 'Bank Transfer'/'Petty Cash'. Any expense written before
+  // targetAccId was added to a page's write payload silently shows up
+  // under Cash on Hand regardless of its real payment fund. This
+  // one-time tool finds those and fills in the correct targetAccId
+  // from the expense's own payment field. Safe to re-run - only
+  // touches docs that are still missing targetAccId.
+  const VALID_FUND_IDS = ['cash-hand', 'cash-bank', 'petty-cash', 'building', 'mission', 'investment'];
+
+  function inferTargetAccId(payment) {
+    if (VALID_FUND_IDS.includes(payment)) return payment;
+    if (payment === 'Bank Transfer') return 'cash-bank';
+    if (payment === 'Petty Cash') return 'petty-cash';
+    return 'cash-hand';
+  }
+
+  async function fixMissingFundAssignment() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this fix.');
+    if (!confirm('This scans every expense record for a missing fund assignment and fills it in from the payment field. Expenses that already have a fund assigned are left untouched. Continue?')) return;
+
+    const button = document.getElementById('btn-fix-fund');
+    button.disabled = true;
+    button.textContent = 'Fixing...';
+
+    try {
+      const expenseSnap = await db.collection('expenses').get();
+      const actor = firebase.auth().currentUser;
+      const now = new Date().toISOString();
+
+      let fixedCount = 0;
+      let reassignedCount = 0; // corrected to a fund other than the Cash on Hand default
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+
+      for (const docSnap of expenseSnap.docs) {
+        const data = docSnap.data();
+        if (data.targetAccId) continue;
+
+        const inferred = inferTargetAccId(data.payment);
+        batch.update(docSnap.ref, { targetAccId: inferred });
+
+        const auditRef = db.collection('auditLogs').doc();
+        batch.set(auditRef, {
+          action: 'expense_fund_assignment_backfilled',
+          collection: 'expenses',
+          docId: docSnap.id,
+          summary: `Assigned missing fund (${inferred}) to existing expense: ${data.category || data.sub || 'expense'}`,
+          before: { targetAccId: null, payment: data.payment || null },
+          after: { targetAccId: inferred },
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt: now
+        });
+
+        fixedCount++;
+        if (inferred !== 'cash-hand') reassignedCount++;
+        operations += 2;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+      if (operations > 0) await batch.commit();
+
+      alert(fixedCount === 0
+        ? 'No expense records were missing a fund assignment - nothing to fix.'
+        : `Fixed ${fixedCount} expense record(s). ${reassignedCount} were moved out of the default Cash on Hand bucket into their real fund.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Fix failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Fix Missing Fund Assignment';
     }
   }
 
