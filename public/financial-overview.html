@@ -1541,29 +1541,42 @@ function openBeginModal() {
     const dateStr = new Date().toISOString();
 
     try {
+      // Both sides of a transfer must land together or not at all - two
+      // separate .add() calls here previously meant a network hiccup or
+      // closed tab between them could deduct from the source account
+      // without ever crediting the destination, silently corrupting both
+      // balances. A batch guarantees both writes commit atomically.
+      const batch = db.batch();
+
       // 2. I-save sa Expenses (Deduction sa source)
-      await db.collection("expenses").add({
+      const expenseRef = db.collection("expenses").doc();
+      batch.set(expenseRef, {
         amount: amount,
         category: "Transfer",
         sub: desc,
-        payment: fromId, 
-        targetAccId: fromId, 
+        payment: fromId,
+        targetAccId: fromId,
         type: 'transfer',
         date: dateStr,
-        toAccount: toAcc.name 
+        postedAt: dateStr,
+        toAccount: toAcc.name
       });
 
       // 3. I-save sa Income (Addition sa destination)
-      await db.collection("income").add({
+      const incomeRef = db.collection("income").doc();
+      batch.set(incomeRef, {
         amount: amount,
         member: desc,
         payment: "Transfer",
         targetAccount: toId,
-        targetAccId: toId, 
+        targetAccId: toId,
         type: 'transfer',
         date: dateStr,
-        fromAccount: fromAcc.name 
+        postedAt: dateStr,
+        fromAccount: fromAcc.name
       });
+
+      await batch.commit();
 
       // PANSININ: Inalis na natin yung manual addition dito.
       // Firebase na ang bahalang mag-trigger ng update sa UI natin!
