@@ -52,6 +52,10 @@
       display: none; background: #a93226; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-fix-advance {
+      display: none; background: #117a65; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
     .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
@@ -124,6 +128,7 @@
         <button class="btn-fix-fund" id="btn-fix-fund" onclick="fixMissingFundAssignment()">Fix Missing Fund Assignment</button>
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
         <button class="btn-diagnose" id="btn-diagnose-cash" onclick="diagnoseCashMismatch()">Diagnose Cash Mismatch</button>
+        <button class="btn-fix-advance" id="btn-fix-advance" onclick="fixCashAdvanceReturnType()">Fix Advance Return Type</button>
         <button class="btn-export" onclick="exportCSV()">Export CSV</button>
       </div>
     </div>
@@ -154,6 +159,7 @@
         <option value="income_created">Income Created</option>
         <option value="attendance_saved">Attendance Saved</option>
         <option value="obligation_created">Obligation Created</option>
+        <option value="income_type_corrected">Income Type Corrected</option>
       </select>
       <select id="filter-actor" onchange="applyFilters()">
         <option value="">All Users</option>
@@ -257,7 +263,8 @@
       liquidation_request_deleted: 'Liquidation Request Deleted',
       income_created: 'Income Created',
       attendance_saved: 'Attendance Saved',
-      obligation_created: 'Obligation Created'
+      obligation_created: 'Obligation Created',
+      income_type_corrected: 'Income Type Corrected'
     }[action] || action || 'Activity';
   }
 
@@ -276,6 +283,7 @@
         document.getElementById('btn-fix-fund').style.display = 'inline-block';
         document.getElementById('btn-fix-ledger').style.display = 'inline-block';
         document.getElementById('btn-diagnose-cash').style.display = 'inline-block';
+        document.getElementById('btn-fix-advance').style.display = 'inline-block';
       }
       const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
       allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -627,6 +635,73 @@
     } finally {
       button.disabled = false;
       button.textContent = 'Fix Missing Ledger Entries';
+    }
+  }
+
+  // income docs created by liquidation-reimbursements.html before the
+  // 'Cash Advance Return' type-fix used type='Cash Advance Return', which
+  // is treated as ordinary income and inflates Reports/Print Report totals.
+  // The fix changed new docs to type='transfer' (a balance-only movement
+  // excluded from income totals everywhere), but was not retroactive.
+  // This one-time tool corrects existing docs still carrying the old type.
+  // Safe to re-run — only touches docs still using 'Cash Advance Return'.
+  async function fixCashAdvanceReturnType() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this fix.');
+    if (!confirm('This scans income records for "Cash Advance Return" entries (unspent advance returns that incorrectly appear as income in reports) and changes their type to "transfer" so they no longer inflate income totals. Records already correctly typed are left untouched. Continue?')) return;
+
+    const button = document.getElementById('btn-fix-advance');
+    button.disabled = true;
+    button.textContent = 'Fixing...';
+
+    try {
+      const incomeSnap = await db.collection('income').where('type', '==', 'Cash Advance Return').get();
+      const actor = firebase.auth().currentUser;
+      const now = new Date().toISOString();
+
+      let fixedCount = 0;
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+
+      for (const docSnap of incomeSnap.docs) {
+        const data = docSnap.data();
+        batch.update(docSnap.ref, { type: 'transfer' });
+
+        const auditRef = db.collection('auditLogs').doc();
+        batch.set(auditRef, {
+          action: 'income_type_corrected',
+          collection: 'income',
+          docId: docSnap.id,
+          summary: `Corrected income type from "Cash Advance Return" to "transfer" so it no longer inflates income totals: ${data.description || data.category || data.note || ''}`,
+          before: { type: 'Cash Advance Return' },
+          after: { type: 'transfer' },
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt: now
+        });
+
+        fixedCount++;
+        operations += 2;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+      if (operations > 0) await batch.commit();
+
+      alert(fixedCount === 0
+        ? 'No income records had the "Cash Advance Return" type — nothing to fix.'
+        : `Fixed ${fixedCount} income record(s). These will no longer appear as income in reports or budget-vs-actual.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Fix failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Fix Advance Return Type';
     }
   }
 
