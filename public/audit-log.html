@@ -482,6 +482,9 @@
   // that exact signature so the Treasurer can see which entries and how
   // much, and correct them manually (Fix Missing Fund Assignment does not
   // cover this - the field wasn't missing, just wrongly set).
+  let diagnoseMisrouted = [];
+  let diagnoseRecurringList = [];
+
   async function diagnoseCashMismatch() {
     const profile = window.graceBooksUser || await window.graceBooksAuthReady;
     if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this diagnostic.');
@@ -493,49 +496,63 @@
     try {
       const misroutedTypes = ['Source of Funds', 'Special Offering', 'Occasional Offering', undefined, null, ''];
       const incomeSnap = await db.collection('income').get();
-      const misrouted = [];
+      diagnoseMisrouted = [];
       incomeSnap.forEach(docSnap => {
         const d = docSnap.data();
         if (d.type === 'transfer') return;
         if (d.payment === 'Bank Transfer' && d.targetAccount === 'cash-hand' && misroutedTypes.includes(d.type)) {
-          misrouted.push({ id: docSnap.id, ...d });
+          diagnoseMisrouted.push({ id: docSnap.id, ...d });
         }
       });
-      misrouted.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      const misroutedTotal = misrouted.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      diagnoseMisrouted.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
       const settingsSnap = await db.collection('settings').doc('recurringExpenses').get();
-      const recurringList = (settingsSnap.exists && settingsSnap.data().list) || [];
+      diagnoseRecurringList = (settingsSnap.exists && settingsSnap.data().list) || [];
 
-      let html = '';
-      html += `<h4 style="color:#a93226;margin-bottom:8px;">Tithes/offerings booked to Cash on Hand despite being paid via Bank Transfer</h4>`;
-      if (misrouted.length === 0) {
-        html += `<p class="muted">None found. This specific issue is not the cause of your discrepancy.</p>`;
-      } else {
-        html += `<p class="muted" style="margin-bottom:10px;">${misrouted.length} entr${misrouted.length === 1 ? 'y' : 'ies'} totaling <strong>₱${misroutedTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong> - each of these amounts is sitting in the Cash on Hand book balance but was actually received into the bank. Correcting them means editing/reassigning each one to Cash in Bank (or recording an offsetting Transfer Funds entry, and fixing the underlying doc's targetAccount to cash-bank going forward).</p>`;
-        html += `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th></tr></thead><tbody>`;
-        misrouted.forEach(r => {
-          html += `<tr><td>${escapeHtml(r.date || '')}</td><td>${escapeHtml(r.member || '')}</td><td>${escapeHtml(r.type || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
-        });
-        html += `</tbody></table></div>`;
-      }
-
-      html += `<h4 style="color:#1a5276;margin:18px 0 8px;">Saved Recurring Expense templates</h4>`;
-      if (recurringList.length === 0) {
-        html += `<p class="muted">No recurring expense templates saved yet.</p>`;
-      } else {
-        html += `<p class="muted" style="margin-bottom:10px;">These are templates only - saving one here does not create an expense automatically. Cross-check this list against expenses.html for the affected month(s) to see if any of these were paid physically but never actually saved as an expense entry.</p>`;
-        html += `<div class="table-wrap"><table><thead><tr><th>Particular</th><th>Amount</th></tr></thead><tbody>`;
-        recurringList.forEach(r => {
-          html += `<tr><td>${escapeHtml(r.particular || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
-        });
-        html += `</tbody></table></div>`;
-      }
-
-      body.innerHTML = html;
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      renderDiagnose(sixMonthsAgo.toISOString().slice(0, 10));
     } catch (error) {
       body.innerHTML = `<p class="empty">Diagnostic failed: ${escapeHtml(error.message)}</p>`;
     }
+  }
+
+  function renderDiagnose(sinceDate) {
+    const body = document.getElementById('diagnose-body');
+    const filtered = diagnoseMisrouted.filter(r => !sinceDate || (r.date || '') >= sinceDate);
+    const filteredTotal = filtered.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const allTotal = diagnoseMisrouted.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+    let html = '';
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+      <label for="diagnose-since" style="font-size:13px;font-weight:600;color:#1a5276;">Show entries since:</label>
+      <input type="date" id="diagnose-since" value="${sinceDate}" onchange="renderDiagnose(this.value)">
+    </div>`;
+    html += `<h4 style="color:#a93226;margin-bottom:8px;">Tithes/offerings booked to Cash on Hand despite being paid via Bank Transfer</h4>`;
+    if (filtered.length === 0) {
+      html += `<p class="muted">None found in this date range${diagnoseMisrouted.length ? ` (${diagnoseMisrouted.length} found outside it, ₱${allTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} total - widen the date above to see them)` : ''}. This specific issue may not be the cause of your discrepancy for this period.</p>`;
+    } else {
+      html += `<p class="muted" style="margin-bottom:10px;">${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'} in range totaling <strong>₱${filteredTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong> (₱${allTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} across all history) - each of these amounts is sitting in the Cash on Hand book balance but was actually received into the bank. Correcting them means editing/reassigning each one to Cash in Bank (or recording an offsetting Transfer Funds entry, and fixing the underlying doc's targetAccount to cash-bank going forward).</p>`;
+      html += `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th></tr></thead><tbody>`;
+      filtered.forEach(r => {
+        html += `<tr><td>${escapeHtml(r.date || '')}</td><td>${escapeHtml(r.member || '')}</td><td>${escapeHtml(r.type || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+
+    html += `<h4 style="color:#1a5276;margin:18px 0 8px;">Saved Recurring Expense templates</h4>`;
+    if (diagnoseRecurringList.length === 0) {
+      html += `<p class="muted">No recurring expense templates saved yet.</p>`;
+    } else {
+      html += `<p class="muted" style="margin-bottom:10px;">These are templates only - saving one here does not create an expense automatically. Cross-check this list against expenses.html for the affected month(s) to see if any of these were paid physically but never actually saved as an expense entry.</p>`;
+      html += `<div class="table-wrap"><table><thead><tr><th>Particular</th><th>Amount</th></tr></thead><tbody>`;
+      diagnoseRecurringList.forEach(r => {
+        html += `<tr><td>${escapeHtml(r.particular || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+
+    body.innerHTML = html;
   }
 
   function closeDiagnose() {
