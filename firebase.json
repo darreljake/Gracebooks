@@ -7,6 +7,7 @@
     "rules": "storage.rules"
   },
   "hosting": {
+    "site": "gracebooks-7eebc",
     "public": "public",
     "ignore": [
       "firebase.json",
