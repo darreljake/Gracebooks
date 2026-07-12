@@ -391,6 +391,7 @@
         <div class="cash-metric"><div class="m-label">Approved Payables</div><div class="m-value" id="cash-payables">₱0.00</div></div>
       </div>
       <div class="cash-control-rules" id="cash-control-rules"></div>
+      <div class="cash-control-rules" id="cash-forecast" style="display:none;"></div>
       <div class="cash-control-actions">
         <button onclick="openModal('cash-control-modal')">Set Cash Controls</button>
         <button class="secondary" onclick="openModal('begin-modal')">Set Restricted Accounts</button>
@@ -730,6 +731,7 @@
     approvedPayables: 0,
     notes: ''
   };
+  let currentYearBudget = { income: {}, expense: {} };
 
   let fbIncome = [];
 let fbExpenses = [];
@@ -901,6 +903,32 @@ function combineAndRender() {
 
 // Tawagin ang listener sa dulo
 setupFinancialListeners();
+loadBudgetForForecast();
+
+// One-time fetch (project convention: avoid a continuous listener for data
+// that only needs to inform a forecast, not update live). Feeds the
+// "budgeted pace" comparison line in the 30-60 Day Cash Forecast, since
+// Section 9 treats the approved budget as a plan to check reality against,
+// not automatic permission - showing it next to the actual-trend forecast
+// lets the Treasurer see when actual spending is running ahead of plan.
+async function loadBudgetForForecast() {
+  try {
+    const year = new Date().getFullYear().toString();
+    const doc = await db.collection('budgets').doc(year).get();
+    if (doc.exists) {
+      const data = doc.data();
+      currentYearBudget = { income: data.income || {}, expense: data.expense || {} };
+    }
+    if (typeof renderCashControl === 'function') renderCashControl();
+  } catch (e) { console.warn('Budget fetch for forecast failed', e); }
+}
+
+function sumBudgetCategories(obj) {
+  return Object.keys(obj || {}).reduce((s, k) => {
+    if (k.toLowerCase().includes('transfer')) return s;
+    return s + (parseFloat(obj[k]) || 0);
+  }, 0);
+}
   function loadData() {
     const savedAcc = sessionStorage.getItem('graceBooksAccounts');
     if (savedAcc) {
@@ -987,6 +1015,46 @@ setupFinancialListeners();
     };
   }
 
+  // Section 15's Yellow-level control requires "a 30-60 day cash forecast
+  // if trending down." This computes that from ACTUAL recorded General
+  // Fund (cash-hand + cash-bank) transactions - never a guessed figure -
+  // by averaging net (income - expense) cash flow over the last few
+  // completed calendar months, then projecting today's Available Operating
+  // Cash forward at that same monthly rate.
+  function getCashForecast(monthsBack) {
+    const lookback = monthsBack || 3;
+    const generalFundTx = transactions.filter(t =>
+      isEffectiveAsOfToday(t) && (t.targetAccId === 'cash-hand' || t.targetAccId === 'cash-bank')
+    );
+    const monthlyNet = {};
+    generalFundTx.forEach(t => {
+      const ym = (t.date || '').slice(0, 7);
+      if (!ym) return;
+      const isIn = t.type === 'income' || t.isIncomeTransfer;
+      const isOut = t.type === 'expense' || t.isExpenseTransfer;
+      const signed = isIn ? t.amount : (isOut ? -t.amount : 0);
+      monthlyNet[ym] = (monthlyNet[ym] || 0) + signed;
+    });
+    const currentYm = new Date().toISOString().slice(0, 7);
+    const completedMonths = Object.keys(monthlyNet).filter(ym => ym < currentYm).sort();
+    const usedMonths = completedMonths.slice(-lookback);
+    if (usedMonths.length === 0) return null;
+    const avgMonthlyNet = usedMonths.reduce((s, ym) => s + monthlyNet[ym], 0) / usedMonths.length;
+
+    // Budgeted pace: the approved annual budget spread evenly across 12
+    // months, as a plan-vs-reality cross-check (Section 9 - a budget is a
+    // spending plan, not automatic permission; actual cash availability
+    // must still be verified). Not fund-scoped like the actual-trend figure
+    // above, since budget categories aren't tagged to a specific account -
+    // it's a whole-church pace, not strictly cash-hand/cash-bank only.
+    const budgetedAnnualIncome = sumBudgetCategories(currentYearBudget.income);
+    const budgetedAnnualExpense = sumBudgetCategories(currentYearBudget.expense);
+    const hasBudget = budgetedAnnualIncome > 0 || budgetedAnnualExpense > 0;
+    const budgetedMonthlyNet = hasBudget ? (budgetedAnnualIncome - budgetedAnnualExpense) / 12 : null;
+
+    return { avgMonthlyNet, monthsUsed: usedMonths, budgetedMonthlyNet, hasBudget };
+  }
+
   function renderCashControl() {
     const card = document.getElementById('cash-control-card');
     if (!card) return;
@@ -1021,6 +1089,45 @@ setupFinancialListeners();
       ${forecastHtml}
       <span style="color:#777;">Computation: General Fund cash/bank \u20b1${fmt(snap.generalCash)} - restricted/designated \u20b1${fmt(snap.restrictedDesignated)}
       - approved payables \u20b1${fmt(snap.approvedPayables)} = \u20b1${fmt(snap.availableOperatingCash)} available operating cash.</span>`;
+
+    renderCashForecast(snap, level);
+  }
+
+  // Section 15, Yellow level: "30-60 day cash forecast if trending down."
+  // Only surfaced once the level is Yellow/Red/Black - at Green, ordinary
+  // controls apply and no forecast is required.
+  function renderCashForecast(snap, level) {
+    const box = document.getElementById('cash-forecast');
+    if (!box) return;
+    if (level.color === 'green') { box.style.display = 'none'; return; }
+
+    const forecast = getCashForecast(3);
+    if (!forecast) {
+      box.style.display = 'block';
+      box.innerHTML = `<strong>30-60 Day Cash Forecast (Section 15, Yellow control):</strong>
+        <span style="color:#777;">Not enough completed months of recorded transactions yet to compute a trend.</span>`;
+      return;
+    }
+
+    const trendingDown = forecast.avgMonthlyNet < 0;
+    const in30 = snap.availableOperatingCash + forecast.avgMonthlyNet;
+    const in60 = snap.availableOperatingCash + (forecast.avgMonthlyNet * 2);
+
+    const budgetHtml = forecast.hasBudget
+      ? `<span style="color:#777;">Budgeted pace (approved ${new Date().getFullYear()} budget, spread monthly): ${forecast.budgetedMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.budgetedMonthlyNet))}/month
+        ${forecast.budgetedMonthlyNet < forecast.avgMonthlyNet ? '(actual is running ahead of budgeted plan)' : forecast.budgetedMonthlyNet > forecast.avgMonthlyNet ? '(actual is behind the budgeted plan)' : '(matches budgeted plan)'}.
+        This is a whole-church figure, not limited to Cash on Hand/Bank like the actual-trend figure above.</span><br>`
+      : `<span style="color:#777;">No approved budget found for ${new Date().getFullYear()} to compare against.</span><br>`;
+
+    box.style.display = 'block';
+    box.innerHTML = `
+      <strong>30-60 Day Cash Forecast (Section 15, Yellow control):</strong>
+      <span style="color:${trendingDown ? '#c0392b' : '#1e8449'};">${trendingDown ? 'Trending down' : 'Stable/improving'}</span>
+      - based on average net cash flow of the last ${forecast.monthsUsed.length} completed month(s)
+      (${forecast.monthsUsed.join(', ')}): ${forecast.avgMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.avgMonthlyNet))}/month.<br>
+      <span style="color:#777;">Projected Available Operating Cash in 30 days: \u20b1${fmt(in30)} &middot; in 60 days: \u20b1${fmt(in60)}.
+      This is a projection from recent actual cash flow, not a guarantee - review against known upcoming income/expenses before acting on it.</span><br>
+      ${budgetHtml}`;
   }
 
   function renderHero() {
