@@ -79,9 +79,7 @@
     }
     .cash-control-card.green { border-left-color:#1e8449; }
     .cash-control-card.yellow { border-left-color:#d4ac0d; }
-    .cash-control-card.orange { border-left-color:#d35400; }
     .cash-control-card.red { border-left-color:#c0392b; }
-    .cash-control-card.purple { border-left-color:#7d3c98; }
     .cash-control-card.black { border-left-color:#111; }
     .cash-control-head {
       display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap;
@@ -95,9 +93,7 @@
     }
     .cash-level-badge.green { background:#1e8449; }
     .cash-level-badge.yellow { background:#d4ac0d; color:#3b2c00; }
-    .cash-level-badge.orange { background:#d35400; }
     .cash-level-badge.red { background:#c0392b; }
-    .cash-level-badge.purple { background:#7d3c98; }
     .cash-level-badge.black { background:#111; }
     .cash-control-body { padding:16px 18px; overflow:auto; }
     .cash-metrics {
@@ -927,6 +923,10 @@ setupFinancialListeners();
     return Math.max(0, grossPayrollDeductions - paidDeductionPayments);
   }
 
+  // Matches TUMC Financial Management and Accountability Policy, Part A
+  // Section 15 exactly: 4 levels (Green/Yellow/Red/Black), thresholds at
+  // 3 months, 1 month, and 2 weeks of essential expenses. "2 weeks" is
+  // taken as half of the Section 15 / Annex 1 "1 month" figure.
   function getCashLevel(months) {
     if (!Number.isFinite(months)) {
       return {
@@ -936,11 +936,9 @@ setupFinancialListeners();
       };
     }
     if (months >= 3) return { color:'green', level:'Stable', control:'Normal operations; ordinary controls continue.' };
-    if (months >= 2) return { color:'yellow', level:'Caution', control:'Treasurer informs Finance Chair; closer review of non-routine spending.' };
-    if (months >= 1) return { color:'orange', level:'Restricted', control:'Finance Committee and Auditor notified; 30-60 day cash forecast required.' };
-    if (months >= 0.5) return { color:'red', level:'Critical', control:'Critical cash control; essential obligations only unless approved.' };
-    if (months >= 0.25) return { color:'purple', level:'Severe', control:'Severe cash preservation; 14-day cash survival report required.' };
-    return { color:'black', level:'Emergency / Survival Mode', control:'Emergency spending freeze; emergency Finance/Council action required.' };
+    if (months >= 1) return { color:'yellow', level:'Caution', control:'Treasurer informs Finance Chair; closer review of non-routine spending; 30-60 day cash forecast if trending down.' };
+    if (months >= 0.5) return { color:'red', level:'Critical', control:'Finance Committee and Auditor notified; essential obligations only unless specifically approved; payment priority list applies.' };
+    return { color:'black', level:'Emergency', control:'Spending freeze except survival essentials; emergency Finance/Council action required.' };
   }
 
   function getCashControlSnapshot() {
