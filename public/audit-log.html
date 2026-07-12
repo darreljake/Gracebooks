@@ -48,6 +48,10 @@
       display: none; background: #1a5276; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-diagnose {
+      display: none; background: #a93226; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
     .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
@@ -119,6 +123,7 @@
         <button class="btn-fix-ledger" id="btn-fix-ledger" onclick="fixMissingLedgerVisibility()">Fix Missing Ledger Entries</button>
         <button class="btn-fix-fund" id="btn-fix-fund" onclick="fixMissingFundAssignment()">Fix Missing Fund Assignment</button>
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
+        <button class="btn-diagnose" id="btn-diagnose-cash" onclick="diagnoseCashMismatch()">Diagnose Cash Mismatch</button>
         <button class="btn-export" onclick="exportCSV()">Export CSV</button>
       </div>
     </div>
@@ -173,6 +178,16 @@
         </tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<div class="modal" id="diagnose-modal">
+  <div class="modal-content">
+    <div class="modal-head">
+      <h3>Cash Mismatch Diagnostic</h3>
+      <button class="close-modal" onclick="closeDiagnose()">Close</button>
+    </div>
+    <div id="diagnose-body"></div>
   </div>
 </div>
 
@@ -260,6 +275,7 @@
         document.getElementById('btn-backfill').style.display = 'inline-block';
         document.getElementById('btn-fix-fund').style.display = 'inline-block';
         document.getElementById('btn-fix-ledger').style.display = 'inline-block';
+        document.getElementById('btn-diagnose-cash').style.display = 'inline-block';
       }
       const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
       allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -456,6 +472,76 @@
     }
   }
 
+  // Read-only report (no writes). tithe-entry.html's income-entry form
+  // captures a real payment method (Cash / Bank Transfer) per entry, but
+  // before this was fixed, ordinary tithes/offerings (Source of Funds,
+  // Special Offering, Occasional Offering) always got targetAccount =
+  // 'cash-hand' regardless of payment - so any of these actually paid via
+  // Bank Transfer inflated the Cash on Hand book balance above the
+  // physical cash actually on hand. This scans historical income docs for
+  // that exact signature so the Treasurer can see which entries and how
+  // much, and correct them manually (Fix Missing Fund Assignment does not
+  // cover this - the field wasn't missing, just wrongly set).
+  async function diagnoseCashMismatch() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this diagnostic.');
+
+    const body = document.getElementById('diagnose-body');
+    body.innerHTML = '<p class="muted">Scanning income and expense records...</p>';
+    document.getElementById('diagnose-modal').style.display = 'flex';
+
+    try {
+      const misroutedTypes = ['Source of Funds', 'Special Offering', 'Occasional Offering', undefined, null, ''];
+      const incomeSnap = await db.collection('income').get();
+      const misrouted = [];
+      incomeSnap.forEach(docSnap => {
+        const d = docSnap.data();
+        if (d.type === 'transfer') return;
+        if (d.payment === 'Bank Transfer' && d.targetAccount === 'cash-hand' && misroutedTypes.includes(d.type)) {
+          misrouted.push({ id: docSnap.id, ...d });
+        }
+      });
+      misrouted.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const misroutedTotal = misrouted.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+      const settingsSnap = await db.collection('settings').doc('recurringExpenses').get();
+      const recurringList = (settingsSnap.exists && settingsSnap.data().list) || [];
+
+      let html = '';
+      html += `<h4 style="color:#a93226;margin-bottom:8px;">Tithes/offerings booked to Cash on Hand despite being paid via Bank Transfer</h4>`;
+      if (misrouted.length === 0) {
+        html += `<p class="muted">None found. This specific issue is not the cause of your discrepancy.</p>`;
+      } else {
+        html += `<p class="muted" style="margin-bottom:10px;">${misrouted.length} entr${misrouted.length === 1 ? 'y' : 'ies'} totaling <strong>₱${misroutedTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</strong> - each of these amounts is sitting in the Cash on Hand book balance but was actually received into the bank. Correcting them means editing/reassigning each one to Cash in Bank (or recording an offsetting Transfer Funds entry, and fixing the underlying doc's targetAccount to cash-bank going forward).</p>`;
+        html += `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Member</th><th>Type</th><th>Amount</th></tr></thead><tbody>`;
+        misrouted.forEach(r => {
+          html += `<tr><td>${escapeHtml(r.date || '')}</td><td>${escapeHtml(r.member || '')}</td><td>${escapeHtml(r.type || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
+      }
+
+      html += `<h4 style="color:#1a5276;margin:18px 0 8px;">Saved Recurring Expense templates</h4>`;
+      if (recurringList.length === 0) {
+        html += `<p class="muted">No recurring expense templates saved yet.</p>`;
+      } else {
+        html += `<p class="muted" style="margin-bottom:10px;">These are templates only - saving one here does not create an expense automatically. Cross-check this list against expenses.html for the affected month(s) to see if any of these were paid physically but never actually saved as an expense entry.</p>`;
+        html += `<div class="table-wrap"><table><thead><tr><th>Particular</th><th>Amount</th></tr></thead><tbody>`;
+        recurringList.forEach(r => {
+          html += `<tr><td>${escapeHtml(r.particular || '')}</td><td>₱${Number(r.amount || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
+      }
+
+      body.innerHTML = html;
+    } catch (error) {
+      body.innerHTML = `<p class="empty">Diagnostic failed: ${escapeHtml(error.message)}</p>`;
+    }
+  }
+
+  function closeDiagnose() {
+    document.getElementById('diagnose-modal').style.display = 'none';
+  }
+
   // expenses.html's ledger queries db.collection('expenses')
   // .orderBy('postedAt', 'desc') - Firestore silently excludes any
   // document missing that field from orderBy results entirely, rather
@@ -583,6 +669,7 @@
 
   window.addEventListener('click', event => {
     if (event.target.id === 'detail-modal') closeDetail();
+    if (event.target.id === 'diagnose-modal') closeDiagnose();
   });
 
   window.graceBooksAuthReady.then(loadAuditLogs);
