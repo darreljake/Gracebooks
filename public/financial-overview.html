@@ -1083,10 +1083,21 @@ function sumBudgetCategories(obj) {
     const hasBudget = budgetedMonthlyIncome > 0 || budgetedMonthlyExpense > 0;
     const budgetedMonthlyNet = hasBudget ? (budgetedMonthlyIncome - budgetedMonthlyExpense) : null;
 
+    // Conservative/hybrid figure - the final presentation figure, per
+    // explicit request: for each of income/expense, take whichever source
+    // (actual trend vs budgeted plan) is worse for cash - the LOWER of the
+    // two for income, the HIGHER of the two for expense - rather than
+    // trusting either source alone. Falls back to the actual trend alone
+    // when there's no budget to compare against.
+    const conservativeMonthlyIncome = hasBudget ? Math.min(avgMonthlyIncome, budgetedMonthlyIncome) : avgMonthlyIncome;
+    const conservativeMonthlyExpense = hasBudget ? Math.max(avgMonthlyExpense, budgetedMonthlyExpense) : avgMonthlyExpense;
+    const conservativeMonthlyNet = conservativeMonthlyIncome - conservativeMonthlyExpense;
+
     return {
       avgMonthlyNet, avgMonthlyIncome, avgMonthlyExpense,
       monthsUsed: series.map(m => m.ym),
-      budgetedMonthlyNet, budgetedMonthlyIncome, budgetedMonthlyExpense, hasBudget
+      budgetedMonthlyNet, budgetedMonthlyIncome, budgetedMonthlyExpense, hasBudget,
+      conservativeMonthlyIncome, conservativeMonthlyExpense, conservativeMonthlyNet
     };
   }
 
@@ -1146,11 +1157,11 @@ function sumBudgetCategories(obj) {
       return;
     }
 
-    const trendingDown = forecast.avgMonthlyNet < 0;
+    const trendingDown = forecast.conservativeMonthlyNet < 0;
     box.innerHTML = `
-      <strong>30-60 Day Cash Forecast (Section 15, Yellow control):</strong>
+      <strong>30-60 Day Cash Forecast (Section 15, Yellow control) - Conservative estimate:</strong>
       <span style="color:${trendingDown ? '#c0392b' : '#1e8449'};">${trendingDown ? 'Trending down' : 'Stable/improving'}</span>
-      (${forecast.avgMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.avgMonthlyNet))}/month average, last ${forecast.monthsUsed.length} month(s)).
+      (${forecast.conservativeMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.conservativeMonthlyNet))}/month, worst-of actual-vs-budgeted).
       <button type="button" class="modal-btn" style="width:auto;padding:6px 12px;font-size:12px;margin-left:6px;" onclick="openModal('cash-forecast-modal')">View Full Forecast</button>`;
   }
 
@@ -1211,9 +1222,10 @@ function sumBudgetCategories(obj) {
 
     let forecastSection = '<p class="empty">Not enough data for a 30/60-day projection.</p>';
     let budgetSection = '';
+    let weeklySection = '';
     if (forecast) {
-      const in30 = snap.availableOperatingCash + forecast.avgMonthlyNet;
-      const in60 = snap.availableOperatingCash + (forecast.avgMonthlyNet * 2);
+      const in30 = snap.availableOperatingCash + forecast.conservativeMonthlyNet;
+      const in60 = snap.availableOperatingCash + (forecast.conservativeMonthlyNet * 2);
       forecastSection = `
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead><tr><th style="text-align:left;">Basis</th><th>Income/mo</th><th>Expense/mo</th><th>Net/mo</th></tr></thead>
@@ -1231,12 +1243,19 @@ function sumBudgetCategories(obj) {
               <td>\u20b1${fmt(forecast.budgetedMonthlyExpense)}</td>
               <td style="color:${forecast.budgetedMonthlyNet >= 0 ? '#1e8449' : '#c0392b'};">${forecast.budgetedMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.budgetedMonthlyNet))}</td>
             </tr>` : ''}
+            <tr style="background:#fdf2e9;font-weight:600;">
+              <td>Conservative (Hybrid) - final estimate</td>
+              <td>\u20b1${fmt(forecast.conservativeMonthlyIncome)}</td>
+              <td>\u20b1${fmt(forecast.conservativeMonthlyExpense)}</td>
+              <td style="color:${forecast.conservativeMonthlyNet >= 0 ? '#1e8449' : '#c0392b'};">${forecast.conservativeMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.conservativeMonthlyNet))}</td>
+            </tr>
           </tbody>
         </table>
+        <p style="font-size:12px;color:#888;margin-top:6px;">Conservative (Hybrid) = lower of actual-vs-budgeted income, higher of actual-vs-budgeted expense - the worse case of the two sources for each, used below as the final forecast figure. Falls back to actual trend alone when no budget exists yet.</p>
         <p style="font-size:13px;margin-top:10px;">
-          Projected Available Operating Cash (actual trend): <strong>\u20b1${fmt(in30)}</strong> in 30 days &middot; <strong>\u20b1${fmt(in60)}</strong> in 60 days.
+          Projected Available Operating Cash (conservative): <strong>\u20b1${fmt(in30)}</strong> in 30 days &middot; <strong>\u20b1${fmt(in60)}</strong> in 60 days.
         </p>
-        <p style="font-size:12px;color:#888;">Projection from recent actual cash flow, not a guarantee - review against known upcoming income/expenses before acting on it.</p>`;
+        <p style="font-size:12px;color:#888;">Projection from recent actual cash flow and the approved budget, not a guarantee - review against known upcoming income/expenses before acting on it.</p>`;
 
       if (forecast.hasBudget) {
         const compareChart = svgBarChart(
@@ -1251,6 +1270,8 @@ function sumBudgetCategories(obj) {
           <div>${compareChart}</div>
           <p style="font-size:12px;color:#888;margin-top:6px;">Budgeted figures are whole-church (not limited to Cash on Hand/Bank) since budget categories aren't tagged to a specific account.</p>`;
       }
+
+      weeklySection = renderWeeklyCashBudget(snap, forecast);
     }
 
     body.innerHTML = `
@@ -1265,7 +1286,51 @@ function sumBudgetCategories(obj) {
       <h4 style="color:#1a5276;margin:18px 0 8px;">30-60 Day Forecast (Section 15, Yellow control)</h4>
       ${forecastSection}
       ${budgetSection}
+      ${weeklySection}
     `;
+  }
+
+  // Weekly cash budget: the conservative monthly figure spread across 7-day
+  // increments (using a 30-day month as the daily basis) for a more precise
+  // week-by-week projection than the single 30-day/60-day checkpoints above -
+  // shows exactly which week the running balance is projected to cross a
+  // Section 15 threshold, not just where it lands after a full month or two.
+  function renderWeeklyCashBudget(snap, forecast) {
+    const dailyIncome = forecast.conservativeMonthlyIncome / 30;
+    const dailyExpense = forecast.conservativeMonthlyExpense / 30;
+    const weeklyIncome = dailyIncome * 7;
+    const weeklyExpense = dailyExpense * 7;
+    let running = snap.availableOperatingCash;
+    const weeks = [];
+    const start = new Date();
+    for (let w = 1; w <= 9; w++) {
+      const weekStart = new Date(start); weekStart.setDate(start.getDate() + (w - 1) * 7);
+      const weekEnd = new Date(start); weekEnd.setDate(start.getDate() + w * 7 - 1);
+      const net = weeklyIncome - weeklyExpense;
+      running += net;
+      weeks.push({
+        label: `${weekStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}`,
+        income: weeklyIncome, expense: weeklyExpense, net, running
+      });
+    }
+    const rows = weeks.map(w => `
+      <tr>
+        <td>Week ${weeks.indexOf(w) + 1}<br><span style="font-size:11px;color:#999;">${w.label}</span></td>
+        <td>\u20b1${fmt(w.income)}</td>
+        <td>\u20b1${fmt(w.expense)}</td>
+        <td style="color:${w.net >= 0 ? '#1e8449' : '#c0392b'};">${w.net >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(w.net))}</td>
+        <td style="font-weight:600;">\u20b1${fmt(w.running)}</td>
+      </tr>`).join('');
+
+    return `
+      <h4 style="color:#1a5276;margin:18px 0 8px;">Weekly Cash Budget (next 9 weeks, conservative)</h4>
+      <div class="table-wrap" style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr><th style="text-align:left;">Week</th><th>Income</th><th>Expense</th><th>Net</th><th>Running Available Cash</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:6px;">Each week uses the Conservative (Hybrid) monthly figure spread evenly across 7 days - it will not reflect known lumpy events (e.g. an annual insurance payment or a large one-time donation), only the flat average pace.</p>`;
   }
 
   function renderHero() {
