@@ -286,7 +286,11 @@
       padding:28px 24px; width:100%; max-width:480px;
       max-height:90vh; overflow-y:auto;
     }
+    .modal-box.wide { max-width:880px; }
     .modal-handle { width:40px; height:4px; background:#eee; border-radius:2px; margin:0 auto 20px; }
+    #cash-forecast-modal-body th, #cash-forecast-modal-body td { padding:7px 8px; border-bottom:1px solid #eee; text-align:right; }
+    #cash-forecast-modal-body th:first-child, #cash-forecast-modal-body td:first-child { text-align:left; }
+    #cash-forecast-modal-body th { color:#1a5276; font-size:12px; text-transform:uppercase; letter-spacing:.02em; }
     .modal-box h3 { font-size:18px; font-weight:600; color:#333; margin-bottom:20px; }
     .modal-form-group { margin-bottom:16px; }
     .modal-form-group label { display:block; font-size:12px; color:#888; margin-bottom:6px; font-weight:600; text-transform:uppercase; }
@@ -687,6 +691,16 @@
   </div>
 </div>
 
+<!-- 30-60 DAY CASH FORECAST MODAL -->
+<div class="modal-overlay" id="cash-forecast-modal">
+  <div class="modal-box wide">
+    <div class="modal-handle"></div>
+    <h3>30-60 Day Cash Forecast</h3>
+    <div id="cash-forecast-modal-body"></div>
+    <button class="modal-cancel" onclick="closeModal('cash-forecast-modal')" style="margin-top:16px;">Close</button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -1015,6 +1029,35 @@ function sumBudgetCategories(obj) {
     };
   }
 
+  // Month-by-month Income/Expense/Net series for General Fund accounts
+  // (cash-hand + cash-bank), from ACTUAL recorded transactions only -
+  // shared by both the summary forecast figure and the full forecast
+  // modal's chart/table so they never disagree with each other.
+  function getMonthlyIncomeExpenseSeries(monthsBack) {
+    const lookback = monthsBack || 6;
+    const generalFundTx = transactions.filter(t =>
+      isEffectiveAsOfToday(t) && (t.targetAccId === 'cash-hand' || t.targetAccId === 'cash-bank')
+    );
+    const byMonth = {};
+    generalFundTx.forEach(t => {
+      const ym = (t.date || '').slice(0, 7);
+      if (!ym) return;
+      if (!byMonth[ym]) byMonth[ym] = { income: 0, expense: 0 };
+      const isIn = t.type === 'income' || t.isIncomeTransfer;
+      const isOut = t.type === 'expense' || t.isExpenseTransfer;
+      if (isIn) byMonth[ym].income += t.amount;
+      else if (isOut) byMonth[ym].expense += t.amount;
+    });
+    const currentYm = new Date().toISOString().slice(0, 7);
+    const usedYms = Object.keys(byMonth).filter(ym => ym < currentYm).sort().slice(-lookback);
+    return usedYms.map(ym => ({
+      ym,
+      income: byMonth[ym].income,
+      expense: byMonth[ym].expense,
+      net: byMonth[ym].income - byMonth[ym].expense
+    }));
+  }
+
   // Section 15's Yellow-level control requires "a 30-60 day cash forecast
   // if trending down." This computes that from ACTUAL recorded General
   // Fund (cash-hand + cash-bank) transactions - never a guessed figure -
@@ -1023,23 +1066,11 @@ function sumBudgetCategories(obj) {
   // Cash forward at that same monthly rate.
   function getCashForecast(monthsBack) {
     const lookback = monthsBack || 3;
-    const generalFundTx = transactions.filter(t =>
-      isEffectiveAsOfToday(t) && (t.targetAccId === 'cash-hand' || t.targetAccId === 'cash-bank')
-    );
-    const monthlyNet = {};
-    generalFundTx.forEach(t => {
-      const ym = (t.date || '').slice(0, 7);
-      if (!ym) return;
-      const isIn = t.type === 'income' || t.isIncomeTransfer;
-      const isOut = t.type === 'expense' || t.isExpenseTransfer;
-      const signed = isIn ? t.amount : (isOut ? -t.amount : 0);
-      monthlyNet[ym] = (monthlyNet[ym] || 0) + signed;
-    });
-    const currentYm = new Date().toISOString().slice(0, 7);
-    const completedMonths = Object.keys(monthlyNet).filter(ym => ym < currentYm).sort();
-    const usedMonths = completedMonths.slice(-lookback);
-    if (usedMonths.length === 0) return null;
-    const avgMonthlyNet = usedMonths.reduce((s, ym) => s + monthlyNet[ym], 0) / usedMonths.length;
+    const series = getMonthlyIncomeExpenseSeries(lookback);
+    if (series.length === 0) return null;
+    const avgMonthlyIncome = series.reduce((s, m) => s + m.income, 0) / series.length;
+    const avgMonthlyExpense = series.reduce((s, m) => s + m.expense, 0) / series.length;
+    const avgMonthlyNet = avgMonthlyIncome - avgMonthlyExpense;
 
     // Budgeted pace: the approved annual budget spread evenly across 12
     // months, as a plan-vs-reality cross-check (Section 9 - a budget is a
@@ -1047,12 +1078,16 @@ function sumBudgetCategories(obj) {
     // must still be verified). Not fund-scoped like the actual-trend figure
     // above, since budget categories aren't tagged to a specific account -
     // it's a whole-church pace, not strictly cash-hand/cash-bank only.
-    const budgetedAnnualIncome = sumBudgetCategories(currentYearBudget.income);
-    const budgetedAnnualExpense = sumBudgetCategories(currentYearBudget.expense);
-    const hasBudget = budgetedAnnualIncome > 0 || budgetedAnnualExpense > 0;
-    const budgetedMonthlyNet = hasBudget ? (budgetedAnnualIncome - budgetedAnnualExpense) / 12 : null;
+    const budgetedMonthlyIncome = sumBudgetCategories(currentYearBudget.income) / 12;
+    const budgetedMonthlyExpense = sumBudgetCategories(currentYearBudget.expense) / 12;
+    const hasBudget = budgetedMonthlyIncome > 0 || budgetedMonthlyExpense > 0;
+    const budgetedMonthlyNet = hasBudget ? (budgetedMonthlyIncome - budgetedMonthlyExpense) : null;
 
-    return { avgMonthlyNet, monthsUsed: usedMonths, budgetedMonthlyNet, hasBudget };
+    return {
+      avgMonthlyNet, avgMonthlyIncome, avgMonthlyExpense,
+      monthsUsed: series.map(m => m.ym),
+      budgetedMonthlyNet, budgetedMonthlyIncome, budgetedMonthlyExpense, hasBudget
+    };
   }
 
   function renderCashControl() {
@@ -1095,39 +1130,142 @@ function sumBudgetCategories(obj) {
 
   // Section 15, Yellow level: "30-60 day cash forecast if trending down."
   // Only surfaced once the level is Yellow/Red/Black - at Green, ordinary
-  // controls apply and no forecast is required.
+  // controls apply and no forecast is required. Card itself only shows a
+  // one-line summary; the full breakdown (charts, monthly table, income vs
+  // expense split, budget comparison) lives in the forecast modal.
   function renderCashForecast(snap, level) {
     const box = document.getElementById('cash-forecast');
     if (!box) return;
     if (level.color === 'green') { box.style.display = 'none'; return; }
 
     const forecast = getCashForecast(3);
+    box.style.display = 'block';
     if (!forecast) {
-      box.style.display = 'block';
       box.innerHTML = `<strong>30-60 Day Cash Forecast (Section 15, Yellow control):</strong>
         <span style="color:#777;">Not enough completed months of recorded transactions yet to compute a trend.</span>`;
       return;
     }
 
     const trendingDown = forecast.avgMonthlyNet < 0;
-    const in30 = snap.availableOperatingCash + forecast.avgMonthlyNet;
-    const in60 = snap.availableOperatingCash + (forecast.avgMonthlyNet * 2);
-
-    const budgetHtml = forecast.hasBudget
-      ? `<span style="color:#777;">Budgeted pace (approved ${new Date().getFullYear()} budget, spread monthly): ${forecast.budgetedMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.budgetedMonthlyNet))}/month
-        ${forecast.budgetedMonthlyNet < forecast.avgMonthlyNet ? '(actual is running ahead of budgeted plan)' : forecast.budgetedMonthlyNet > forecast.avgMonthlyNet ? '(actual is behind the budgeted plan)' : '(matches budgeted plan)'}.
-        This is a whole-church figure, not limited to Cash on Hand/Bank like the actual-trend figure above.</span><br>`
-      : `<span style="color:#777;">No approved budget found for ${new Date().getFullYear()} to compare against.</span><br>`;
-
-    box.style.display = 'block';
     box.innerHTML = `
       <strong>30-60 Day Cash Forecast (Section 15, Yellow control):</strong>
       <span style="color:${trendingDown ? '#c0392b' : '#1e8449'};">${trendingDown ? 'Trending down' : 'Stable/improving'}</span>
-      - based on average net cash flow of the last ${forecast.monthsUsed.length} completed month(s)
-      (${forecast.monthsUsed.join(', ')}): ${forecast.avgMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.avgMonthlyNet))}/month.<br>
-      <span style="color:#777;">Projected Available Operating Cash in 30 days: \u20b1${fmt(in30)} &middot; in 60 days: \u20b1${fmt(in60)}.
-      This is a projection from recent actual cash flow, not a guarantee - review against known upcoming income/expenses before acting on it.</span><br>
-      ${budgetHtml}`;
+      (${forecast.avgMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.avgMonthlyNet))}/month average, last ${forecast.monthsUsed.length} month(s)).
+      <button type="button" class="modal-btn" style="width:auto;padding:6px 12px;font-size:12px;margin-left:6px;" onclick="openModal('cash-forecast-modal')">View Full Forecast</button>`;
+  }
+
+  function svgBarChart(rows, opts) {
+    const width = opts.width || 820, height = opts.height || 260, pad = 44, topPad = 20;
+    const zeroY = height - pad;
+    const maxVal = Math.max(1, ...rows.map(r => Math.max(Math.abs(r.a), Math.abs(r.b))));
+    const scale = (zeroY - topPad) / maxVal;
+    const yOf = v => zeroY - v * scale;
+    const groupWidth = (width - pad * 2) / Math.max(1, rows.length);
+    const barWidth = Math.min(36, groupWidth / 3.2);
+
+    const bars = rows.map((r, i) => {
+      const gx = pad + i * groupWidth + (groupWidth - barWidth * 2.4) / 2;
+      return `
+        <rect x="${gx}" y="${Math.min(yOf(r.a), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(r.a))}" fill="${opts.colorA || '#1e8449'}"><title>${r.label} ${opts.labelA || 'A'}: \u20b1${fmt(r.a)}</title></rect>
+        <rect x="${gx + barWidth * 1.3}" y="${Math.min(yOf(r.b), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(r.b))}" fill="${opts.colorB || '#c0392b'}"><title>${r.label} ${opts.labelB || 'B'}: \u20b1${fmt(r.b)}</title></rect>
+        <text x="${gx + barWidth * 1.15}" y="${height - 10}" text-anchor="middle" font-size="11" fill="#777">${r.label}</text>
+      `;
+    }).join('');
+
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${opts.ariaLabel || 'Bar chart'}" style="width:100%;height:auto;">
+      <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" stroke="#ccc" />
+      <line x1="${pad}" y1="${topPad}" x2="${pad}" y2="${zeroY}" stroke="#ddd" />
+      ${bars}
+    </svg>
+    <div style="display:flex;gap:16px;justify-content:center;font-size:12px;color:#666;margin-top:4px;">
+      <span><span style="display:inline-block;width:10px;height:10px;background:${opts.colorA || '#1e8449'};border-radius:2px;margin-right:4px;"></span>${opts.labelA || 'A'}</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:${opts.colorB || '#c0392b'};border-radius:2px;margin-right:4px;"></span>${opts.labelB || 'B'}</span>
+    </div>`;
+  }
+
+  function renderCashForecastModalBody() {
+    const body = document.getElementById('cash-forecast-modal-body');
+    if (!body) return;
+    const snap = getCashControlSnapshot();
+    const series = getMonthlyIncomeExpenseSeries(6);
+    const forecast = getCashForecast(3);
+
+    if (series.length === 0) {
+      body.innerHTML = '<p class="empty">Not enough completed months of recorded transactions yet to build a forecast.</p>';
+      return;
+    }
+
+    const monthLabel = ym => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
+    const trendChart = svgBarChart(
+      series.map(m => ({ label: monthLabel(m.ym), a: m.income, b: m.expense })),
+      { labelA: 'Income', labelB: 'Expense', colorA: '#1e8449', colorB: '#c0392b', ariaLabel: 'Monthly income vs expense, General Fund' }
+    );
+
+    const monthlyTableRows = series.map(m => `
+      <tr>
+        <td>${monthLabel(m.ym)}</td>
+        <td>\u20b1${fmt(m.income)}</td>
+        <td>\u20b1${fmt(m.expense)}</td>
+        <td style="color:${m.net >= 0 ? '#1e8449' : '#c0392b'};">${m.net >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(m.net))}</td>
+      </tr>`).join('');
+
+    let forecastSection = '<p class="empty">Not enough data for a 30/60-day projection.</p>';
+    let budgetSection = '';
+    if (forecast) {
+      const in30 = snap.availableOperatingCash + forecast.avgMonthlyNet;
+      const in60 = snap.availableOperatingCash + (forecast.avgMonthlyNet * 2);
+      forecastSection = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr><th style="text-align:left;">Basis</th><th>Income/mo</th><th>Expense/mo</th><th>Net/mo</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Actual trend (last ${forecast.monthsUsed.length}mo)</td>
+              <td>\u20b1${fmt(forecast.avgMonthlyIncome)}</td>
+              <td>\u20b1${fmt(forecast.avgMonthlyExpense)}</td>
+              <td style="color:${forecast.avgMonthlyNet >= 0 ? '#1e8449' : '#c0392b'};">${forecast.avgMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.avgMonthlyNet))}</td>
+            </tr>
+            ${forecast.hasBudget ? `
+            <tr>
+              <td>Budgeted pace (${new Date().getFullYear()})</td>
+              <td>\u20b1${fmt(forecast.budgetedMonthlyIncome)}</td>
+              <td>\u20b1${fmt(forecast.budgetedMonthlyExpense)}</td>
+              <td style="color:${forecast.budgetedMonthlyNet >= 0 ? '#1e8449' : '#c0392b'};">${forecast.budgetedMonthlyNet >= 0 ? '+' : '-'}\u20b1${fmt(Math.abs(forecast.budgetedMonthlyNet))}</td>
+            </tr>` : ''}
+          </tbody>
+        </table>
+        <p style="font-size:13px;margin-top:10px;">
+          Projected Available Operating Cash (actual trend): <strong>\u20b1${fmt(in30)}</strong> in 30 days &middot; <strong>\u20b1${fmt(in60)}</strong> in 60 days.
+        </p>
+        <p style="font-size:12px;color:#888;">Projection from recent actual cash flow, not a guarantee - review against known upcoming income/expenses before acting on it.</p>`;
+
+      if (forecast.hasBudget) {
+        const compareChart = svgBarChart(
+          [
+            { label: 'Income', a: forecast.avgMonthlyIncome, b: forecast.budgetedMonthlyIncome },
+            { label: 'Expense', a: forecast.avgMonthlyExpense, b: forecast.budgetedMonthlyExpense }
+          ],
+          { labelA: 'Actual avg/mo', labelB: 'Budgeted/mo', colorA: '#1a5276', colorB: '#b9770e', ariaLabel: 'Actual vs budgeted monthly income and expense' }
+        );
+        budgetSection = `
+          <h4 style="color:#1a5276;margin:18px 0 8px;">Actual vs Budgeted (${new Date().getFullYear()})</h4>
+          <div>${compareChart}</div>
+          <p style="font-size:12px;color:#888;margin-top:6px;">Budgeted figures are whole-church (not limited to Cash on Hand/Bank) since budget categories aren't tagged to a specific account.</p>`;
+      }
+    }
+
+    body.innerHTML = `
+      <h4 style="color:#1a5276;margin-bottom:8px;">Monthly Income vs Expense - General Fund (last ${series.length} months)</h4>
+      <div>${trendChart}</div>
+      <div class="table-wrap" style="overflow-x:auto;margin-top:10px;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr><th style="text-align:left;">Month</th><th>Income</th><th>Expense</th><th>Net</th></tr></thead>
+          <tbody>${monthlyTableRows}</tbody>
+        </table>
+      </div>
+      <h4 style="color:#1a5276;margin:18px 0 8px;">30-60 Day Forecast (Section 15, Yellow control)</h4>
+      ${forecastSection}
+      ${budgetSection}
+    `;
   }
 
   function renderHero() {
@@ -1497,6 +1635,7 @@ function sumBudgetCategories(obj) {
     if (id==='begin-modal') openBeginModal();
     if (id==='deduction-payment-modal') prepareDeductionPaymentModal();
     if (id==='cash-control-modal') prepareCashControlModal();
+    if (id==='cash-forecast-modal') renderCashForecastModalBody();
     populateSelects();
     document.getElementById(id).classList.add('active');
   }
