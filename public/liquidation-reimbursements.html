@@ -1247,7 +1247,16 @@
             const incomePayload = {
               amount: balance,
               member: `Unused cash advance returned - ${row.requesterName || row.requesterRole || ''}`,
-              type: 'Cash Advance Return',
+              // type: 'transfer' is the app's existing convention for a
+              // balance-only movement (see the Transfer Funds feature in
+              // financial-overview.html): it still credits the fund
+              // balance there (isIncomeTransfer), but reports.html,
+              // print-report.html, budget-vs-actual.html, and
+              // income-log.html all already exclude type==='transfer'
+              // from their income totals. An unspent cash advance
+              // returning isn't new income, so it should only move the
+              // fund balance, not inflate reported income anywhere.
+              type: 'transfer',
               category: 'Cash Advance Return',
               budgetCategory: 'Cash Advance Return',
               payment: fund,
