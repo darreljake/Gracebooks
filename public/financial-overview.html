@@ -662,6 +662,27 @@
     </div>
     <button class="modal-btn" onclick="saveCashControlSettings()">Save Cash Controls</button>
     <button class="modal-cancel" onclick="closeModal('cash-control-modal')">Cancel</button>
+
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid #eee;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <strong style="font-size:13px;color:#1a5276;">Annex 1 Calibration Helper</strong>
+        <select id="annex1-lookback" style="font-size:12px;padding:5px 7px;border-radius:5px;" onchange="analyzeEssentialExpenses()">
+          <option value="3">Last 3 months</option>
+          <option value="6" selected>Last 6 months</option>
+          <option value="12">Last 12 months</option>
+        </select>
+      </div>
+      <p style="font-size:12px;color:#888;margin:6px 0 10px;line-height:1.4;">
+        Computed from your actual recorded expenses (not a guess) - average monthly spend per category over the selected window.
+        Tick which categories count as "essential" per Annex 1 (utilities, salaries, employment-related contributions, essential supplies,
+        recurring subscriptions, bank charges), then use the suggested total as a starting point - Treasurer/Finance Chair still decide the final figure.
+      </p>
+      <div id="annex1-category-list" style="max-height:200px;overflow:auto;border:1px solid #eee;border-radius:6px;padding:8px;font-size:12px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+        <span style="font-size:13px;">Suggested total: <strong id="annex1-suggested-total">&#8369;0.00</strong></span>
+        <button class="modal-btn" style="width:auto;padding:8px 14px;" onclick="applyAnnex1Suggestion()">Use This Amount</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -980,11 +1001,24 @@ setupFinancialListeners();
       : 'Set monthly expense';
     document.getElementById('cash-restricted').textContent = '\u20b1' + fmt(snap.restrictedDesignated);
     document.getElementById('cash-payables').textContent = '\u20b1' + fmt(snap.approvedPayables);
+    // Per Section 15: Green >= 3 months, Yellow 1-3 months, Red 2 weeks (0.5mo)
+    // to 1 month, Black below 2 weeks - expressed here in peso terms against
+    // the Treasurer's own Essential Monthly Operating Expense figure, so
+    // "how much do we need to stay Green" is a concrete forecast, not just
+    // an abstract month count.
+    const forecastHtml = snap.essentialMonthlyExpense > 0
+      ? `<span style="color:#777;">Forecast needed per level: Green \u2265 \u20b1${fmt(snap.essentialMonthlyExpense*3)}
+        &middot; Yellow \u20b1${fmt(snap.essentialMonthlyExpense*1)}\u2013\u20b1${fmt(snap.essentialMonthlyExpense*3)}
+        &middot; Red \u20b1${fmt(snap.essentialMonthlyExpense*0.5)}\u2013\u20b1${fmt(snap.essentialMonthlyExpense*1)}
+        &middot; Black below \u20b1${fmt(snap.essentialMonthlyExpense*0.5)}</span><br>`
+      : `<span style="color:#777;">Set Essential Monthly Operating Expense in Cash Controls to see peso forecasts per level.</span><br>`;
+
     document.getElementById('cash-control-rules').innerHTML = `
       <strong>Required Control:</strong> ${level.control}<br>
       <strong>Payment Priority During Low Cash:</strong> utilities, salaries and approved compensation, safety/security/urgent repairs,
       essential worship operations, required obligations, essential cleaning and sanitation supplies, critical Finance Committee-approved
       payables, complete pre-approved reimbursements, and other expenses only if specially approved.<br>
+      ${forecastHtml}
       <span style="color:#777;">Computation: General Fund cash/bank \u20b1${fmt(snap.generalCash)} - restricted/designated \u20b1${fmt(snap.restrictedDesignated)}
       - approved payables \u20b1${fmt(snap.approvedPayables)} = \u20b1${fmt(snap.availableOperatingCash)} available operating cash.</span>`;
   }
@@ -1422,6 +1456,72 @@ function openBeginModal() {
     if (monthly) monthly.value = cashControlSettings.essentialMonthlyExpense || '';
     if (payables) payables.value = cashControlSettings.approvedPayables || '';
     if (notes) notes.value = cashControlSettings.notes || '';
+    analyzeEssentialExpenses();
+  }
+
+  // Annex 1 calibration helper: suggests the Essential Monthly Operating
+  // Expense from ACTUAL recorded expense history, grouped by category and
+  // averaged over the selected look-back window - never a guessed/typed-in
+  // figure. Categories are pre-checked only when their name matches an
+  // Annex 1 essential-expense keyword; the Treasurer/Finance Chair still
+  // reviews and confirms before saving, since only they know which budget
+  // categories are truly essential for this church.
+  const ANNEX1_ESSENTIAL_KEYWORDS = [
+    'electric', 'kuryente', 'water', 'tubig', 'internet', 'communication', 'komunikasyon',
+    'salary', 'salaries', 'sahod', 'wage', 'compensation', 'allowance',
+    'contribution', 'sss', 'philhealth', 'pagibig', 'pag-ibig', 'tithe', 'deduction',
+    'supplies', 'cleaning', 'sanitation', 'subscription', 'bank charge', 'bank fee', 'transaction fee'
+  ];
+
+  function analyzeEssentialExpenses() {
+    const lookbackEl = document.getElementById('annex1-lookback');
+    const list = document.getElementById('annex1-category-list');
+    if (!lookbackEl || !list) return;
+    const months = parseInt(lookbackEl.value, 10) || 6;
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const relevant = fbExpenses.filter(e => e.type !== 'transfer' && (e.date || '') >= cutoffStr);
+    const byCategory = {};
+    relevant.forEach(e => {
+      const cat = e.category || 'Uncategorized';
+      byCategory[cat] = (byCategory[cat] || 0) + (Number(e.amount) || 0);
+    });
+
+    if (Object.keys(byCategory).length === 0) {
+      list.innerHTML = '<div style="color:#999;padding:10px;">No expense records found in this window.</div>';
+      document.getElementById('annex1-suggested-total').textContent = '₱0.00';
+      return;
+    }
+
+    const rows = Object.keys(byCategory).sort().map(cat => {
+      const monthlyAvg = byCategory[cat] / months;
+      const isEssentialGuess = ANNEX1_ESSENTIAL_KEYWORDS.some(k => cat.toLowerCase().includes(k));
+      return { cat, monthlyAvg, isEssentialGuess };
+    });
+
+    list.innerHTML = rows.map(r => `
+      <label style="display:flex;justify-content:space-between;align-items:center;padding:4px 2px;cursor:pointer;">
+        <span><input type="checkbox" class="annex1-cat-check" data-amount="${r.monthlyAvg}" ${r.isEssentialGuess ? 'checked' : ''} onchange="recalcAnnex1Total()"> ${escapeHtml(r.cat)}</span>
+        <span>₱${fmt(r.monthlyAvg)}/mo</span>
+      </label>
+    `).join('');
+
+    recalcAnnex1Total();
+  }
+
+  function recalcAnnex1Total() {
+    const checks = document.querySelectorAll('.annex1-cat-check:checked');
+    let total = 0;
+    checks.forEach(c => { total += parseFloat(c.dataset.amount) || 0; });
+    document.getElementById('annex1-suggested-total').textContent = '₱' + fmt(total);
+  }
+
+  function applyAnnex1Suggestion() {
+    const digits = document.getElementById('annex1-suggested-total').textContent.replace(/[^\d.]/g, '');
+    document.getElementById('cash-essential-monthly').value = digits || '0';
+    showToast('Suggested amount filled in - review, then click Save Cash Controls to confirm.');
   }
 
   async function saveCashControlSettings() {
