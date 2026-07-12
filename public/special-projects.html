@@ -846,10 +846,37 @@
         await writeAuditLog('special_project_funding_created', 'specialProjectEntries', entryRef.id, null, payload, `Added church fund source for ${project.name}`);
         await writeAuditLog('expense_created_from_special_project', 'expenses', expenseRef.id, null, expensePayload, `Recorded project expense for ${project.name}`);
       } else {
-        await entryRef.set(payload);
+        // Pledge/Direct Contribution funding was previously only recorded
+        // as a specialProjectEntries doc with no corresponding `income`
+        // write, even though the Treasurer picks a real receiveAccount the
+        // cash lands in - the money was invisible to financial-overview.html
+        // (which only listens to income/expenses), permanently understating
+        // Cash on Hand/Cash in Bank versus the physical count.
+        const incomeRef = db.collection('income').doc();
+        payload.linkedIncomeId = incomeRef.id;
+        const incomePayload = {
+          date: item.date,
+          member: item.party || item.pledgerName || project.name,
+          type: item.sourceType,
+          amount: item.amount,
+          payment: item.receiveAccount,
+          targetAccount: item.receiveAccount,
+          targetAccId: item.receiveAccount,
+          notes: item.note || item.notes || '',
+          postedAt: new Date().toISOString(),
+          isSpecialProject: true,
+          specialProjectId: project.id,
+          specialProjectName: project.name,
+          specialProjectEntryId: entryRef.id
+        };
+        const batch = db.batch();
+        batch.set(entryRef, payload);
+        batch.set(incomeRef, incomePayload);
+        await batch.commit();
         const proofData = await uploadProofForProjectEntry(entryRef.id, item.receiptFile);
         if (proofData) await entryRef.update(proofData);
         await writeAuditLog('special_project_funding_created', 'specialProjectEntries', entryRef.id, null, payload, `Added ${item.sourceType} for ${project.name}`);
+        await writeAuditLog('income_created_from_special_project', 'income', incomeRef.id, null, incomePayload, `Recorded project funding income for ${project.name}`);
       }
     }
 
@@ -868,10 +895,13 @@
       btn.disabled = true;
       draftBtn.disabled = true;
       try {
-        for (const item of fundingDraft) {
-          await commitFundingDraftItem(project, item);
+        // Remove each item from fundingDraft as it succeeds - if a later
+        // item throws mid-loop, retrying only resubmits what's left instead
+        // of re-saving already-committed entries as duplicates.
+        while (fundingDraft.length > 0) {
+          await commitFundingDraftItem(project, fundingDraft[0]);
+          fundingDraft.shift();
         }
-        fundingDraft = [];
         clearFundingForm();
         await loadEntries();
         await loadExpenses();
@@ -920,9 +950,11 @@
           notes: item.notes,
           updatedAt: new Date().toISOString()
         };
-        await db.collection('specialProjectEntries').doc(editingEntryId).update(updatePayload);
+        const entryDocRef = db.collection('specialProjectEntries').doc(editingEntryId);
+        const batch = db.batch();
+        batch.update(entryDocRef, updatePayload);
         if (before && before.linkedExpenseId) {
-          await db.collection('expenses').doc(before.linkedExpenseId).update({
+          batch.update(db.collection('expenses').doc(before.linkedExpenseId), {
             date: item.date,
             amount: item.amount,
             category: item.budgetCategory,
@@ -936,19 +968,45 @@
             updatedAt: new Date().toISOString()
           });
         }
-        if (before && before.linkedIncomeId) {
-          await db.collection('income').doc(before.linkedIncomeId).delete();
-          await db.collection('specialProjectEntries').doc(editingEntryId).update({
-            linkedIncomeId: firebase.firestore.FieldValue.delete()
-          });
+        if (!item.isChurchFund) {
+          // Keep the linked income doc's fund/amount in sync with the entry
+          // instead of deleting it with no replacement - that previously
+          // erased the recorded cash on every edit of a Pledge/Direct
+          // Contribution entry, the same class of bug as the missing
+          // creation write fixed above in commitFundingDraftItem.
+          const incomeUpdate = {
+            date: item.date,
+            member: item.party || item.pledgerName || project.name,
+            amount: item.amount,
+            payment: item.receiveAccount,
+            targetAccount: item.receiveAccount,
+            targetAccId: item.receiveAccount,
+            notes: item.notes || item.note || '',
+            updatedAt: new Date().toISOString()
+          };
+          if (before && before.linkedIncomeId) {
+            batch.update(db.collection('income').doc(before.linkedIncomeId), incomeUpdate);
+          } else {
+            const incomeRef = db.collection('income').doc();
+            batch.update(entryDocRef, { linkedIncomeId: incomeRef.id });
+            batch.set(incomeRef, {
+              type: item.sourceType,
+              isSpecialProject: true,
+              specialProjectId: project.id,
+              specialProjectName: project.name,
+              specialProjectEntryId: editingEntryId,
+              postedAt: new Date().toISOString(),
+              ...incomeUpdate
+            });
+          }
         }
+        await batch.commit();
         const proofData = item.isChurchFund && before && before.linkedExpenseId
           ? await uploadReceiptForExpense(before.linkedExpenseId, item.receiptFile)
           : await uploadProofForProjectEntry(editingEntryId, item.receiptFile);
         if (proofData && item.isChurchFund && before && before.linkedExpenseId) await db.collection('expenses').doc(before.linkedExpenseId).update(proofData);
         if (proofData && (!item.isChurchFund || !before || !before.linkedExpenseId)) await db.collection('specialProjectEntries').doc(editingEntryId).update(proofData);
         const auditAfter = { ...before, ...updatePayload };
-        if (before && before.linkedIncomeId) delete auditAfter.linkedIncomeId;
         await writeAuditLog('special_project_funding_updated', 'specialProjectEntries', editingEntryId, before, auditAfter, `Updated funding source for ${project.name}`);
         editingEntryId = '';
         clearFundingForm();

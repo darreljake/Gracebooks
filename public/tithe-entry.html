@@ -1840,16 +1840,20 @@
     if(draftRecords.length === 0) closeReview();
   };
   // ── ACCOUNT ROUTING MAPPER ──────────────────────────────────────────────
-  function mapTypeToAccount(type) {
-    const mapping = {
-      'Source of Funds': 'cash-hand',
+  function mapTypeToAccount(type, payment) {
+    // Building/Mission/Investment are dedicated funds with a single account
+    // each, not split by payment method. Everything else lands in petty
+    // cash-on-hand unless the Treasurer marked it as received via bank
+    // transfer, in which case it must route to cash-bank - otherwise Cash
+    // on Hand is overstated (and Cash in Bank understated) by every tithe
+    // or offering actually received into the bank account.
+    const fixedMapping = {
       'Building Fund': 'building',
       'Mission Fund': 'mission',
-      'Special Offering': 'cash-hand',
-      'Investment Income': 'investment',
-      'Occasional Offering': 'cash-hand'
+      'Investment Income': 'investment'
     };
-    return mapping[type] || 'cash-hand';
+    if (fixedMapping[type]) return fixedMapping[type];
+    return payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
   }
 
   window.submitAllEntries = async function() {
@@ -1865,11 +1869,16 @@
     btn.disabled = true;
 
     try {
-        for (const entry of draftRecords) {
+        // Entries are removed from draftRecords as each one succeeds, not
+        // after the whole loop finishes - if a later entry throws (network
+        // blip), retrying "Confirm & Save All" only resubmits what's left
+        // instead of re-saving already-committed entries as duplicates.
+        while (draftRecords.length > 0) {
+            const entry = draftRecords[0];
             if (entry.isNewMember && entry.newMemberData) {
                 await setDoc(doc(db, 'members', entry.newMemberData.memberId), entry.newMemberData);
             }
-            
+
             const incomePayload = {
                 date: entry.date,
                 memberId: entry.memberId || "",
@@ -1880,7 +1889,7 @@
                 budgetCategory: entry.budgetCategory,
                 budgetDetails: entry.budgetDetails || "",
                 notes: entry.notes || "",
-                targetAccount: mapTypeToAccount(entry.type),
+                targetAccount: mapTypeToAccount(entry.type, entry.payment),
                 timestamp: new Date().toISOString(),
                 ...(entry.pledgeTarget != null ? { pledgeTarget: entry.pledgeTarget } : {}),
                 ...(entry.pledgePaymentNo != null ? { pledgePaymentNo: entry.pledgePaymentNo } : {})
@@ -1894,6 +1903,7 @@
                 incomePayload,
                 `Created ${entry.type || 'income'} for ${entry.member || 'member'}`
             );
+            draftRecords.shift();
         }
 
         closeReview();
