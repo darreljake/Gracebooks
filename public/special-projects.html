@@ -307,7 +307,9 @@
           <div class="form-row">
             <div>
               <label>Pledger / Contributor</label>
-              <input id="entry-pledger" placeholder="Member name" />
+              <input id="entry-pledger" placeholder="Member name" list="pledger-members-list" autocomplete="off" />
+              <datalist id="pledger-members-list"></datalist>
+              <div class="muted" id="entry-pledger-match" style="font-size:11px; margin-top:2px;"></div>
             </div>
             <div>
               <label>Contribution Note</label>
@@ -400,6 +402,8 @@
     let editingCostId = '';
     let editingEntryId = '';
     let fundingDraft = [];
+    let membersCache = [];
+    let memberNameIndex = {};
 
     const accountNames = {
       'cash-hand': 'General Fund - Cash on Hand',
@@ -420,7 +424,7 @@
     async function initPage() {
       activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
       document.body.classList.toggle('can-manage', roleIs('Treasurer'));
-      await Promise.all([loadProjects(), loadEntries(), loadCosts(), loadExpenses(), loadBudgetCategories()]);
+      await Promise.all([loadProjects(), loadEntries(), loadCosts(), loadExpenses(), loadBudgetCategories(), loadMembers()]);
       if (!activeProjectId && projects[0]) activeProjectId = projects[0].id;
       renderAll();
     }
@@ -449,6 +453,44 @@
     async function loadExpenses() {
       const snap = await db.collection('expenses').orderBy('date', 'desc').limit(500).get();
       expenses = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+
+    function normalizeMemberLookupName(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function memberDisplayName(data) {
+      const last = data.last || data.lastName || '';
+      const first = data.first || data.firstName || '';
+      return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim() || data.name || '';
+    }
+
+    async function loadMembers() {
+      const snap = await db.collection('members').get();
+      membersCache = snap.docs.map(doc => {
+        const data = doc.data();
+        const memberId = (data.memberId || doc.id || '').toString().trim();
+        const name = memberDisplayName(data);
+        return { id: memberId, name };
+      }).filter(m => m.name);
+      memberNameIndex = {};
+      membersCache.forEach(m => {
+        const key = normalizeMemberLookupName(m.name);
+        if (key) memberNameIndex[key] = m.id;
+      });
+      const datalist = document.getElementById('pledger-members-list');
+      if (datalist) {
+        datalist.innerHTML = membersCache
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(m => `<option value="${escapeHtml(m.name)}">`)
+          .join('');
+      }
+    }
+
+    function matchMemberIdByName(name) {
+      const key = normalizeMemberLookupName(name);
+      return key && memberNameIndex[key] ? memberNameIndex[key] : '';
     }
 
     async function loadBudgetCategories() {
@@ -715,6 +757,7 @@
       const receiveAccount = isChurchFund ? '' : document.getElementById('entry-receive-account').value;
       const budgetCategory = isChurchFund ? document.getElementById('entry-budget-category').value : '';
       const pledgerName = isChurchFund ? '' : document.getElementById('entry-pledger').value.trim();
+      const pledgerMemberId = isChurchFund ? '' : matchMemberIdByName(pledgerName);
       const note = isChurchFund ? document.getElementById('entry-particulars').value.trim() : document.getElementById('entry-pledge-note').value.trim();
       const party = isChurchFund ? accountNames[sourceAccount] : pledgerName;
       if (isChurchFund && !budgetCategory) {
@@ -736,6 +779,7 @@
         receiveAccount,
         budgetCategory,
         pledgerName,
+        pledgerMemberId,
         note,
         party,
         payee: document.getElementById('entry-payee').value.trim(),
@@ -798,6 +842,7 @@
         amount: item.amount,
         party: item.party,
         pledgerName: item.pledgerName,
+        memberId: item.pledgerMemberId || '',
         payee: item.payee,
         particulars: item.note,
         reference: item.reference,
@@ -914,6 +959,7 @@
           amount: item.amount,
           party: item.party,
           pledgerName: item.pledgerName,
+          memberId: item.pledgerMemberId || '',
           payee: item.payee,
           particulars: item.note,
           reference: item.reference,
@@ -1471,6 +1517,14 @@
       renderAll();
       closeModal('link-expense-modal');
     }
+
+    document.getElementById('entry-pledger').addEventListener('input', (e) => {
+      const matchId = matchMemberIdByName(e.target.value);
+      const hint = document.getElementById('entry-pledger-match');
+      hint.textContent = e.target.value.trim()
+        ? (matchId ? `Linked to member #${matchId}` : 'No matching member — will be recorded as a free-text name')
+        : '';
+    });
 
     initPage().catch(err => {
       console.error(err);

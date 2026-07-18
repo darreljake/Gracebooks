@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>GraceBooks — Church Equipment</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+
+  <style>
+    :root { --red: #8B0000; --red-mid: #c0392b; --red-light: #fdf2f2; --gold: #c9a84c; --dark: #1a1a1a; --gray: #555; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', sans-serif; background: #f0f2f5; color: var(--dark); min-height: 100vh; }
+
+    .topbar {
+      background: var(--red); color: white; padding: 14px 28px; display: flex; justify-content: space-between;
+      align-items: center; box-shadow: 0 3px 15px rgba(0,0,0,0.25); position: sticky; top: 0; z-index: 100;
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand img { height: 46px; }
+    .brand-text { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+    .brand-sub { font-size: 11px; opacity: 0.75; letter-spacing: 0.5px; }
+    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-action {
+      padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px; color: white; transition: 0.2s; font-family: 'Poppins', sans-serif;
+    }
+    .btn-action:hover { opacity: 0.85; transform: translateY(-1px); }
+    .btn-back { background: rgba(255,255,255,0.15); }
+    .btn-add { background: #1e8449; }
+    .btn-import { background: #1a5276; }
+
+    .content { max-width: 1180px; margin: 24px auto; padding: 0 20px 60px; }
+
+    .summary-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    .summary-card {
+      background: white; border-radius: 10px; padding: 16px 20px; flex: 1 1 200px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06); border-left: 4px solid var(--red);
+    }
+    .summary-card .label { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.5px; }
+    .summary-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+    .filter-bar {
+      background: white; border-radius: 10px; padding: 14px 18px; display: flex; gap: 12px; flex-wrap: wrap;
+      align-items: center; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .filter-bar input, .filter-bar select {
+      padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: 'Poppins', sans-serif;
+    }
+
+    table.eq-table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+    table.eq-table th { background: var(--red); color: white; padding: 10px 12px; text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+    table.eq-table td { padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 13px; vertical-align: top; }
+    table.eq-table tr:last-child td { border-bottom: none; }
+    table.eq-table tr:hover td { background: var(--red-light); }
+    .eq-donor { font-size: 11px; color: var(--gray); }
+    .eq-actions { display: flex; gap: 6px; }
+    .btn-icon { border: none; background: #eee; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; color: var(--dark); }
+    .btn-icon.danger { background: #fbe4e4; color: var(--red-mid); }
+    .empty-state { text-align: center; padding: 50px; color: #aaa; }
+
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; padding: 20px; }
+    .modal-overlay.show { display: flex; }
+    .modal { background: white; border-radius: 12px; width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .modal-header { padding: 20px 24px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { font-size: 16px; }
+    .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 10px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group label { display: block; font-size: 11px; font-weight: 700; color: var(--gray); text-transform: uppercase; margin-bottom: 4px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: 'Poppins', sans-serif;
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .btn-cancel { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; background: #eee; color: #333; }
+    .btn-save { padding: 9px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; background: var(--red); color: white; }
+    .close-x { border: none; background: none; font-size: 20px; cursor: pointer; color: var(--gray); }
+    .muted { font-size: 11px; color: var(--gray); margin-top: 4px; }
+    #csv-preview-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 10px; }
+    #csv-preview-table th, #csv-preview-table td { border: 1px solid #eee; padding: 4px 6px; }
+    #member-suggestions-eq { display: none; position: absolute; background: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); z-index: 50; max-height: 200px; overflow-y: auto; width: 100%; }
+    #member-suggestions-eq div { padding: 8px 10px; font-size: 12.5px; cursor: pointer; }
+    #member-suggestions-eq div:hover { background: var(--red-light); }
+    .field-relative { position: relative; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
+    <div>
+      <div class="brand-text">GraceBooks</div>
+      <div class="brand-sub">Church Equipment</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="btn-action btn-import" id="btn-open-import" onclick="openImportModal()" style="display:none;"><i class="fas fa-file-csv"></i> Import CSV</button>
+    <button class="btn-action btn-add" id="btn-open-add" onclick="openAddModal()" style="display:none;"><i class="fas fa-plus"></i> Add Item</button>
+    <button class="btn-action btn-back" onclick="window.location.href='index.html'"><i class="fas fa-arrow-left"></i> Dashboard</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="summary-row">
+    <div class="summary-card"><div class="label">Total Items</div><div class="value" id="summary-count">0</div></div>
+    <div class="summary-card"><div class="label">Total Value</div><div class="value" id="summary-value">₱ 0.00</div></div>
+    <div class="summary-card"><div class="label">Donated by Members</div><div class="value" id="summary-donated">₱ 0.00</div></div>
+    <div class="summary-card"><div class="label">Church Purchased</div><div class="value" id="summary-purchased">₱ 0.00</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" id="filter-search" placeholder="Search item, description, donor..." style="min-width:220px;" oninput="renderTable()">
+    <select id="filter-category" onchange="renderTable()"><option value="">All Categories</option></select>
+    <select id="filter-year" onchange="renderTable()"><option value="">All Years</option></select>
+  </div>
+
+  <table class="eq-table">
+    <thead>
+      <tr>
+        <th>Item</th><th>Category</th><th>Qty</th><th>Donor</th><th>Date</th><th>Value at Donation</th><th>Condition</th><th>Location</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="eq-tbody"></tbody>
+  </table>
+  <div id="empty-state" class="empty-state" style="display:none;">No equipment records yet.</div>
+</div>
+
+<div class="modal-overlay" id="item-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="item-modal-title">Add Equipment</h3>
+      <button class="close-x" onclick="closeModal('item-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Item</label><input type="text" id="f-item" placeholder="e.g. Yamaha Keyboard"></div>
+        <div class="form-group"><label>Category</label><input type="text" id="f-category" placeholder="e.g. Musical Instrument" list="category-list"><datalist id="category-list"></datalist></div>
+      </div>
+      <div class="form-group"><label>Description</label><textarea id="f-description" placeholder="Model, serial number, notes..."></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Quantity</label><input type="number" id="f-qty" min="1" value="1"></div>
+        <div class="form-group"><label>Condition</label>
+          <select id="f-condition">
+            <option>New</option><option>Good</option><option>Fair</option><option>Needs Repair</option><option>Retired</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group field-relative">
+          <label>Donated By (leave blank if church-purchased)</label>
+          <input type="text" id="f-donor" placeholder="Search member name or ID..." autocomplete="off">
+          <div id="member-suggestions-eq"></div>
+        </div>
+        <div class="form-group"><label>Date Donated / Acquired</label><input type="date" id="f-date"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Value at Donation (₱)</label><input type="number" id="f-value" min="0" step="0.01" placeholder="0.00"></div>
+        <div class="form-group"><label>Location</label><input type="text" id="f-location" placeholder="e.g. Sanctuary, Fellowship Hall"></div>
+      </div>
+      <div class="form-group"><label>Notes</label><textarea id="f-notes" placeholder="Optional additional notes"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('item-modal')">Cancel</button>
+      <button class="btn-save" id="item-save-btn" onclick="saveItem()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="import-modal">
+  <div class="modal" style="width:720px;">
+    <div class="modal-header">
+      <h3>Import Equipment from CSV</h3>
+      <button class="close-x" onclick="closeModal('import-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="muted">Expected columns (header row required): <code>item,description,category,qty,memberId,date,value,condition,location,notes</code>. <code>memberId</code> may be left blank for church-purchased items.</div>
+      <input type="file" id="csv-file-input" accept=".csv" onchange="handleCsvFile(event)">
+      <div id="csv-preview-wrap" style="display:none;">
+        <div class="muted" id="csv-preview-count"></div>
+        <div style="max-height:280px; overflow:auto;">
+          <table id="csv-preview-table"></table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal('import-modal')">Cancel</button>
+      <button class="btn-save" id="csv-commit-btn" onclick="commitCsvImport()" disabled>Import Rows</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let profile = null;
+  let canEdit = false;
+  let equipmentItems = [];
+  let membersCache = [];
+  let memberById = {};
+  let selectedDonorId = '';
+  let editingId = '';
+  let csvRows = [];
+
+  function fmt(n) { return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function peso(n) { return '₱ ' + fmt(n); }
+  function escapeHtml(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  function memberDisplayName(data) {
+    const last = data.last || data.lastName || '';
+    const first = data.first || data.firstName || '';
+    return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim() || data.name || '';
+  }
+
+  async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action, collection: 'equipment', docId, summary,
+      before: beforeData || null, after: afterData || null,
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+      actorName: profile ? profile.name : '', actorRole: profile ? profile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  window.graceBooksAuthReady.then(async (userProfile) => {
+    profile = userProfile;
+    const allowedRoles = ['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson'];
+    if (!allowedRoles.includes(profile.role)) {
+      document.querySelector('.content').innerHTML = '<div class="empty-state">Your role does not have access to Church Equipment.</div>';
+      return;
+    }
+    canEdit = profile.role === 'Treasurer';
+    if (canEdit) {
+      document.getElementById('btn-open-add').style.display = 'flex';
+      document.getElementById('btn-open-import').style.display = 'flex';
+    }
+    await Promise.all([loadMembers(), loadEquipment()]);
+    document.getElementById('f-donor').addEventListener('input', onDonorSearchInput);
+    document.addEventListener('click', (e) => {
+      const box = document.getElementById('member-suggestions-eq');
+      if (box && !box.contains(e.target) && e.target.id !== 'f-donor') box.style.display = 'none';
+    });
+    renderTable();
+  });
+
+  async function loadMembers() {
+    const snap = await db.collection('members').get();
+    membersCache = snap.docs.map(doc => {
+      const data = doc.data();
+      return { id: (data.memberId || doc.id || '').toString().trim(), name: memberDisplayName(data) };
+    }).filter(m => m.name);
+    memberById = {};
+    membersCache.forEach(m => { memberById[m.id] = m.name; });
+  }
+
+  async function loadEquipment() {
+    try {
+      const snap = await db.collection('equipment').orderBy('dateDonated', 'desc').get();
+      equipmentItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    } catch (e) {
+      const snap = await db.collection('equipment').get();
+      equipmentItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    }
+    const categories = [...new Set(equipmentItems.map(i => i.category).filter(Boolean))].sort();
+    document.getElementById('filter-category').innerHTML = '<option value="">All Categories</option>' +
+      categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    document.getElementById('category-list').innerHTML = categories.map(c => `<option value="${escapeHtml(c)}">`).join('');
+    const years = [...new Set(equipmentItems.map(i => (i.dateDonated || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+    document.getElementById('filter-year').innerHTML = '<option value="">All Years</option>' +
+      years.map(y => `<option value="${y}">${y}</option>`).join('');
+  }
+
+  function onDonorSearchInput(e) {
+    const term = e.target.value.trim().toLowerCase();
+    const box = document.getElementById('member-suggestions-eq');
+    selectedDonorId = '';
+    if (!term) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const matches = membersCache.filter(m => m.name.toLowerCase().includes(term) || m.id.toLowerCase().includes(term)).slice(0, 8);
+    if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = matches.map((m, i) => `<div data-idx="${i}" onclick="selectDonorSuggestion(${i})">${escapeHtml(m.name)} <span style="color:#999;font-size:11px;">#${escapeHtml(m.id)}</span></div>`).join('');
+    box.dataset.matches = JSON.stringify(matches);
+    box.style.display = 'block';
+  }
+  window.selectDonorSuggestion = function(idx) {
+    const box = document.getElementById('member-suggestions-eq');
+    const matches = JSON.parse(box.dataset.matches || '[]');
+    const match = matches[idx];
+    if (!match) return;
+    selectedDonorId = match.id;
+    document.getElementById('f-donor').value = match.name;
+    box.style.display = 'none';
+  };
+
+  function renderTable() {
+    const search = document.getElementById('filter-search').value.trim().toLowerCase();
+    const catFilter = document.getElementById('filter-category').value;
+    const yearFilter = document.getElementById('filter-year').value;
+    let list = equipmentItems.filter(i => {
+      if (catFilter && i.category !== catFilter) return false;
+      if (yearFilter && (i.dateDonated || '').slice(0, 4) !== yearFilter) return false;
+      if (search) {
+        const hay = `${i.item || ''} ${i.description || ''} ${i.donorName || ''} ${i.category || ''}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
+    const tbody = document.getElementById('eq-tbody');
+    document.getElementById('empty-state').style.display = list.length ? 'none' : 'block';
+    tbody.innerHTML = list.map(i => `
+      <tr>
+        <td><strong>${escapeHtml(i.item || '')}</strong>${i.description ? `<div class="eq-donor">${escapeHtml(i.description)}</div>` : ''}</td>
+        <td>${escapeHtml(i.category || '')}</td>
+        <td>${escapeHtml(i.qty || 1)}</td>
+        <td>${i.donorMemberId ? escapeHtml(i.donorName || memberById[i.donorMemberId] || i.donorMemberId) : '<span class="eq-donor">Church purchased</span>'}</td>
+        <td>${escapeHtml(i.dateDonated || '')}</td>
+        <td>${peso(i.valueAtDonation)}</td>
+        <td>${escapeHtml(i.condition || '')}</td>
+        <td>${escapeHtml(i.location || '')}</td>
+        <td>
+          ${canEdit ? `
+          <div class="eq-actions">
+            <button class="btn-icon" title="Edit" onclick="openEditModal('${i.id}')"><i class="fas fa-pen"></i></button>
+            <button class="btn-icon danger" title="Delete" onclick="deleteItem('${i.id}')"><i class="fas fa-trash"></i></button>
+          </div>` : ''}
+        </td>
+      </tr>`).join('');
+
+    const totalValue = equipmentItems.reduce((s, i) => s + (parseFloat(i.valueAtDonation) || 0), 0);
+    const donatedValue = equipmentItems.filter(i => i.donorMemberId).reduce((s, i) => s + (parseFloat(i.valueAtDonation) || 0), 0);
+    const purchasedValue = totalValue - donatedValue;
+    document.getElementById('summary-count').textContent = equipmentItems.length;
+    document.getElementById('summary-value').textContent = peso(totalValue);
+    document.getElementById('summary-donated').textContent = peso(donatedValue);
+    document.getElementById('summary-purchased').textContent = peso(purchasedValue);
+  }
+
+  function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+  function openAddModal() {
+    if (!canEdit) return;
+    editingId = '';
+    selectedDonorId = '';
+    document.getElementById('item-modal-title').textContent = 'Add Equipment';
+    ['f-item','f-category','f-description','f-donor','f-date','f-value','f-location','f-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-qty').value = 1;
+    document.getElementById('f-condition').value = 'Good';
+    document.getElementById('item-modal').classList.add('show');
+  }
+
+  window.openEditModal = function(id) {
+    if (!canEdit) return;
+    const item = equipmentItems.find(i => i.id === id);
+    if (!item) return;
+    editingId = id;
+    selectedDonorId = item.donorMemberId || '';
+    document.getElementById('item-modal-title').textContent = 'Edit Equipment';
+    document.getElementById('f-item').value = item.item || '';
+    document.getElementById('f-category').value = item.category || '';
+    document.getElementById('f-description').value = item.description || '';
+    document.getElementById('f-qty').value = item.qty || 1;
+    document.getElementById('f-condition').value = item.condition || 'Good';
+    document.getElementById('f-donor').value = item.donorMemberId ? (item.donorName || memberById[item.donorMemberId] || '') : '';
+    document.getElementById('f-date').value = item.dateDonated || '';
+    document.getElementById('f-value').value = item.valueAtDonation || '';
+    document.getElementById('f-location').value = item.location || '';
+    document.getElementById('f-notes').value = item.notes || '';
+    document.getElementById('item-modal').classList.add('show');
+  };
+
+  async function saveItem() {
+    if (!canEdit) return;
+    const item = document.getElementById('f-item').value.trim();
+    if (!item) { alert('Please enter an item name.'); return; }
+    const donorInput = document.getElementById('f-donor').value.trim();
+    const donorMemberId = donorInput ? selectedDonorId : '';
+    if (donorInput && !donorMemberId) { alert('Please select a member from the suggestions, or clear the field for church-purchased items.'); return; }
+
+    const payload = {
+      item,
+      category: document.getElementById('f-category').value.trim(),
+      description: document.getElementById('f-description').value.trim(),
+      qty: parseInt(document.getElementById('f-qty').value, 10) || 1,
+      condition: document.getElementById('f-condition').value,
+      donorMemberId,
+      donorName: donorMemberId ? (memberById[donorMemberId] || donorInput) : '',
+      dateDonated: document.getElementById('f-date').value,
+      valueAtDonation: parseFloat(document.getElementById('f-value').value) || 0,
+      location: document.getElementById('f-location').value.trim(),
+      notes: document.getElementById('f-notes').value.trim(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const btn = document.getElementById('item-save-btn');
+    btn.disabled = true;
+    try {
+      if (editingId) {
+        const before = equipmentItems.find(i => i.id === editingId);
+        await db.collection('equipment').doc(editingId).update(payload);
+        await writeAuditLog('equipment_updated', editingId, before, { ...before, ...payload }, `Updated equipment "${item}"`);
+      } else {
+        payload.createdAt = new Date().toISOString();
+        const ref = await db.collection('equipment').add(payload);
+        await writeAuditLog('equipment_created', ref.id, null, payload, `Added equipment "${item}"`);
+      }
+      await loadEquipment();
+      renderTable();
+      closeModal('item-modal');
+    } catch (err) {
+      console.error(err);
+      alert('Error saving equipment: ' + err.message);
+    }
+    btn.disabled = false;
+  }
+
+  window.deleteItem = async function(id) {
+    if (!canEdit) return;
+    const item = equipmentItems.find(i => i.id === id);
+    if (!item) return;
+    if (!confirm(`Delete "${item.item}"? This cannot be undone.`)) return;
+    try {
+      await db.collection('equipment').doc(id).delete();
+      await writeAuditLog('equipment_deleted', id, item, null, `Deleted equipment "${item.item}"`);
+      await loadEquipment();
+      renderTable();
+    } catch (err) {
+      console.error(err);
+      alert('Error deleting: ' + err.message);
+    }
+  };
+
+  // ── CSV IMPORT ──────────────────────────────────────────────────────────
+  function openImportModal() {
+    if (!canEdit) return;
+    csvRows = [];
+    document.getElementById('csv-file-input').value = '';
+    document.getElementById('csv-preview-wrap').style.display = 'none';
+    document.getElementById('csv-commit-btn').disabled = true;
+    document.getElementById('import-modal').classList.add('show');
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    if (!lines.length) return [];
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    return lines.slice(1).map(line => {
+      const cells = line.split(',').map(c => c.trim());
+      const row = {};
+      headers.forEach((h, i) => { row[h] = cells[i] || ''; });
+      return row;
+    });
+  }
+
+  function handleCsvFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      csvRows = parseCsv(e.target.result);
+      renderCsvPreview();
+    };
+    reader.readAsText(file);
+  }
+
+  function renderCsvPreview() {
+    const wrap = document.getElementById('csv-preview-wrap');
+    const table = document.getElementById('csv-preview-table');
+    const countEl = document.getElementById('csv-preview-count');
+    if (!csvRows.length) {
+      wrap.style.display = 'none';
+      document.getElementById('csv-commit-btn').disabled = true;
+      return;
+    }
+    countEl.textContent = `${csvRows.length} row(s) found. Rows with an unrecognized memberId will import as church-purchased.`;
+    const cols = ['item','description','category','qty','memberid','date','value','condition','location','notes'];
+    table.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>' +
+      csvRows.slice(0, 20).map(r => '<tr>' + cols.map(c => `<td>${escapeHtml(r[c] || '')}</td>`).join('') + '</tr>').join('');
+    wrap.style.display = 'block';
+    document.getElementById('csv-commit-btn').disabled = false;
+  }
+
+  async function commitCsvImport() {
+    if (!canEdit || !csvRows.length) return;
+    const btn = document.getElementById('csv-commit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing...';
+    let imported = 0;
+    try {
+      for (const r of csvRows) {
+        if (!r.item) continue;
+        const donorMemberId = r.memberid && memberById[r.memberid] ? r.memberid : '';
+        const payload = {
+          item: r.item,
+          description: r.description || '',
+          category: r.category || '',
+          qty: parseInt(r.qty, 10) || 1,
+          donorMemberId,
+          donorName: donorMemberId ? memberById[donorMemberId] : '',
+          dateDonated: r.date || '',
+          valueAtDonation: parseFloat(r.value) || 0,
+          condition: r.condition || 'Good',
+          location: r.location || '',
+          notes: r.notes || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        const ref = await db.collection('equipment').add(payload);
+        await writeAuditLog('equipment_imported', ref.id, null, payload, `Imported equipment "${r.item}" via CSV`);
+        imported++;
+      }
+      await loadEquipment();
+      renderTable();
+      closeModal('import-modal');
+      alert(`Imported ${imported} item(s).`);
+    } catch (err) {
+      console.error(err);
+      alert('Import error: ' + err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = 'Import Rows';
+  }
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
+</body>
+</html>
