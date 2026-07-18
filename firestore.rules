@@ -140,6 +140,22 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
+    match /certificates/{docId} {
+      // Certificate IDs are unguessable Firestore auto-IDs; a single-document
+      // get lets the public verify page confirm authenticity without exposing
+      // the collection to enumeration (list stays role-gated).
+      allow get: if true;
+      allow list: if hasRole(['Treasurer', 'Pastor']);
+      allow create: if hasRole(['Treasurer']);
+      allow update: if hasRole(['Treasurer', 'Pastor']);
+      allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /equipment/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
