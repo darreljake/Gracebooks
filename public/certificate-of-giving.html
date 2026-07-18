@@ -257,6 +257,12 @@
     </div>
   </div>
   <div class="warn-banner" id="unmatched-warning"></div>
+  <div class="controls-row" style="margin-top:4px;">
+    <div class="field-group" style="min-width:100%;">
+      <label>Recently Issued Certificates</label>
+    </div>
+  </div>
+  <div class="cert-list" id="treasurer-cert-list"><div style="color:#999; font-size:12px;">Loading issued certificates...</div></div>
 </div>
 
 <div class="controls-bar no-print" id="pastor-controls" style="display:none;">
@@ -406,6 +412,7 @@
         const box = document.getElementById('member-suggestions');
         if (box && !box.contains(e.target) && e.target.id !== 'member-search') box.style.display = 'none';
       });
+      await loadTreasurerCertList();
     } else if (isPastor) {
       await loadPastorCertList();
     }
@@ -700,6 +707,7 @@
 
       currentCertDoc = { id: docId, ...docData };
       renderDocument(currentCertDoc, statement);
+      await loadTreasurerCertList();
 
       const warnBox = document.getElementById('unmatched-warning');
       if (statement.unmatchedNames.length) {
@@ -715,6 +723,60 @@
     }
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-certificate"></i> Generate';
+  }
+
+  // ── TREASURER: RECENT CERTIFICATES LIST ────────────────────────────────
+  async function loadTreasurerCertList() {
+    const list = document.getElementById('treasurer-cert-list');
+    try {
+      const snap = await db.collection('certificates').orderBy('issuedAt', 'desc').limit(20).get();
+      const certs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (!certs.length) { list.innerHTML = '<div style="color:#999; font-size:12px;">No certificates issued yet.</div>'; return; }
+      list.innerHTML = certs.map(c => `
+        <div class="cert-list-item">
+          <div>
+            <div><strong>${escapeHtml(c.certNo)}</strong> — ${escapeHtml(c.memberName)}</div>
+            <div class="meta">${escapeHtml(c.periodLabel)} · ${peso(c.grandTotal)} · ${c.signatures && c.signatures.pastor ? 'Pastor signed' : 'Awaiting pastor signature'}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-small btn-view" onclick="reopenCertificate('${c.id}')">Reopen</button>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      console.error(err);
+      list.innerHTML = '<div style="color:#c0392b; font-size:12px;">Unable to load certificates.</div>';
+    }
+  }
+
+  window.reopenCertificate = async function(certId) {
+    const doc = await db.collection('certificates').doc(certId).get();
+    if (!doc.exists) { alert('Certificate not found.'); return; }
+    const cert = doc.data();
+    selectedMember = { id: cert.memberId, name: cert.memberName };
+    document.getElementById('member-search').value = `${cert.memberName} (#${cert.memberId})`;
+
+    setPeriodType(cert.periodType);
+    if (cert.periodType === 'annual') {
+      ensureYearOption(cert.periodKey);
+      document.getElementById('sel-year').value = cert.periodKey;
+    } else if (cert.periodType === 'monthly') {
+      const [y, m] = cert.periodKey.split('-');
+      ensureYearOption(y);
+      document.getElementById('sel-year').value = y;
+      document.getElementById('sel-month').value = String(Number(m) - 1);
+    } else {
+      document.getElementById('sel-sunday').value = cert.periodKey;
+    }
+
+    await viewCertificate(certId);
+    document.getElementById('report-page').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  function ensureYearOption(year) {
+    const sel = document.getElementById('sel-year');
+    if (![...sel.options].some(o => o.value === String(year))) {
+      sel.add(new Option(String(year), String(year)));
+    }
   }
 
   // ── PASTOR: LIST + SIGN ────────────────────────────────────────────────
