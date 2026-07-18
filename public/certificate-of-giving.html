@@ -17,6 +17,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
   <script src="qrcode.min.js"></script>
@@ -89,6 +90,20 @@
     }
     .warn-banner.show { display: block; }
 
+    .sig-panel { display: none; border-top: 1px solid #eee; margin-top: 14px; padding-top: 14px; }
+    .sig-panel.open { display: block; }
+    .sig-panel-cols { display: flex; gap: 24px; flex-wrap: wrap; }
+    .sig-panel-col { flex: 1 1 260px; min-width: 240px; }
+    .sig-preview {
+      max-width: 220px; height: 70px; object-fit: contain; display: none;
+      border: 1px dashed #cbd5df; border-radius: 7px; background: #fff; margin-top: 8px;
+    }
+    .pad {
+      width: 100%; height: 130px; border: 1px solid #cbd5df; border-radius: 7px;
+      background: white; touch-action: none;
+    }
+    .btn-toggle-sig { background: #5a2a7a; }
+
     .cert-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
     .cert-list-item {
       display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -156,6 +171,13 @@
 
     .placeholder-box { text-align: center; padding: 70px 20px; color: #aaa; }
     .placeholder-box i { font-size: 32px; }
+
+    .void-banner {
+      background: #fbe4e4; border: 2px solid #c0392b; color: #a93226; border-radius: 8px;
+      padding: 12px 16px; text-align: center; font-weight: 700; font-size: 14px; margin-bottom: 20px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    @media print { .void-banner { break-inside: avoid; } }
 
     @page { size: 8.5in 13in; margin: 0.6in 0.65in; }
     @media print {
@@ -243,6 +265,12 @@
         <button type="button" class="toggle-btn" data-sigmode="manual" onclick="setSigMode('manual')">Wet Signature (blank line)</button>
       </div>
     </div>
+    <div class="field-group">
+      <label>&nbsp;</label>
+      <button type="button" class="btn-action btn-toggle-sig" onclick="toggleSignaturePanel()">
+        <i class="fas fa-signature"></i> Manage My Signature
+      </button>
+    </div>
     <div class="field-group" id="include-sig-field" style="display:none;">
       <label>&nbsp;</label>
       <label style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--dark); text-transform:none;">
@@ -274,11 +302,44 @@
         <button type="button" class="toggle-btn" data-sigmode="manual" onclick="setSigMode('manual')">Wet Signature (blank line)</button>
       </div>
     </div>
+    <div class="field-group">
+      <label>&nbsp;</label>
+      <button type="button" class="btn-action btn-toggle-sig" onclick="toggleSignaturePanel()">
+        <i class="fas fa-signature"></i> Manage My Signature
+      </button>
+    </div>
   </div>
   <div class="field-group" style="min-width:100%;">
     <label>Issued Certificates — Select One to View or Sign as Pastor</label>
   </div>
   <div class="cert-list" id="pastor-cert-list"><div style="color:#999; font-size:12px;">Loading issued certificates...</div></div>
+</div>
+
+<div class="controls-bar no-print" id="signature-panel-bar" style="display:none;">
+  <div class="sig-panel open" id="signature-panel">
+    <div class="sig-panel-cols">
+      <div class="sig-panel-col">
+        <label style="font-size:11px; font-weight:700; color:var(--gray); text-transform:uppercase;">Current Saved Signature</label>
+        <div style="font-size:11px; color:var(--gray); margin:4px 0 6px;">This is the signature used whenever you sign a certificate electronically — shared with Report Workflow and Print Report.</div>
+        <img id="stored-signature-preview" class="sig-preview" alt="Stored signature preview">
+        <div id="no-signature-note" style="font-size:11.5px; color:#999; margin-top:6px;">No electronic signature saved yet.</div>
+      </div>
+      <div class="sig-panel-col">
+        <label style="font-size:11px; font-weight:700; color:var(--gray); text-transform:uppercase;">Upload Signature Image</label>
+        <input type="file" id="signature-file" accept="image/png,image/jpeg,image/webp" style="margin-top:6px;">
+        <div style="margin-top:14px;">
+          <label style="font-size:11px; font-weight:700; color:var(--gray); text-transform:uppercase;">Or Draw in the Pad</label>
+          <canvas id="signature-pad" class="pad" style="margin-top:6px;"></canvas>
+        </div>
+        <div class="top-actions" style="margin-top:10px;">
+          <button type="button" class="btn-action" style="background:#eef1f4; color:#334;" onclick="clearSignaturePad()">Clear Pad</button>
+          <button type="button" class="btn-action" style="background:#1a5276;" onclick="saveUploadedSignature()">Save Uploaded Image</button>
+          <button type="button" class="btn-action" style="background:#1e8449;" onclick="savePadSignature()">Save Pad</button>
+        </div>
+        <div id="sig-panel-message" style="font-size:12px; margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="report-wrapper">
@@ -301,11 +362,14 @@
   };
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const storage = firebase.storage();
 
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   let profile = null;
   let allMembers = [];
+  let memberNameById = {};
+  let memberNameByLegacyKey = {};
   let allIncome = [];
   let allSpecialProjectEntries = [];
   let allEquipment = [];
@@ -314,6 +378,8 @@
     pastorLabel: 'Noted by', pastorName: '', pastorTitle: 'Church Pastor'
   };
   let mySignatureProfile = null;
+  let sigPadDrawing = false;
+  let sigPadReady = false;
 
   let periodType = 'annual';
   let docMode = 'certificate';
@@ -346,12 +412,42 @@
     return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim() || data.name || '';
   }
   function getMemberId(d) { return String(d.memberId || d.memberID || d.memberCode || '').trim(); }
-  function getTitherKey(d) {
-    const id = getMemberId(d);
-    const member = String(d.member || d.name || '').trim();
-    const memberLower = member.toLowerCase();
-    if (id.toUpperCase() === 'GENERAL' || ['anonymous','general collection','loose offering'].includes(memberLower)) return '';
-    return id || member;
+
+  // Same alias-resolution system as reports.html/print-report.html, so a member's
+  // giving matches here exactly like it does in those already-trusted reports —
+  // raw member fields on income/pledge docs are often messy free text (nicknames,
+  // joint "Jorge and Pam Mina"-style entries, word-order variants), not just the
+  // canonical "Last, First" string.
+  function addMemberNameAlias(rawName, currentName) {
+    const key = normalizeMemberLookupName(rawName);
+    if (!key || !currentName) return;
+    if (memberNameByLegacyKey[key] && memberNameByLegacyKey[key] !== currentName) {
+      memberNameByLegacyKey[key] = '__AMBIGUOUS__';
+      return;
+    }
+    memberNameByLegacyKey[key] = currentName;
+  }
+  function addMemberNameAliases(data, currentName) {
+    const last = (data.last || data.lastName || '').toString().trim();
+    const first = (data.first || data.firstName || '').toString().trim();
+    const firstToken = first.split(/\s+/).filter(Boolean)[0] || '';
+    addMemberNameAlias(currentName, currentName);
+    addMemberNameAlias(`${last}, ${first}`, currentName);
+    addMemberNameAlias(`${first} ${last}`, currentName);
+    addMemberNameAlias(`${last} ${first}`, currentName);
+    if (firstToken && firstToken !== first) {
+      addMemberNameAlias(`${firstToken} ${last}`, currentName);
+      addMemberNameAlias(`${last}, ${firstToken}`, currentName);
+      addMemberNameAlias(`${last} ${firstToken}`, currentName);
+    }
+  }
+  function resolveMemberName(d) {
+    const memberId = getMemberId(d);
+    if (memberId && memberNameById[memberId]) return memberNameById[memberId];
+    const rawName = (d.member || d.pledgerName || d.party || d.name || '').toString().trim();
+    const legacyName = memberNameByLegacyKey[normalizeMemberLookupName(rawName)];
+    if (legacyName && legacyName !== '__AMBIGUOUS__') return legacyName;
+    return rawName || 'Anonymous';
   }
   function recordText(d) {
     return `${d.type || ''} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase();
@@ -400,6 +496,8 @@
     }
     document.getElementById('treasurer-controls').style.display = isTreasurer ? 'flex' : 'none';
     document.getElementById('pastor-controls').style.display = isPastor ? 'flex' : 'none';
+    document.getElementById('signature-panel-bar').style.display = 'flex';
+    initSignaturePad();
 
     populateYears();
     document.getElementById('sel-sunday').addEventListener('change', snapToSunday);
@@ -465,9 +563,15 @@
   // ── DATA LOADING ────────────────────────────────────────────────────────
   async function loadMembers() {
     const snap = await db.collection('members').get();
+    memberNameById = {};
+    memberNameByLegacyKey = {};
     allMembers = snap.docs.map(doc => {
       const data = doc.data();
-      return { id: (data.memberId || doc.id || '').toString().trim(), name: memberDisplayName(data) };
+      const id = (data.memberId || doc.id || '').toString().trim();
+      const name = memberDisplayName(data);
+      if (id) memberNameById[id] = name;
+      addMemberNameAliases(data, name);
+      return { id, name };
     }).filter(m => m.name);
   }
 
@@ -505,6 +609,140 @@
   async function loadMySignatureProfile() {
     const doc = await db.collection('userSignatures').doc(profile.uid).get();
     mySignatureProfile = doc.exists ? doc.data() : null;
+    const img = document.getElementById('stored-signature-preview');
+    const note = document.getElementById('no-signature-note');
+    if (mySignatureProfile && mySignatureProfile.imageUrl) {
+      img.src = mySignatureProfile.imageUrl;
+      img.style.display = 'block';
+      note.style.display = 'none';
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      note.style.display = 'block';
+    }
+  }
+
+  // ── SIGNATURE PANEL (draw or upload, same storage path as Report Workflow) ─
+  function toggleSignaturePanel() {
+    document.getElementById('signature-panel').classList.toggle('open');
+  }
+
+  function showSigPanelMessage(text, kind) {
+    const box = document.getElementById('sig-panel-message');
+    box.textContent = text;
+    box.style.color = kind === 'err' ? '#a93226' : '#1e8449';
+  }
+
+  function initSignaturePad() {
+    if (sigPadReady) return;
+    const canvas = document.getElementById('signature-pad');
+    const ctx = canvas.getContext('2d');
+    const resize = () => {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#111';
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    const point = event => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = event.touches && event.touches[0];
+      const source = touch || event;
+      return { x: source.clientX - rect.left, y: source.clientY - rect.top };
+    };
+    const start = event => {
+      event.preventDefault();
+      sigPadDrawing = true;
+      const p = point(event);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    };
+    const move = event => {
+      if (!sigPadDrawing) return;
+      event.preventDefault();
+      const p = point(event);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    };
+    const stop = () => { sigPadDrawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', stop);
+    canvas.addEventListener('mouseleave', stop);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', stop);
+    sigPadReady = true;
+  }
+
+  function clearSignaturePad() {
+    const canvas = document.getElementById('signature-pad');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function canvasToPngBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      if (canvas.toBlob) {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Unable to export signature image.'));
+        }, 'image/png');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      const parts = dataUrl.split(',');
+      const bytes = atob(parts[1]);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      resolve(new Blob([arr], { type: 'image/png' }));
+    });
+  }
+
+  async function uploadSignatureBlob(blob, contentType) {
+    try {
+      const path = `signatures/${profile.uid}/signature-${Date.now()}.png`;
+      const ref = storage.ref(path);
+      await ref.put(blob, { contentType });
+      const imageUrl = await ref.getDownloadURL();
+      await db.collection('userSignatures').doc(profile.uid).set({
+        uid: profile.uid, name: profile.name, role: profile.role,
+        imageUrl, storagePath: path, updatedAt: new Date().toISOString()
+      }, { merge: true });
+      await loadMySignatureProfile();
+      showSigPanelMessage('Electronic signature saved.', 'ok');
+    } catch (error) {
+      console.error(error);
+      showSigPanelMessage(error.message || 'Unable to save signature.', 'err');
+    }
+  }
+
+  async function saveUploadedSignature() {
+    const file = document.getElementById('signature-file').files[0];
+    if (!file) return showSigPanelMessage('Choose a signature image first.', 'err');
+    if (!file.type.startsWith('image/')) return showSigPanelMessage('Signature must be an image file.', 'err');
+    await uploadSignatureBlob(file, file.type);
+  }
+
+  async function savePadSignature() {
+    try {
+      const canvas = document.getElementById('signature-pad');
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        return showSigPanelMessage('Draw your signature before saving the pad.', 'err');
+      }
+      const blob = await canvasToPngBlob(canvas);
+      await uploadSignatureBlob(blob, 'image/png');
+    } catch (error) {
+      console.error(error);
+      showSigPanelMessage(error.message || 'Unable to save signature from pad.', 'err');
+    }
   }
 
   // ── MEMBER SEARCH ───────────────────────────────────────────────────────
@@ -562,7 +800,7 @@
     const rows = { tithes: [], pledges: [], donations: [], specialOfferings: [], other: [], equipment: [] };
 
     allIncome.forEach(d => {
-      if (getTitherKey(d) !== member.id && getTitherKey(d) !== member.name) return;
+      if (resolveMemberName(d) !== member.name) return;
       const dt = parseDate(d.date);
       if (!inPeriod(dt, period)) return;
       const amount = parseFloat(d.amount || 0);
@@ -579,14 +817,12 @@
     allSpecialProjectEntries.forEach(e => {
       const dt = parseDate(e.date);
       if (!inPeriod(dt, period)) return;
-      const matchesById = e.memberId && e.memberId === member.id;
-      const matchesByName = !e.memberId && normalizeMemberLookupName(e.pledgerName || e.party) === normalizeMemberLookupName(member.name);
-      if (!e.memberId && (e.pledgerName || e.party)) {
-        const norm = normalizeMemberLookupName(e.pledgerName || e.party);
-        const knownMember = allMembers.some(m => normalizeMemberLookupName(m.name) === norm);
-        if (!knownMember) unmatchedNames.add(e.pledgerName || e.party);
-      }
-      if (matchesById || matchesByName) {
+      const pledgerText = (e.pledgerName || e.party || '').toString().trim();
+      const isKnownMember = (e.memberId && !!memberNameById[e.memberId]) ||
+        (!!pledgerText && !!memberNameByLegacyKey[normalizeMemberLookupName(pledgerText)] &&
+          memberNameByLegacyKey[normalizeMemberLookupName(pledgerText)] !== '__AMBIGUOUS__');
+      if (pledgerText && !isKnownMember) unmatchedNames.add(pledgerText);
+      if (resolveMemberName(e) === member.name) {
         rows.pledges.push({
           date: e.date,
           desc: `${e.projectName || 'Special Project'} — ${e.particulars || e.notes || 'Pledge'}`,
@@ -732,21 +968,71 @@
       const snap = await db.collection('certificates').orderBy('issuedAt', 'desc').limit(20).get();
       const certs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (!certs.length) { list.innerHTML = '<div style="color:#999; font-size:12px;">No certificates issued yet.</div>'; return; }
-      list.innerHTML = certs.map(c => `
+      list.innerHTML = certs.map(c => {
+        const isVoid = c.status === 'void';
+        const statusText = isVoid
+          ? `<span style="color:#c0392b; font-weight:700;">VOID</span>`
+          : (c.signatures && c.signatures.pastor ? 'Pastor signed' : 'Awaiting pastor signature');
+        return `
         <div class="cert-list-item">
           <div>
-            <div><strong>${escapeHtml(c.certNo)}</strong> — ${escapeHtml(c.memberName)}</div>
-            <div class="meta">${escapeHtml(c.periodLabel)} · ${peso(c.grandTotal)} · ${c.signatures && c.signatures.pastor ? 'Pastor signed' : 'Awaiting pastor signature'}</div>
+            <div><strong>${escapeHtml(c.certNo)}</strong> — ${escapeHtml(c.memberName)}${isVoid ? ' <span style="font-size:10px; background:#fbe4e4; color:#c0392b; padding:2px 6px; border-radius:4px;">VOID</span>' : ''}</div>
+            <div class="meta">${escapeHtml(c.periodLabel)} · ${peso(c.grandTotal)} · ${statusText}</div>
           </div>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn-small btn-view" onclick="reopenCertificate('${c.id}')">Reopen</button>
+            <button class="btn-small" style="background:#f0ad4e; color:white;" onclick="voidCertificate('${c.id}')" ${isVoid ? 'disabled' : ''}>Void</button>
+            <button class="btn-small" style="background:#c0392b; color:white;" onclick="deleteCertificateRecord('${c.id}')">Delete</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     } catch (err) {
       console.error(err);
       list.innerHTML = '<div style="color:#c0392b; font-size:12px;">Unable to load certificates.</div>';
     }
   }
+
+  window.voidCertificate = async function(certId) {
+    const doc = await db.collection('certificates').doc(certId).get();
+    if (!doc.exists) { alert('Certificate not found.'); return; }
+    const before = { id: doc.id, ...doc.data() };
+    if (before.status === 'void') return;
+    const reason = prompt(`Void certificate ${before.certNo} for ${before.memberName}?\n\nThis keeps the record for audit purposes but marks it invalid — the QR verification page will show it as voided. Optional reason:`);
+    if (reason === null) return;
+    try {
+      const update = { status: 'void', voidedAt: new Date().toISOString(), voidedBy: profile.name, voidReason: reason || '' };
+      await db.collection('certificates').doc(certId).update(update);
+      await writeAuditLog('certificate_voided', certId, before, { ...before, ...update }, `Voided ${before.certNo} for ${before.memberName}${reason ? ' — ' + reason : ''}`);
+      await loadTreasurerCertList();
+      if (currentCertDoc && currentCertDoc.id === certId) await viewCertificate(certId);
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Unable to void certificate.');
+    }
+  };
+
+  window.deleteCertificateRecord = async function(certId) {
+    const doc = await db.collection('certificates').doc(certId).get();
+    if (!doc.exists) { alert('Certificate not found.'); return; }
+    const before = { id: doc.id, ...doc.data() };
+    const signedWarning = before.signatures && before.signatures.pastor
+      ? '\n\nWarning: this certificate already has the Pastor\'s signature attached.'
+      : '';
+    if (!confirm(`Permanently delete certificate ${before.certNo} for ${before.memberName}?\n\nThis cannot be undone. Use Void instead if you just want to invalidate it while keeping a record.${signedWarning}`)) return;
+    try {
+      await writeAuditLog('certificate_deleted', certId, before, null, `Deleted ${before.certNo} for ${before.memberName}`);
+      await db.collection('certificates').doc(certId).delete();
+      await loadTreasurerCertList();
+      if (currentCertDoc && currentCertDoc.id === certId) {
+        currentCertDoc = null;
+        document.getElementById('report-page').innerHTML =
+          '<div class="placeholder-box"><i class="fas fa-certificate"></i><div style="margin-top:12px; font-size:14px;">Select a member and period, then click Generate.</div></div>';
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Unable to delete certificate.');
+    }
+  };
 
   window.reopenCertificate = async function(certId) {
     const doc = await db.collection('certificates').doc(certId).get();
@@ -887,6 +1173,10 @@
     const page = document.getElementById('report-page');
     const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
 
+    const voidBanner = cert.status === 'void'
+      ? `<div class="void-banner"><i class="fas fa-triangle-exclamation"></i> This certificate has been VOIDED and is no longer valid${cert.voidReason ? ' — ' + escapeHtml(cert.voidReason) : ''}</div>`
+      : '';
+
     let certHtml = '';
     if (cert.docMode === 'certificate') {
       const qrId = 'qr-' + cert.id;
@@ -936,6 +1226,7 @@
     const includeSig = cert.includeSignatures !== false;
 
     page.innerHTML = `
+      ${voidBanner}
       <div class="rpt-header">
         <img src="umc-logo.png" alt="UMC Logo" onerror="this.style.display='none'">
         <div class="rpt-header-text">

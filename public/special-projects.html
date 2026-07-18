@@ -465,19 +465,45 @@
       return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim() || data.name || '';
     }
 
+    function addMemberAliasToIndex(rawName, memberId) {
+      const key = normalizeMemberLookupName(rawName);
+      if (!key || !memberId) return;
+      if (memberNameIndex[key] && memberNameIndex[key] !== memberId) {
+        memberNameIndex[key] = '__AMBIGUOUS__';
+        return;
+      }
+      memberNameIndex[key] = memberId;
+    }
+
+    // Same alias variants as reports.html/print-report.html/certificate-of-giving.html
+    // (Last,First / First Last / Last First / first-token-only for multi-word first
+    // names like a joint "Jorge and Pam" entry), so a pledger typed loosely still
+    // links to the right member instead of only matching the exact canonical name.
+    function addMemberAliases(data, memberId, currentName) {
+      const last = (data.last || data.lastName || '').toString().trim();
+      const first = (data.first || data.firstName || '').toString().trim();
+      const firstToken = first.split(/\s+/).filter(Boolean)[0] || '';
+      addMemberAliasToIndex(currentName, memberId);
+      addMemberAliasToIndex(`${last}, ${first}`, memberId);
+      addMemberAliasToIndex(`${first} ${last}`, memberId);
+      addMemberAliasToIndex(`${last} ${first}`, memberId);
+      if (firstToken && firstToken !== first) {
+        addMemberAliasToIndex(`${firstToken} ${last}`, memberId);
+        addMemberAliasToIndex(`${last}, ${firstToken}`, memberId);
+        addMemberAliasToIndex(`${last} ${firstToken}`, memberId);
+      }
+    }
+
     async function loadMembers() {
       const snap = await db.collection('members').get();
+      memberNameIndex = {};
       membersCache = snap.docs.map(doc => {
         const data = doc.data();
         const memberId = (data.memberId || doc.id || '').toString().trim();
         const name = memberDisplayName(data);
+        if (memberId) addMemberAliases(data, memberId, name);
         return { id: memberId, name };
       }).filter(m => m.name);
-      memberNameIndex = {};
-      membersCache.forEach(m => {
-        const key = normalizeMemberLookupName(m.name);
-        if (key) memberNameIndex[key] = m.id;
-      });
       const datalist = document.getElementById('pledger-members-list');
       if (datalist) {
         datalist.innerHTML = membersCache
@@ -490,7 +516,8 @@
 
     function matchMemberIdByName(name) {
       const key = normalizeMemberLookupName(name);
-      return key && memberNameIndex[key] ? memberNameIndex[key] : '';
+      const match = key && memberNameIndex[key];
+      return match && match !== '__AMBIGUOUS__' ? match : '';
     }
 
     async function loadBudgetCategories() {
