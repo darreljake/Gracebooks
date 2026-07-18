@@ -26,9 +26,11 @@
     .status-icon { font-size: 46px; margin-bottom: 12px; }
     .status-icon.valid { color: var(--green); }
     .status-icon.invalid { color: var(--red-mid); }
+    .status-icon.void { color: #d68910; }
     .status-label { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; }
     .status-label.valid { color: var(--green); }
     .status-label.invalid { color: var(--red-mid); }
+    .status-label.void { color: #d68910; }
     .status-msg { font-size: 12.5px; color: var(--gray); }
     .detail-list { padding: 0 28px 26px; }
     .detail-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px dashed #e5e5e5; font-size: 13px; }
@@ -77,6 +79,20 @@
         <div class="status-msg">${escapeHtml(message || 'This certificate ID does not match any issued record.')}</div>`;
     }
 
+    function showVoid(cert) {
+      document.getElementById('result-area').innerHTML = `
+        <div class="status-icon void"><i class="fas fa-triangle-exclamation"></i></div>
+        <div class="status-label void">VOIDED</div>
+        <div class="status-msg">This certificate has been voided by the church and is no longer valid.</div>`;
+      const list = document.createElement('div');
+      list.className = 'detail-list';
+      list.innerHTML = `
+        <div class="detail-row"><span class="k">Certificate No.</span><span class="v">${escapeHtml(cert.certNo || '—')}</span></div>
+        <div class="detail-row"><span class="k">Was Issued To</span><span class="v">${escapeHtml(cert.memberName || '—')}</span></div>
+        <div class="detail-row"><span class="k">Period</span><span class="v">${escapeHtml(cert.periodLabel || '—')}</span></div>`;
+      document.querySelector('.card').insertBefore(list, document.querySelector('.footer-note'));
+    }
+
     function showValid(cert) {
       const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
       const signed = cert.signatures && cert.signatures.treasurer && cert.signatures.pastor ? 'Fully signed' : 'Signature pending';
@@ -102,8 +118,11 @@
       if (!id) { showInvalid('No certificate ID provided.'); return; }
       try {
         const doc = await db.collection('certificates').doc(id).get();
-        if (!doc.exists || doc.data().status !== 'issued') { showInvalid(); return; }
-        showValid(doc.data());
+        if (!doc.exists) { showInvalid(); return; }
+        const cert = doc.data();
+        if (cert.status === 'void') { showVoid(cert); return; }
+        if (cert.status !== 'issued') { showInvalid(); return; }
+        showValid(cert);
       } catch (err) {
         console.error(err);
         showInvalid('Unable to verify this certificate right now. Please try again later.');
