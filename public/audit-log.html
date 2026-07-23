@@ -56,6 +56,10 @@
       display: none; background: #117a65; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-fix-income {
+      display: none; background: #1a5276; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .stats-row { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .stat-box { background: #f6fbff; border-left: 4px solid #1a5276; border-radius: 8px; padding: 14px; }
     .stat-box .num { color: #1a5276; font-size: 21px; font-weight: bold; }
@@ -126,6 +130,7 @@
       <div>
         <button class="btn-fix-ledger" id="btn-fix-ledger" onclick="fixMissingLedgerVisibility()">Fix Missing Ledger Entries</button>
         <button class="btn-fix-fund" id="btn-fix-fund" onclick="fixMissingFundAssignment()">Fix Missing Fund Assignment</button>
+        <button class="btn-fix-income" id="btn-fix-income" onclick="fixMisroutedIncomeRecords()">Fix Income Fund Routing</button>
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
         <button class="btn-diagnose" id="btn-diagnose-cash" onclick="diagnoseCashMismatch()">Diagnose Cash Mismatch</button>
         <button class="btn-fix-advance" id="btn-fix-advance" onclick="fixCashAdvanceReturnType()">Fix Advance Return Type</button>
@@ -160,6 +165,7 @@
         <option value="attendance_saved">Attendance Saved</option>
         <option value="obligation_created">Obligation Created</option>
         <option value="income_type_corrected">Income Type Corrected</option>
+        <option value="income_fund_routing_corrected">Income Fund Routing Fixed</option>
       </select>
       <select id="filter-actor" onchange="applyFilters()">
         <option value="">All Users</option>
@@ -264,7 +270,8 @@
       income_created: 'Income Created',
       attendance_saved: 'Attendance Saved',
       obligation_created: 'Obligation Created',
-      income_type_corrected: 'Income Type Corrected'
+      income_type_corrected: 'Income Type Corrected',
+      income_fund_routing_corrected: 'Income Fund Routing Fixed'
     }[action] || action || 'Activity';
   }
 
@@ -281,6 +288,7 @@
       if (profile.role === 'Treasurer') {
         document.getElementById('btn-backfill').style.display = 'inline-block';
         document.getElementById('btn-fix-fund').style.display = 'inline-block';
+        document.getElementById('btn-fix-income').style.display = 'inline-block';
         document.getElementById('btn-fix-ledger').style.display = 'inline-block';
         document.getElementById('btn-diagnose-cash').style.display = 'inline-block';
         document.getElementById('btn-fix-advance').style.display = 'inline-block';
@@ -477,6 +485,87 @@
     } finally {
       button.disabled = false;
       button.textContent = 'Fix Missing Fund Assignment';
+    }
+  }
+
+  // tithe-entry.html's mapTypeToAccount() was fixed so payment method now
+  // correctly routes income to cash-bank vs cash-hand. Historical income
+  // docs written before that fix have targetAccount='cash-hand' even for
+  // Bank Transfer payments (because the old code always returned 'cash-hand'
+  // for non-Building/Mission/Investment types regardless of payment). Also
+  // catches income docs entirely missing targetAccount where payment was
+  // Bank Transfer — financial-overview.html's fallback handles those at
+  // read time, but setting it explicitly keeps the data self-consistent.
+  // FIXED-account types (Building Fund → 'building', Mission Fund →
+  // 'mission', Investment Income → 'investment') are always correct and
+  // never touched. Transfers are excluded. Safe to re-run — idempotent.
+  const FIXED_INCOME_TYPES = new Set(['Building Fund', 'Mission Fund', 'Investment Income']);
+
+  async function fixMisroutedIncomeRecords() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this fix.');
+    if (!confirm('This scans income records for Bank Transfer entries that were incorrectly booked to Cash on Hand (instead of Cash in Bank) due to a now-fixed routing bug, and corrects their fund assignment. Fixed-account types (Building Fund, Mission Fund, Investment Income) and transfers are never touched. Continue?')) return;
+
+    const button = document.getElementById('btn-fix-income');
+    button.disabled = true;
+    button.textContent = 'Fixing...';
+
+    try {
+      const incomeSnap = await db.collection('income').get();
+      const actor = firebase.auth().currentUser;
+      const now = new Date().toISOString();
+
+      let fixedCount = 0;
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+
+      for (const docSnap of incomeSnap.docs) {
+        const data = docSnap.data();
+        if (data.type === 'transfer') continue;
+        if (FIXED_INCOME_TYPES.has(data.type)) continue;
+        if (data.payment !== 'Bank Transfer') continue;
+        // Doc is a Bank Transfer income entry that is NOT a fixed-account type.
+        // It should always route to cash-bank; if it's already there, skip it.
+        if (data.targetAccount === 'cash-bank') continue;
+
+        const oldTarget = data.targetAccount || null;
+        batch.update(docSnap.ref, { targetAccount: 'cash-bank' });
+
+        const auditRef = db.collection('auditLogs').doc();
+        batch.set(auditRef, {
+          action: 'income_fund_routing_corrected',
+          collection: 'income',
+          docId: docSnap.id,
+          summary: `Corrected income fund routing from "${oldTarget || 'missing'}" to "cash-bank" for Bank Transfer ${data.type || 'income'} entry${data.member ? ': ' + data.member : ''}`,
+          before: { targetAccount: oldTarget },
+          after: { targetAccount: 'cash-bank' },
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt: now
+        });
+
+        fixedCount++;
+        operations += 2;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+      if (operations > 0) await batch.commit();
+
+      alert(fixedCount === 0
+        ? 'No income records needed fund routing correction — nothing to fix.'
+        : `Fixed ${fixedCount} income record(s). These Bank Transfer entries will now count toward Cash in Bank instead of Cash on Hand in Financial Overview.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Fix failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Fix Income Fund Routing';
     }
   }
 
