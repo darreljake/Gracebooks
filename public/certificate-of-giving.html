@@ -61,6 +61,7 @@
     }
     .controls-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
     .field-group { display: flex; flex-direction: column; gap: 4px; position: relative; }
+    .member-field { flex: 1; min-width: 260px; }
     .field-group label { font-size: 11px; font-weight: 700; color: var(--gray); text-transform: uppercase; letter-spacing: 0.4px; }
     .field-group input, .field-group select {
       padding: 9px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;
@@ -179,6 +180,23 @@
     }
     @media print { .void-banner { break-inside: avoid; } }
 
+    @media (max-width: 480px) {
+      .topbar { padding: 12px 16px; flex-wrap: wrap; gap: 10px; }
+      .brand-text { font-size: 18px; }
+      .controls-bar { padding: 14px 16px; }
+      .controls-row { flex-direction: column; align-items: stretch; gap: 12px; }
+      .field-group, .member-field { min-width: 0; width: 100%; }
+      .field-group input, .field-group select { min-width: 0; width: 100%; }
+      .toggle-group { flex-direction: column; border-radius: 10px; }
+      .toggle-btn { border-radius: 0; padding: 12px 14px; text-align: center; }
+      .btn-action { width: 100%; justify-content: center; }
+      .cert-list-item { flex-direction: column; align-items: stretch; gap: 8px; }
+      .cert-list-item > div:last-child { justify-content: flex-start; }
+      .sig-panel-cols { flex-direction: column; gap: 16px; }
+      .report-wrapper { padding: 0 8px 40px; }
+      .report-page { padding: 24px 18px; }
+    }
+
     @page { size: 8.5in 13in; margin: 0.6in 0.65in; }
     @media print {
       .topbar, .controls-bar, .no-print { display: none !important; }
@@ -219,7 +237,7 @@
 
 <div class="controls-bar no-print" id="treasurer-controls" style="display:none;">
   <div class="controls-row">
-    <div class="field-group" style="flex:1; min-width:260px;">
+    <div class="field-group member-field">
       <label>Member</label>
       <input type="text" id="member-search" placeholder="Search by name or member ID..." autocomplete="off">
       <div id="member-suggestions"></div>
