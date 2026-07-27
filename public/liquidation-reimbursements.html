@@ -420,9 +420,12 @@
       return activeProfile && roles.includes(activeProfile.role);
     }
 
-    function isOwner(row) {
-      const user = firebase.auth().currentUser;
-      return user && row.requesterUid === user.uid;
+    // Matches firestore.rules: any Pastor/Deaconess/Admin Assistant can act
+    // on any request in this group, not just the one they personally
+    // created - lets one of them complete liquidation/add receipts for a
+    // cash advance actually received by another.
+    function canSelfManageLiquidation() {
+      return roleIs('Pastor', 'Deaconess', 'Admin Assistant');
     }
 
     // Older requests were stored with type "Liquidation"; treat them as
@@ -538,10 +541,11 @@
     }
 
     async function uploadReceiptForRequest(requestId, receiptFile) {
-      // The storage rule verifies ownership from this uid path segment
-      // directly (no Firestore lookup) - this function is only ever
-      // called by the request's own owner, so the current user's uid
-      // is always the correct one to embed here.
+      // The storage rule checks the uploader's own uid against this path
+      // segment directly (no Firestore lookup) - it's always the CURRENT
+      // uploader's uid, whether or not they're the request's original
+      // requester, since any Pastor/Deaconess/Admin Assistant can now
+      // complete liquidation for a request in their group.
       const uid = firebase.auth().currentUser.uid;
       const receiptPath = `liquidation-receipts/${requestId}/${uid}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
@@ -604,8 +608,12 @@
     }
 
     async function loadRequests() {
-      const isTreasurer = roleIs('Treasurer');
-      const snapshot = isTreasurer
+      // Pastor/Deaconess/Admin Assistant see every request in their group
+      // (not just their own) so any of them can complete liquidation for a
+      // cash advance actually received by another; Auditor already has
+      // Firestore read access to all requests and should see them too.
+      const canSeeAll = roleIs('Treasurer', 'Auditor') || canSelfManageLiquidation();
+      const snapshot = canSeeAll
         ? await db.collection('liquidationRequests').get()
         : await db.collection('liquidationRequests').where('requesterUid', '==', firebase.auth().currentUser.uid).get();
       requestRows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -746,8 +754,8 @@
 
     async function cancelRequest(id) {
       const row = requestRows.find(item => item.id === id);
-      if (!row || !isOwner(row) || row.status !== 'Submitted') return;
-      if (!confirm(`Cancel your request "${row.title || ''}"?`)) return;
+      if (!row || !canSelfManageLiquidation() || row.status !== 'Submitted') return;
+      if (!confirm(`Cancel request "${row.title || ''}"?`)) return;
       const after = {
         status: 'Cancelled',
         cancelledAt: new Date().toISOString(),
@@ -892,7 +900,7 @@
 
     function openLiquidationModal(id) {
       const row = requestRows.find(item => item.id === id);
-      if (!row || !isOwner(row) || row.status !== 'Released' || !isCashAdvance(row)) return;
+      if (!row || !canSelfManageLiquidation() || row.status !== 'Released' || !isCashAdvance(row)) return;
       liquidationTargetId = id;
       const returnNotice = row.liquidationReturnedNotes
         ? `<div class="liq-balance" style="border-left-color:#a93226; margin-top:10px;"><strong>Returned for correction${row.liquidationReturnedBy ? ' by ' + escapeHtml(row.liquidationReturnedBy) : ''}:</strong> ${escapeHtml(row.liquidationReturnedNotes)}</div>`
@@ -1497,7 +1505,7 @@
           actions.push(`<button class="btn btn-ghost btn-small" onclick="openReturnModal('${row.id}')">Return for Correction</button>`);
         }
         actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
-      } else if (isOwner(row)) {
+      } else if (canSelfManageLiquidation()) {
         if (row.status === 'Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="cancelRequest('${row.id}')">Cancel</button>`);
         }
