@@ -32,10 +32,6 @@ service cloud.firestore {
         );
     }
 
-    function isLiquidationOwner() {
-      return signedIn() && resource.data.requesterUid == request.auth.uid;
-    }
-
     match /userProfiles/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || role() == 'Treasurer');
       allow write: if false;
@@ -88,19 +84,26 @@ service cloud.firestore {
     }
 
     match /liquidationRequests/{docId} {
-      allow read: if hasRole(['Treasurer', 'Auditor']) || isLiquidationOwner();
+      // Read/update trust the Pastor/Deaconess/Admin Assistant role group as
+      // a whole, not just the individual requesterUid on the doc - a small
+      // church often has one of these staff complete the paperwork/receipts
+      // for a cash advance actually received by another (e.g. Admin
+      // Assistant liquidating on behalf of a Deaconess). requesterUid is
+      // still recorded at creation and can't be reassigned on update, so the
+      // audit trail of who originally requested the funds is unaffected.
+      allow read: if hasRole(['Treasurer', 'Auditor', 'Pastor', 'Deaconess', 'Admin Assistant']);
       allow create: if (hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
           && request.resource.data.requesterUid == request.auth.uid)
         || hasRole(['Treasurer']);
       allow update: if hasRole(['Treasurer'])
-        || (isLiquidationOwner()
+        || (hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
           && request.resource.data.requesterUid == resource.data.requesterUid
           && (
-            // Edit or cancel own request while it is still awaiting review.
+            // Edit or cancel a request while it is still awaiting review.
             (resource.data.status == 'Submitted'
               && request.resource.data.status in ['Submitted', 'Cancelled'])
             // Submit liquidation for a released cash advance; the released
-            // amount and request type cannot be altered by the requester.
+            // amount and request type cannot be altered by whoever submits.
             || (resource.data.status == 'Released'
               && request.resource.data.status == 'Liquidation Submitted'
               && request.resource.data.amount == resource.data.amount
