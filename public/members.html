@@ -4,61 +4,62 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#8B0000"/>
+  <meta name="theme-color" content="#7A1F2E"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Members — GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <style>
-    /* All original CSS preserved */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #f0f4f8; min-height: 100vh; }
-    .topbar { background: #1a5276; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+    body { font-family: 'Poppins', Arial, sans-serif; background: var(--bg); min-height: 100vh; }
+    .topbar { background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 100; }
     .topbar h2 { font-size: 20px; }
-    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .back-btn { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
     .container { max-width: 900px; margin: 30px auto; padding: 0 20px; }
-    .card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 24px; }
-    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #d6eaf8; flex-wrap: wrap; gap: 10px; }
-    .card-header h3 { color: #1a5276; font-size: 18px; }
+    .card { background: white; border-radius: var(--radius-lg); padding: 30px; box-shadow: var(--shadow-sm); margin-bottom: 24px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid var(--red-border); flex-wrap: wrap; gap: 10px; }
+    .card-header h3 { color: var(--red); font-size: 18px; }
     .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
-    .btn { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: bold; }
-    .btn-add { background: #1a5276; color: white; }
-    .btn-csv { background: #1e8449; color: white; }
-    .btn-template { background: #f0f4f8; color: #555; border: 1px solid #ddd; }
+    .btn { padding: 10px 16px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-size: 13px; font-weight: bold; }
+    .btn-add { background: var(--red); color: white; }
+    .btn-csv { background: var(--success); color: white; }
+    .btn-template { background: var(--surface-alt); color: var(--gray); border: 1px solid var(--border); }
     .stats-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-    .stat-box { background: #f0f4f8; border-radius: 8px; padding: 14px 20px; text-align: center; border-left: 4px solid #1a5276; flex: 1; min-width: 90px; }
-    .stat-box .s-num { font-size: 24px; font-weight: bold; color: #1a5276; }
+    .stat-box { background: var(--red-light); border-radius: var(--radius-sm); padding: 14px 20px; text-align: center; border-left: 4px solid var(--red); flex: 1; min-width: 90px; }
+    .stat-box .s-num { font-size: 24px; font-weight: bold; color: var(--red); }
     .stat-box .s-label { font-size: 12px; color: #888; margin-top: 4px; }
-    
+
     /* New Controls Layout */
     .controls-row { display: flex; gap: 10px; margin-bottom: 20px; }
-    .search-bar { flex: 2; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-    .sort-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: white; }
+    .search-bar { flex: 2; padding: 12px; border: 1px solid #ddd; border-radius: var(--radius-sm); font-size: 14px; }
+    .sort-select { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: var(--radius-sm); font-size: 14px; background: white; }
 
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { background: #1a5276; color: white; padding: 10px 12px; text-align: left; }
+    th { background: var(--red); color: white; padding: 10px 12px; text-align: left; }
     td { padding: 10px 12px; border-bottom: 1px solid #eee; }
-    .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; }
-    .badge-active { background: #d5f5e3; color: #1e8449; }
-    .badge-inactive { background: #fadbd8; color: #c0392b; }
-    .badge-professing { background: #d6eaf8; color: #1a5276; }
+    .badge { padding: 3px 10px; border-radius: var(--radius-pill); font-size: 11px; font-weight: bold; }
+    .badge-active { background: var(--success-bg); color: var(--success); }
+    .badge-inactive { background: var(--danger-bg); color: var(--danger); }
+    .badge-professing { background: var(--info-bg); color: var(--info); }
     .badge-associate { background: #fdebd0; color: #d35400; }
-    .badge-baptized { background: #d5f5e3; color: #1e8449; }
+    .badge-baptized { background: var(--success-bg); color: var(--success); }
     .badge-affiliate { background: #e8daef; color: #7d3c98; }
-    .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; }
-    .btn-edit { background: #d6eaf8; color: #1a5276; }
+    .action-btn { padding: 5px 10px; border-radius: var(--radius-sm); border: none; cursor: pointer; font-size: 12px; }
+    .btn-edit { background: var(--info-bg); color: var(--info); }
     
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(43,22,20,0.6); backdrop-filter: blur(2px); z-index: 9999; justify-content: center; align-items: center; }
     .modal-overlay.active { display: flex; }
-    .modal-box { background: white; border-radius: 12px; padding: 30px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+    .modal-box { background: white; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 30px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
     .form-group { margin-bottom: 14px; }
     .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: bold; }
     .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; }
     
     .modal-btns { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-    .btn-modal-save { width: 100%; padding: 12px; background: #1a5276; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    .btn-modal-delete { width: 100%; padding: 10px; background: #f9ebeb; color: #c0392b; border: 1px solid #fadbd8; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
+    .btn-modal-save { width: 100%; padding: 12px; background: var(--red); color: white; border: none; border-radius: var(--radius-sm); font-weight: bold; cursor: pointer; }
+    .btn-modal-delete { width: 100%; padding: 10px; background: var(--red-light); color: var(--danger); border: 1px solid var(--red-border); border-radius: var(--radius-sm); font-weight: bold; cursor: pointer; font-size: 12px; }
     .btn-modal-cancel { background: none; border: none; color: #888; cursor: pointer; padding: 5px; }
     
     .csv-drop { border: 2px dashed #a9dfbf; border-radius: 8px; padding: 30px; text-align: center; color: #888; cursor: pointer; margin-bottom: 16px; }

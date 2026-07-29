@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#8B0000"/>
+  <meta name="theme-color" content="#7A1F2E"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -12,6 +12,7 @@
 
   <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <link rel="stylesheet" href="theme.css">
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -24,21 +25,16 @@
 
   <style>
     :root {
-      --red:      #8B0000;
-      --red-mid:  #c0392b;
-      --red-light:#fdf2f2;
-      --gold:     #c9a84c;
       --dark:     #1a1a1a;
-      --gray:     #555;
       --line:     #ccc;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Poppins', sans-serif; background: #f0f2f5; color: var(--dark); min-height: 100vh; }
+    body { font-family: 'Poppins', sans-serif; background: var(--bg); color: var(--dark); min-height: 100vh; }
 
     .topbar {
-      background: var(--red); color: white; padding: 14px 28px;
+      background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; padding: 14px 28px;
       display: flex; justify-content: space-between; align-items: center;
-      box-shadow: 0 3px 15px rgba(0,0,0,0.25); position: sticky; top: 0; z-index: 100;
+      box-shadow: var(--shadow); position: sticky; top: 0; z-index: 100;
     }
     .brand { display: flex; align-items: center; gap: 14px; }
     .brand img { height: 46px; }

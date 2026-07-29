@@ -4,33 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#8B0000"/>
+  <meta name="theme-color" content="#7A1F2E"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Weekly Attendance - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #fdf2f2; min-height: 100vh; color: #333; }
+    body { font-family: 'Poppins', Arial, sans-serif; background: var(--bg); min-height: 100vh; color: var(--ink); }
     .topbar {
-      background: #c0392b; color: white; padding: 16px 24px; display: flex;
-      justify-content: space-between; align-items: center;
+      background: linear-gradient(135deg, var(--red), var(--red-dark)); color: white; padding: 16px 24px; display: flex;
+      justify-content: space-between; align-items: center; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 100;
     }
     .topbar h2 { font-size: 20px; }
     .back-btn {
-      background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px;
-      border-radius: 6px; cursor: pointer; font-size: 13px;
+      background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 8px 16px;
+      border-radius: var(--radius-sm); cursor: pointer; font-size: 13px;
     }
     .container { max-width: 920px; margin: 30px auto; padding: 0 20px; }
     .card {
-      background: white; border-radius: 10px; padding: 24px; box-shadow: 0 3px 12px rgba(0,0,0,0.06);
-      border-top: 4px solid #c0392b; margin-bottom: 22px;
+      background: white; border-radius: var(--radius-lg); padding: 24px; box-shadow: var(--shadow-sm);
+      border-top: 4px solid var(--red); margin-bottom: 22px;
     }
     .card-header {
       display: flex; justify-content: space-between; align-items: center; gap: 12px;
-      padding-bottom: 12px; border-bottom: 2px solid #f9ebea; margin-bottom: 18px; flex-wrap: wrap;
+      padding-bottom: 12px; border-bottom: 2px solid var(--red-light); margin-bottom: 18px; flex-wrap: wrap;
     }
-    .card-header h3 { color: #c0392b; font-size: 18px; }
+    .card-header h3 { color: var(--red); font-size: 18px; }
     .form-grid {
       display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 12px; align-items: end;
     }
@@ -42,24 +44,24 @@
     textarea { min-height: 74px; resize: vertical; }
     .span-2 { grid-column: span 2; }
     .btn {
-      background: #c0392b; color: white; border: none; border-radius: 8px; padding: 11px 14px;
+      background: var(--red); color: white; border: none; border-radius: 8px; padding: 11px 14px;
       cursor: pointer; font-weight: bold; font-size: 14px;
     }
     .btn:disabled { opacity: .55; cursor: not-allowed; }
-    .success { display: none; background: #d5f5e3; color: #1e8449; padding: 11px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; font-weight: bold; }
+    .success { display: none; background: var(--success-bg); color: var(--success); padding: 11px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; font-weight: bold; }
     .member-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 18px 0 12px; }
     .member-toolbar input { flex: 1; min-width: 220px; }
     .btn-light {
-      background: #fff5f5; color: #c0392b; border: 1px solid #f0c7c3; border-radius: 8px;
+      background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); border-radius: 8px;
       padding: 10px 12px; cursor: pointer; font-weight: bold; font-size: 13px;
     }
     .member-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;
-      max-height: 310px; overflow: auto; border: 1px solid #f4d3d0; border-radius: 10px; padding: 10px;
-      background: #fffafa;
+      max-height: 310px; overflow: auto; border: 1px solid var(--red-border); border-radius: 10px; padding: 10px;
+      background: var(--red-light);
     }
     .member-item {
-      display: flex; gap: 8px; align-items: flex-start; background: white; border: 1px solid #f1eeee;
+      display: flex; gap: 8px; align-items: flex-start; background: white; border: 1px solid var(--red-light);
       border-radius: 8px; padding: 9px; cursor: pointer;
     }
     .member-item input { width: auto; margin-top: 2px; }
@@ -67,15 +69,15 @@
     .member-meta { color: #777; font-size: 11px; margin-top: 2px; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
-    th { background: #c0392b; color: white; padding: 11px 12px; text-align: left; }
+    th { background: var(--red); color: white; padding: 11px 12px; text-align: left; }
     td { padding: 12px; border-bottom: 1px solid #f2f2f2; vertical-align: top; }
-    tr:hover td { background: #fff5f5; }
+    tr:hover td { background: var(--red-light); }
     .empty { text-align: center; color: #999; padding: 24px; }
     .muted { color: #777; font-size: 12px; }
     .chart-wrap {
-      border: 1px solid #f4d3d0;
+      border: 1px solid var(--red-border);
       border-radius: 10px;
-      background: #fffafa;
+      background: var(--red-light);
       padding: 12px;
       overflow-x: auto;
     }
@@ -402,8 +404,8 @@
     }
 
     const series = [
-      { key: 'attendance', label: 'Total Attendance', color: '#c0392b', values: rows.map(row => Number(row.attendance || 0)) },
-      { key: 'members', label: 'Members Present', color: '#1e8449', values: rows.map(row => Number(row.presentMemberCount || (row.presentMemberIds || []).length || 0)) },
+      { key: 'attendance', label: 'Total Attendance', color: 'var(--red)', values: rows.map(row => Number(row.attendance || 0)) },
+      { key: 'members', label: 'Members Present', color: 'var(--success)', values: rows.map(row => Number(row.presentMemberCount || (row.presentMemberIds || []).length || 0)) },
       { key: 'guests', label: 'Guests', color: '#1a5276', values: rows.map(row => Number(row.guests || 0)) }
     ];
     const width = 980;
@@ -435,7 +437,7 @@
 
     chart.innerHTML = `
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Weekly member attendance line graph">
-        <rect x="0" y="0" width="${width}" height="${height}" fill="#fffafa" />
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#FBEEF0" />
         ${grid}
         <line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="#d7b5b2" />
         <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="#d7b5b2" />

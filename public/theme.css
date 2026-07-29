@@ -1,0 +1,98 @@
+/* ==========================================================================
+   GraceBooks shared design system
+   Tagaytay United Methodist Church
+
+   Canonical color/spacing tokens for every page in public/. Pages keep
+   their own page-specific <style> blocks (there is no build step / shared
+   component layer in this project - see CLAUDE.md) but should reference
+   these variables instead of hardcoding one-off hex colors, and may lean
+   on the small set of global polish rules below (focus rings, scrollbar,
+   selection color, base transitions) that are additive and won't collide
+   with page-level rules.
+   ========================================================================== */
+
+:root {
+  /* Brand - deep burgundy replaces the old mix of #8B0000 / #c0392b /
+     #922b21 / #1a5276 used inconsistently across pages. */
+  --red:        #7A1F2E;   /* primary brand */
+  --red-mid:    #9C2C3F;   /* hover / secondary emphasis */
+  --red-dark:   #5C1622;   /* pressed / deep accent */
+  --red-light:  #FBEEF0;   /* soft tint background */
+  --red-border: #F0D8DC;   /* soft tint border */
+
+  --gold:       #C6A15B;   /* accent - certificates, highlights, dividers */
+  --gold-dark:  #A6813F;
+
+  /* Neutrals */
+  --ink:        #2B2320;   /* primary text */
+  --ink-soft:   #4A413C;
+  --gray:       #6B625C;   /* muted / secondary text */
+  --gray-light: #948B85;
+  --border:     #E7E0DA;
+  --bg:         #F7F3F0;   /* page background */
+  --surface:    #FFFFFF;   /* card / panel background */
+  --surface-alt:#FAF6F3;
+
+  /* Semantic (kept distinct from brand so status meaning stays clear) */
+  --success:      #1E8449;
+  --success-light: #27AE60;
+  --success-bg:   #E8F6EE;
+  --success-border: #CFEBDA;
+  --warning:      #B7791B;
+  --warning-bg:   #FCF3D9;
+  --warning-border: #F5E1A4;
+  --danger:       #C0392B;
+  --danger-bg:    #FBEAEA;
+  --danger-border: #F3CFCC;
+  --info:         #1A5276;
+  --info-light:   #2980B9;
+  --info-bg:      #EAF2F8;
+  --info-border:  #CFE2EF;
+
+  /* Scale */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 1px 3px rgba(43, 22, 20, 0.06);
+  --shadow: 0 6px 20px rgba(43, 22, 20, 0.08);
+  --shadow-lg: 0 16px 40px rgba(43, 22, 20, 0.16);
+
+  --font-ui: 'Poppins', sans-serif;
+  --font-display: 'Playfair Display', serif;
+}
+
+/* Global, additive polish - safe to load on every page: none of this
+   overrides page-authored selectors, it only fills in states pages don't
+   already define themselves. */
+
+/* Form controls and buttons don't inherit font-family by default in most
+   browsers - without this, pages that only set it on body end up with
+   inconsistent system fonts on every button/input/select. */
+button, input, select, textarea { font-family: inherit; }
+
+::selection { background: var(--red-light); color: var(--red-dark); }
+
+:focus-visible {
+  outline: 2px solid var(--red-mid);
+  outline-offset: 2px;
+}
+
+/* Slim, warm scrollbar instead of the default OS chrome */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--gray-light);
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gray); }
+
+html { scrollbar-color: var(--gray-light) transparent; }
+
+/* Consistent, gentle motion for anything already declaring a hover state */
+a, button, .btn, .card, .menu-card, [class*="btn-"] {
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}

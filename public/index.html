@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="manifest" href="manifest.json"/>
-  <meta name="theme-color" content="#8B0000"/>
+  <meta name="theme-color" content="#7A1F2E"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -13,8 +13,9 @@
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
 
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <link rel="stylesheet" href="theme.css">
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -25,8 +26,8 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: 'Poppins', sans-serif;
-      background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), 
+      font-family: var(--font-ui);
+      background: linear-gradient(rgba(58, 14, 22, 0.55), rgba(35, 8, 13, 0.72)),
                   url('church.jpg');
       background-size: cover;
       background-position: center;
@@ -40,13 +41,15 @@
       justify-content: center;
       align-items: center;
       min-height: 100vh;
+      padding: 20px;
     }
 
     .login-box {
-      background: white;
-      padding: 40px;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      background: var(--surface);
+      padding: 44px 40px;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid rgba(255,255,255,0.6);
       width: 100%;
       max-width: 380px;
       text-align: center;
@@ -67,47 +70,52 @@
     }
 
     .login-box h1 {
-      font-family: 'Playfair Display', serif;
-      color: #8B0000;
-      font-size: 28px;
+      font-family: var(--font-display);
+      color: var(--red);
+      font-size: 29px;
       margin: 0;
+      letter-spacing: 0.2px;
     }
 
     .login-box p {
-      color: #333;
+      color: var(--gray);
       font-size: 13px;
       margin-bottom: 28px;
     }
 
     input {
       width: 100%;
-      padding: 12px;
+      padding: 13px 14px;
       margin-bottom: 14px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      font-size: 16px;
-      font-family: 'Poppins', sans-serif;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-family: var(--font-ui);
+      background: var(--surface-alt);
+      color: var(--ink);
     }
 
-    input:focus { border-color: #8B0000; outline: none; }
+    input:focus { border-color: var(--red); outline: none; background: var(--surface); box-shadow: 0 0 0 3px var(--red-light); }
 
     .btn {
       width: 100%;
-      padding: 12px;
-      background: #8B0000;
+      padding: 13px;
+      background: var(--red);
       color: white;
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: var(--radius);
+      font-size: 15px;
       cursor: pointer;
       font-weight: 600;
+      letter-spacing: 0.2px;
+      box-shadow: var(--shadow-sm);
     }
 
-    .btn:hover { background: #a30000; }
-    .btn:disabled { background: #ccc; cursor: not-allowed; }
+    .btn:hover { background: var(--red-mid); box-shadow: var(--shadow); }
+    .btn:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
 
-    .error { color: red; font-size: 13px; margin-top: 10px; }
-    .warning { color: #d35400; font-size: 12px; margin-bottom: 15px; padding: 8px; background: #fdebd0; border-radius: 6px; }
+    .error { color: var(--danger); font-size: 13px; margin-top: 10px; }
+    .warning { color: var(--warning); font-size: 12px; margin-bottom: 15px; padding: 9px 10px; background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: var(--radius-sm); }
 
     .dashboard { display: none; }
     body.auth-resolved .login-container {
@@ -127,13 +135,16 @@
     body.auth-resolved .auth-loading { display: none; }
 
     .topbar {
-      background: #8B0000;
+      background: linear-gradient(135deg, var(--red), var(--red-dark));
       color: white;
-      padding: 12px 24px; 
+      padding: 14px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
 
     .topbar-brand {
@@ -149,55 +160,65 @@
     }
 
     .topbar h2 {
-      font-size: 20px;
-      font-weight: 600;
+      font-family: var(--font-display);
+      font-size: 21px;
+      font-weight: 700;
       margin: 0;
+      letter-spacing: 0.2px;
     }
 
     .logout-btn {
-      background: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.16);
       color: white;
-      border: none;
+      border: 1px solid rgba(255,255,255,0.3);
       padding: 8px 16px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       font-size: 13px;
+      font-family: var(--font-ui);
     }
 
-    .logout-btn:hover { background: rgba(255,255,255,0.3); }
+    .logout-btn:hover { background: rgba(255,255,255,0.28); }
 
     .welcome-bar {
-      background: #fdf2f2;
+      background: var(--red-light);
       padding: 16px 24px;
       font-size: 14px;
-      color: #8B0000;
-      border-bottom: 1px solid #f8d7da;
+      color: var(--red-dark);
+      border-bottom: 1px solid var(--red-border);
     }
 
     .menu-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 20px;
-      padding: 30px 24px;
+      gap: 18px;
+      padding: 28px 24px 36px;
+      max-width: 1280px;
+      margin: 0 auto;
     }
 
     .menu-card {
-      background: white;
-      border-radius: 12px;
-      padding: 30px 20px;
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      padding: 28px 18px;
       text-align: center;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      border-top: 3px solid transparent;
       cursor: pointer;
-      transition: 0.3s;
       text-decoration: none;
     }
 
-    .menu-card:hover { transform: translateY(-5px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+    .menu-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow);
+      border-top-color: var(--gold);
+    }
 
     .menu-card .icon {
-      font-size: 36px;
+      font-size: 32px;
       margin-bottom: 12px;
-      color: #8B0000;
+      color: var(--red);
       min-height: 42px;
       display: flex;
       align-items: center;
@@ -205,16 +226,17 @@
     }
 
     .menu-card .label {
-      font-size: 14px;
-      color: #333;
+      font-size: 13.5px;
+      color: var(--ink);
       font-weight: 600;
     }
 
     .footer {
       text-align: center;
-      padding: 40px 20px;
-      color: rgba(255,255,255,0.6);
+      padding: 30px 20px 40px;
+      color: rgba(255,255,255,0.65);
       font-size: 11px;
+      letter-spacing: 0.3px;
     }
 
     #install-app-btn {
@@ -223,18 +245,18 @@
       bottom: 20px;
       right: 20px;
       z-index: 1000;
-      background: #8B0000;
+      background: var(--red);
       color: white;
       border: none;
       padding: 12px 18px;
-      border-radius: 30px;
+      border-radius: var(--radius-pill);
       font-size: 13px;
       font-weight: 600;
-      font-family: 'Poppins', sans-serif;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      font-family: var(--font-ui);
+      box-shadow: var(--shadow-lg);
       cursor: pointer;
     }
-    #install-app-btn:hover { background: #a30000; }
+    #install-app-btn:hover { background: var(--red-mid); }
 
     .notif-badge {
       position: absolute;
@@ -259,29 +281,29 @@
       width: 300px;
       max-height: 380px;
       overflow-y: auto;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 10px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
       z-index: 9999;
-      color: #222;
+      color: var(--ink);
     }
     .notif-header {
       padding: 12px 16px;
       font-size: 13px;
       font-weight: 700;
-      color: #8B0000;
-      border-bottom: 1px solid #f0f0f0;
+      color: var(--red);
+      border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
-      background: white;
+      background: var(--surface);
     }
     .notif-item { padding: 11px 16px; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
     .notif-item:last-child { border-bottom: none; }
-    .notif-item.unread { background: #fdf7f7; }
-    .notif-msg { color: #222; margin-bottom: 3px; line-height: 1.4; }
-    .notif-ts { color: #888; font-size: 11px; }
-    .notif-empty { padding: 18px 16px; text-align: center; font-size: 12px; color: #888; }
+    .notif-item.unread { background: var(--red-light); }
+    .notif-msg { color: var(--ink); margin-bottom: 3px; line-height: 1.4; }
+    .notif-ts { color: var(--gray); font-size: 11px; }
+    .notif-empty { padding: 18px 16px; text-align: center; font-size: 12px; color: var(--gray); }
   </style>
 </head>
 
