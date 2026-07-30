@@ -1,0 +1,29 @@
+/* ==========================================================================
+   GraceBooks page transitions
+   Purely additive — does not modify any existing selector in any page.
+
+   Enter: a soft fade+blur runs automatically on every page load via a plain
+   CSS animation (no JS involved, so it can never fail or leave a page stuck
+   invisible). Exit: page-transitions.js adds html.gb-page-exit right before
+   navigating away, which this file animates before the browser actually
+   unloads the page.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    animation: gb-page-fade-in 280ms ease both;
+  }
+
+  html.gb-page-exit body {
+    animation: gb-page-fade-out 170ms ease forwards;
+  }
+}
+
+@keyframes gb-page-fade-in {
+  from { opacity: 0; filter: blur(3px); }
+  to   { opacity: 1; filter: blur(0); }
+}
+
+@keyframes gb-page-fade-out {
+  to { opacity: 0; filter: blur(3px); }
+}
