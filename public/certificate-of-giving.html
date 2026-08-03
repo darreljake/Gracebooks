@@ -90,6 +90,7 @@
       padding: 10px 14px; font-size: 12px; display: none;
     }
     .warn-banner.show { display: block; }
+    .warn-banner div + div { margin-top: 6px; }
 
     .load-error-banner {
       display: none; background: #fbe4e4; border-bottom: 1px solid #c0392b; color: #a93226;
@@ -884,9 +885,11 @@
       }
     });
 
+    const noDateEquipment = [];
     allEquipment.forEach(eq => {
       if (!eq.donorMemberId || eq.donorMemberId !== member.id) return;
       const dt = parseDate(eq.dateDonated);
+      if (!dt) { noDateEquipment.push(eq.item || 'Equipment item'); return; }
       if (!inPeriod(dt, period)) return;
       rows.equipment.push({
         date: eq.dateDonated,
@@ -909,7 +912,8 @@
         specialOfferings: sectionTotal(rows.specialOfferings), other: sectionTotal(rows.other), equipment: sectionTotal(rows.equipment)
       },
       cashTotal, inKindTotal, grandTotal: cashTotal + inKindTotal,
-      unmatchedNames: [...unmatchedNames]
+      unmatchedNames: [...unmatchedNames],
+      noDateEquipment
     };
   }
 
@@ -999,9 +1003,16 @@
       await loadTreasurerCertList();
 
       const warnBox = document.getElementById('unmatched-warning');
+      const warnLines = [];
       if (statement.unmatchedNames.length) {
+        warnLines.push(`${statement.unmatchedNames.length} special-project contribution(s) this period have no linked member (names: ${statement.unmatchedNames.map(escapeHtml).join(', ')}). If any belong to ${escapeHtml(selectedMember.name)}, correct the entry in Special Projects.`);
+      }
+      if (statement.noDateEquipment.length) {
+        warnLines.push(`${statement.noDateEquipment.length} equipment item(s) donated by ${escapeHtml(selectedMember.name)} have no date on file and can't appear on any certificate (${statement.noDateEquipment.map(escapeHtml).join(', ')}). Edit them in Church Equipment to add a date.`);
+      }
+      if (warnLines.length) {
         warnBox.classList.add('show');
-        warnBox.innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${statement.unmatchedNames.length} special-project contribution(s) this period have no linked member (names: ${statement.unmatchedNames.map(escapeHtml).join(', ')}). If any belong to ${escapeHtml(selectedMember.name)}, correct the entry in Special Projects.`;
+        warnBox.innerHTML = warnLines.map(line => `<div><i class="fas fa-triangle-exclamation"></i> ${line}</div>`).join('');
       } else {
         warnBox.classList.remove('show');
         warnBox.innerHTML = '';
