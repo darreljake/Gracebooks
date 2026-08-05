@@ -938,7 +938,7 @@
 
   async function makeMySignature(mode) {
     if (mode === 'electronic' && (!mySignatureProfile || !mySignatureProfile.imageUrl)) {
-      throw new Error('Save your electronic signature first in Report Workflow, or choose Wet Signature.');
+      throw new Error('Save your electronic signature first using "Manage My Signature" above, or choose Wet Signature.');
     }
     return {
       key: profile.role === 'Treasurer' ? 'treasurer' : 'pastor',
@@ -1136,17 +1136,23 @@
       const snap = await db.collection('certificates').orderBy('issuedAt', 'desc').limit(50).get();
       const certs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (!certs.length) { list.innerHTML = '<div style="color:#999; font-size:12px;">No certificates issued yet.</div>'; return; }
-      list.innerHTML = certs.map(c => `
+      list.innerHTML = certs.map(c => {
+        const isVoid = c.status === 'void';
+        const statusText = isVoid
+          ? `<span style="color:#c0392b; font-weight:700;">VOID</span>`
+          : (c.signatures && c.signatures.pastor ? 'Pastor signed' : 'Awaiting pastor signature');
+        return `
         <div class="cert-list-item">
           <div>
-            <div><strong>${escapeHtml(c.certNo)}</strong> — ${escapeHtml(c.memberName)}</div>
-            <div class="meta">${escapeHtml(c.periodLabel)} · ${peso(c.grandTotal)} · ${c.signatures && c.signatures.pastor ? 'Pastor signed' : 'Awaiting pastor signature'}</div>
+            <div><strong>${escapeHtml(c.certNo)}</strong> — ${escapeHtml(c.memberName)}${isVoid ? ' <span style="font-size:10px; background:#fbe4e4; color:#c0392b; padding:2px 6px; border-radius:4px;">VOID</span>' : ''}</div>
+            <div class="meta">${escapeHtml(c.periodLabel)} · ${peso(c.grandTotal)} · ${statusText}</div>
           </div>
           <div style="display:flex; gap:6px;">
             <button class="btn-small btn-view" onclick="viewCertificate('${c.id}')">View</button>
-            <button class="btn-small btn-sign" onclick="pastorSign('${c.id}')" ${c.signatures && c.signatures.pastor ? 'disabled' : ''}>Sign</button>
+            <button class="btn-small btn-sign" onclick="pastorSign('${c.id}')" ${isVoid || (c.signatures && c.signatures.pastor) ? 'disabled' : ''}>Sign</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     } catch (err) {
       console.error(err);
       list.innerHTML = '<div style="color:#c0392b; font-size:12px;">Unable to load certificates.</div>';
@@ -1168,6 +1174,7 @@
       const doc = await db.collection('certificates').doc(certId).get();
       if (!doc.exists) { alert('Certificate not found.'); return; }
       const before = { id: doc.id, ...doc.data() };
+      if (before.status === 'void') { alert('This certificate has been voided and can no longer be signed.'); return; }
       const signature = await makeMySignature(sigMode || 'electronic');
       const signatures = { ...(before.signatures || {}), pastor: signature };
       await db.collection('certificates').doc(certId).update({ signatures, updatedAt: new Date().toISOString() });
