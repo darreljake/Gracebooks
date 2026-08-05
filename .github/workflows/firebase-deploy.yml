@@ -28,5 +28,5 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
-      - name: Deploy Hosting and Firestore rules
-        run: npx firebase-tools@latest deploy --only hosting,firestore:rules --project gracebooks-7eebc --non-interactive
+      - name: Deploy Hosting, Firestore rules, and Storage rules
+        run: npx firebase-tools@latest deploy --only hosting,firestore:rules,storage --project gracebooks-7eebc --non-interactive
