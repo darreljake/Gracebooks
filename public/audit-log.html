@@ -56,6 +56,10 @@
       display: none; background: #117a65; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
     }
+    .btn-fix-bulk-label {
+      display: none; background: #8e44ad; color: white; border: none; padding: 10px 16px;
+      border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
+    }
     .btn-fix-income {
       display: none; background: #1a5276; color: white; border: none; padding: 10px 16px;
       border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: bold; margin-right: 8px;
@@ -134,6 +138,7 @@
         <button class="btn-backfill" id="btn-backfill" onclick="backfillExistingTransactions()">Backfill Existing Records</button>
         <button class="btn-diagnose" id="btn-diagnose-cash" onclick="diagnoseCashMismatch()">Diagnose Cash Mismatch</button>
         <button class="btn-fix-advance" id="btn-fix-advance" onclick="fixCashAdvanceReturnType()">Fix Advance Return Type</button>
+        <button class="btn-fix-bulk-label" id="btn-fix-bulk-label" onclick="fixBulkImportLabel()">Fix Bulk Import Label</button>
         <button class="btn-export" onclick="exportCSV()">Export CSV</button>
       </div>
     </div>
@@ -292,6 +297,7 @@
         document.getElementById('btn-fix-ledger').style.display = 'inline-block';
         document.getElementById('btn-diagnose-cash').style.display = 'inline-block';
         document.getElementById('btn-fix-advance').style.display = 'inline-block';
+        document.getElementById('btn-fix-bulk-label').style.display = 'inline-block';
       }
       const snap = await db.collection('auditLogs').orderBy('createdAt', 'desc').limit(500).get();
       allLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -791,6 +797,85 @@
     } finally {
       button.disabled = false;
       button.textContent = 'Fix Advance Return Type';
+    }
+  }
+
+  // tithe-entry.html's Bulk Import from Excel used to stamp every imported
+  // income record's budgetDetails with the internal migration tag
+  // "Bulk Import - YYYY-MM" instead of a certificate-appropriate label. That
+  // field is what Income Log, Reports, and Certificate of Giving show as the
+  // row description, so it printed on official certificates too. The import
+  // tool now writes "Tithe — Month YYYY" going forward; this backfills
+  // records already imported under the old tag.
+  function formatMonthYearForBackfill(yyyyMM) {
+    const [y, m] = String(yyyyMM || '').split('-').map(Number);
+    const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return (y && m && names[m - 1]) ? `${names[m - 1]} ${y}` : String(yyyyMM || '');
+  }
+
+  async function fixBulkImportLabel() {
+    const profile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (profile.role !== 'Treasurer') return alert('Only the Treasurer can run this fix.');
+    if (!confirm('This scans income records for the old "Bulk Import - YYYY-MM" migration tag and rewrites it to "Tithe — Month YYYY", matching what new imports now use. Records already using the new label are left untouched. Continue?')) return;
+
+    const button = document.getElementById('btn-fix-bulk-label');
+    button.disabled = true;
+    button.textContent = 'Fixing...';
+
+    try {
+      const incomeSnap = await db.collection('income').get();
+      const actor = firebase.auth().currentUser;
+      const now = new Date().toISOString();
+      const prefix = 'Bulk Import - ';
+
+      let fixedCount = 0;
+      const batchLimit = 400;
+      let batch = db.batch();
+      let operations = 0;
+
+      for (const docSnap of incomeSnap.docs) {
+        const data = docSnap.data();
+        const details = data.budgetDetails || '';
+        if (!details.startsWith(prefix)) continue;
+
+        const monthKey = details.slice(prefix.length).trim();
+        const newLabel = `Tithe — ${formatMonthYearForBackfill(monthKey)}`;
+        batch.update(docSnap.ref, { budgetDetails: newLabel });
+
+        const auditRef = db.collection('auditLogs').doc();
+        batch.set(auditRef, {
+          action: 'income_label_backfilled',
+          collection: 'income',
+          docId: docSnap.id,
+          summary: `Relabeled income record from "${details}" to "${newLabel}"`,
+          before: { budgetDetails: details },
+          after: { budgetDetails: newLabel },
+          actorUid: actor ? actor.uid : '',
+          actorEmail: actor ? actor.email : '',
+          actorName: profile.name || '',
+          actorRole: profile.role || '',
+          createdAt: now
+        });
+
+        fixedCount++;
+        operations += 2;
+        if (operations >= batchLimit) {
+          await batch.commit();
+          batch = db.batch();
+          operations = 0;
+        }
+      }
+      if (operations > 0) await batch.commit();
+
+      alert(fixedCount === 0
+        ? 'No income records had the old "Bulk Import - ..." label — nothing to fix.'
+        : `Relabeled ${fixedCount} income record(s). These will now show correctly on Income Log, Reports, and any Certificate of Giving.`);
+      await loadAuditLogs();
+    } catch (error) {
+      alert('Fix failed: ' + error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Fix Bulk Import Label';
     }
   }
 
