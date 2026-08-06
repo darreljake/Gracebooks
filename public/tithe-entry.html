@@ -1960,6 +1960,12 @@
 // Function para i-parse ang CSV at i-push sa draft list
 // --- AUTOMATIC CSV READER ---
 // Sinisiguro nito na kahit kailan ka mag-upload, babasahin niya ito.
+function formatMonthYear(yyyyMM) {
+    const [y, m] = yyyyMM.split('-').map(Number);
+    const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return `${names[m - 1] || ''} ${y}`.trim();
+}
+
 document.getElementById('csv-upload').addEventListener('change', function(e) {
     if (!isTreasurer()) {
         alert('Access denied. Bulk CSV import is only available to the Treasurer.');
@@ -2015,7 +2021,7 @@ document.getElementById('csv-upload').addEventListener('change', function(e) {
                         amount: amount,
                         payment: 'Cash',
                         budgetCategory: 'Tithe',
-                        budgetDetails: `Bulk Import - ${selectedMonth}`,
+                        budgetDetails: `Tithe — ${formatMonthYear(selectedMonth)}`,
                         notes: "Initial Migration",
                         isNewMember: false
                     });
