@@ -432,7 +432,24 @@
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  let budgets = { expense: {}, income: {} };
+  let budgets = { expense: {}, income: {}, expenseSchedule: {} };
+  const scheduleMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // An expense account is "recurring" (spread evenly across all 12 months)
+  // unless expenseSchedule marks it as a one-time amount assigned to a
+  // specific month, so occasional expenses stop diluting every month's
+  // budgeted figure and the forecast in financial-overview.html can pick
+  // up the real month it's expected to be spent.
+  function isRecurringExpense(key) {
+    const sched = (budgets.expenseSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function expenseBudgetForMonth(key, month) {
+    const ann = budgets.expense[key] || 0;
+    if (isRecurringExpense(key)) return ann / 12;
+    const sched = budgets.expenseSchedule[key];
+    return sched && sched.month === month ? ann : 0;
+  }
   let accountOrder = { expense: [], income: [] };
   let availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026]; 
   let actualIncome = [];
@@ -516,9 +533,10 @@
         if(doc.exists) {
             budgets = doc.data();
         } else {
-            budgets = { income: {}, expense: {} }; 
+            budgets = { income: {}, expense: {} };
         }
-        
+        if(!budgets.expenseSchedule) budgets.expenseSchedule = {};
+
         if(isInitialLoad) {
              ['income', 'expense'].forEach(t => {
                  const mains = [...new Set(Object.keys(budgets[t] || {}).map(k => k.includes(' - ') ? k.split(' - ')[0] : k))];
@@ -577,7 +595,7 @@
     }
   });
 
-  function renderExpenseBva(fExp) {
+  function renderExpenseBva(fExp, mo) {
     const groups = getGroups('expense');
     const budgetedKeys = Object.keys(budgets.expense || {});
     const allKeys = (accountOrder.expense || []).concat(budgetedKeys.filter(k => !(accountOrder.expense||[]).includes(k)));
@@ -605,7 +623,7 @@
       const isCollapsed = collapsedBva.expense.has(g.main);
       const icon = isCollapsed ? '▶' : '▼';
       const ann = g.items.reduce((s,k)=>s+(budgets.expense[k]||0),0);
-      const bud = currentPeriod === 'monthly' ? ann/12 : ann;
+      const bud = currentPeriod === 'monthly' ? g.items.reduce((s,k)=>s+expenseBudgetForMonth(k, mo),0) : ann;
       const act = fExp.filter(d => {
         // Also skip transfers when calculating actual
         const origType = (d.type || '').toLowerCase();
@@ -638,7 +656,7 @@
     g.items.forEach(k => {
       const label = k.startsWith(g.main + ' - ') ? k.slice(g.main.length + 3) : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ') : k);
       const sAnn = budgets.expense[k] || 0;
-      const sBud = currentPeriod === 'monthly' ? sAnn/12 : sAnn;
+      const sBud = currentPeriod === 'monthly' ? expenseBudgetForMonth(k, mo) : sAnn;
       const sAct = fExp.filter(d=>{
         // Also skip transfers in sub-items
         const origType = (d.type || '').toLowerCase();
@@ -918,13 +936,27 @@
         
         g.items.forEach((k, iIndex) => {
           const isSub = k.includes(' - ');
-          html += `<div class="budget-row" style="${isSub ? 'margin-left: 20px;' : ''}">
+          let scheduleHtml = '';
+          if (type === 'expense') {
+            const recurring = isRecurringExpense(k);
+            const sched = (budgets.expenseSchedule || {})[k];
+            const schedMonth = sched && sched.recurring === false ? sched.month : new Date().getMonth();
+            scheduleHtml = `
+              <select onchange="setRecurring('${k}', this)" style="width:auto; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
+                <option value="recurring" ${recurring?'selected':''}>🔁 Recurring</option>
+                <option value="onetime" ${!recurring?'selected':''}>📌 One-time</option>
+              </select>
+              <select onchange="setScheduleMonth('${k}', this.value)" style="width:auto; display:${recurring?'none':'inline-block'}; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
+                ${scheduleMonthNames.map((mn,mi)=>`<option value="${mi}" ${schedMonth===mi?'selected':''}>${mn}</option>`).join('')}
+              </select>`;
+          }
+          html += `<div class="budget-row" style="${isSub ? 'margin-left: 20px;' : ''} flex-wrap: wrap;">
               <button class="btn-del" onclick="delAcc('${type}','${k}')">×</button>
               <button class="btn-edit" onclick="renameAccount('${type}','${k}')">✏️</button>
               <button class="btn-move" onclick="shiftItem('${type}', ${gIndex}, ${iIndex}, -1)">↑</button>
               <button class="btn-move" onclick="shiftItem('${type}', ${gIndex}, ${iIndex}, 1)">↓</button>
               <label>${isSub ? '└ ' + k.slice(g.main.length + 3) : k}</label>
-              <input type="number" class="inp-${type==='expense'?'exp':'inc'}" data-key="${k}" value="${budgets[type][k]||0}" onchange="saveTempInputs(); renderSetupList();">
+              <input type="number" class="inp-${type==='expense'?'exp':'inc'}" data-key="${k}" value="${budgets[type][k]||0}" onchange="saveTempInputs(); renderSetupList();">${scheduleHtml}
             </div>`;
         });
         html += `</div></div>`;
@@ -963,12 +995,16 @@
     const tInc = fInc.reduce((s,d)=>s+parseFloat(d.amount||0),0);
     const tExp = fExp.reduce((s,d)=>s+parseFloat(d.amount||0),0);
     const net = tInc - tExp;
-    const annualExpenseBudget = Object.values(budgets.expense || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0);
     const annualIncomeBudget = Object.entries(budgets.income || {})
       .filter(([k]) => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'))
       .reduce((s, [,v]) => s + (parseFloat(v) || 0), 0);
     const elapsedMonths = currentPeriod === 'annual' ? 12 : mo + 1;
-    const accumulatedExpenseBudget = annualExpenseBudget / 12 * elapsedMonths;
+    const expenseKeysForAccum = Object.keys(budgets.expense || {});
+    const accumulatedExpenseBudget = expenseKeysForAccum.reduce((s,k) => {
+      let sum = 0;
+      for (let m = 0; m < elapsedMonths; m++) sum += expenseBudgetForMonth(k, m);
+      return s + sum;
+    }, 0);
     const accumulatedIncomeBudget = annualIncomeBudget / 12 * elapsedMonths;
     const ytdFilter = (arr) => arr.filter(d => {
       const dt = new Date(d.date);
@@ -1000,30 +1036,31 @@
     }
 
     renderIncomeBva(fInc);
-    renderExpenseBva(fExp);
+    renderExpenseBva(fExp, mo);
     renderMonthlyGrid(yr);
   }
 
   function renderMonthlyGrid(year) {
     const buildingFundKeys = Object.keys(budgets.income || {}).filter(k => k.toLowerCase().includes('building fund'));
     const targetInc = Object.entries(budgets.income || {}).filter(([k]) => !buildingFundKeys.includes(k)).reduce((s, [,v]) => s + v, 0) / 12;
-    const targetExp = Object.values(budgets.expense || {}).reduce((s, v) => s + v, 0) / 12;
+    const expenseKeys = Object.keys(budgets.expense || {});
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const grid = document.getElementById('month-grid');
     if(!grid) return;
-    
+
     grid.innerHTML = months.map((m, i) => {
       const mi = actualIncome.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i && !isBuildingFund(d) && !isTransfer(d)).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
       const me = actualExpense.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
-      
+      const targetExp = expenseKeys.reduce((s,k)=>s+expenseBudgetForMonth(k, i),0);
+
       return `<div class="month-card">
         <h4 style="color:#922b21; border-bottom:1px solid #fadbd8; margin-bottom:8px; padding-bottom:4px;">${m} ${year}</h4>
-        
+
         <div style="margin-bottom: 8px;">
           <p style="font-size:11px; color:#555;">🎯 Target Inc: ₱${fmt(targetInc)}</p>
           <p style="font-size:11px; color:#1e8449; font-weight:600;">💰 Actual Inc: ₱${fmt(mi)}</p>
         </div>
-        
+
         <div>
           <p style="font-size:11px; color:#555;">🎯 Target Exp: ₱${fmt(targetExp)}</p>
           <p style="font-size:11px; color:#c0392b; font-weight:600;">🧾 Actual Exp: ₱${fmt(me)}</p>
@@ -1051,6 +1088,26 @@
     }
   }
 
+  function setRecurring(key, selectEl) {
+    saveTempInputs();
+    if (!budgets.expenseSchedule) budgets.expenseSchedule = {};
+    const monthSel = selectEl.nextElementSibling;
+    if (selectEl.value === 'onetime') {
+      const m = monthSel ? parseInt(monthSel.value) || 0 : 0;
+      budgets.expenseSchedule[key] = { recurring: false, month: m };
+      if (monthSel) monthSel.style.display = 'inline-block';
+    } else {
+      delete budgets.expenseSchedule[key];
+      if (monthSel) monthSel.style.display = 'none';
+    }
+  }
+
+  function setScheduleMonth(key, value) {
+    saveTempInputs();
+    if (!budgets.expenseSchedule) budgets.expenseSchedule = {};
+    budgets.expenseSchedule[key] = { recurring: false, month: parseInt(value) || 0 };
+  }
+
   function toggleGroup(type, gName) { saveTempInputs(); if(collapsedGroups[type].has(gName)) collapsedGroups[type].delete(gName); else collapsedGroups[type].add(gName); renderSetupList(); }
   function showTab(t,b) { document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active')); document.getElementById(t).classList.add('active'); b.classList.add('active'); }
   function setPeriod(p,b) { currentPeriod = p; document.querySelectorAll('.period-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); renderAll(); }
@@ -1072,6 +1129,10 @@
 
     if (budgets[type] && budgets[type][key] !== undefined) {
       delete budgets[type][key];
+    }
+
+    if (type === 'expense' && budgets.expenseSchedule && budgets.expenseSchedule[key] !== undefined) {
+      delete budgets.expenseSchedule[key];
     }
 
     if (accountOrder[type]) {
@@ -1096,7 +1157,11 @@
     const newKey = newMain.trim() !== "" ? `${newMain.trim()} - ${subName}` : subName;
     budgets[type][newKey] = budgets[type][oldKey]; delete budgets[type][oldKey];
     const idx = accountOrder[type].indexOf(oldKey); if(idx > -1) accountOrder[type][idx] = newKey;
-    
+    if (type === 'expense' && budgets.expenseSchedule && budgets.expenseSchedule[oldKey] !== undefined) {
+      budgets.expenseSchedule[newKey] = budgets.expenseSchedule[oldKey];
+      delete budgets.expenseSchedule[oldKey];
+    }
+
     await db.collection("budgets").doc(currentYear.toString()).set(budgets); 
     await db.collection("settings").doc("accountStructure").set(accountOrder);
   }
