@@ -50,6 +50,14 @@
     .badge-church { background: #fcf3cf; color: #7d6608; }
     .badge-pledge { background: #eafaf1; color: #1e8449; }
     .badge-direct { background: #eaf2f8; color: #1a5276; }
+    .badge-fundraising { background: #f4ecf7; color: #6c3483; }
+    .net-proceeds-card { border: 1px solid #edf2f5; border-radius: 8px; padding: 16px; margin-bottom: 14px; background: #fbfcfd; }
+    .net-proceeds-card.posted { border-color: #a3e4d7; background: #eafaf5; }
+    .net-proceeds-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+    .net-proceeds-grid .stat { background: white; border: 1px solid #edf2f5; border-radius: 8px; padding: 10px 12px; }
+    .net-proceeds-grid .stat .label { font-size: 10px; text-transform: uppercase; color: #72808b; font-weight: 700; }
+    .net-proceeds-grid .stat .value { font-size: 16px; font-weight: 700; color: #263238; margin-top: 3px; }
+    @media (max-width: 980px) { .net-proceeds-grid { grid-template-columns: 1fr; } }
     .proof-link { color: #1a5276; font-weight: 700; text-decoration: none; }
     .proof-link:hover { text-decoration: underline; }
     .proof-none { color: #9aa6af; font-size: 12px; }
@@ -179,6 +187,7 @@
               <option>Activity Contribution</option>
               <option>Construction Project</option>
               <option>Equipment / Capital Project</option>
+              <option>Fund Raising</option>
               <option>Other Designated Fund</option>
             </select>
           </div>
@@ -355,6 +364,96 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="receipt-modal" onclick="handleModalBackdrop(event, 'receipt-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3 id="receipt-modal-title">Add Gross Receipt</h3>
+          <div class="muted" id="receipt-modal-sub">Record money the fund raising activity itself collected (ticket sales, booth sales, raffle, donations at the event, etc).</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('receipt-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div>
+            <label>Date</label>
+            <input type="date" id="receipt-date" />
+          </div>
+          <div>
+            <label>Received Into</label>
+            <select id="receipt-account">
+              <option value="cash-hand">Cash on Hand</option>
+              <option value="cash-bank">Cash in Bank</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <input id="receipt-description" placeholder="e.g. Ticket sales, Raffle draw, Food booth" />
+        </div>
+        <div class="form-row">
+          <div>
+            <label>Amount</label>
+            <input type="number" id="receipt-amount" min="0" step="0.01" placeholder="0.00" />
+          </div>
+          <div>
+            <label>Reference</label>
+            <input id="receipt-reference" placeholder="OR, tally sheet, or note" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Proof (Optional)</label>
+          <input type="file" id="receipt-proof" accept="image/*,.pdf" />
+        </div>
+        <div class="form-group">
+          <label>Remarks</label>
+          <textarea id="receipt-notes" placeholder="Extra context for the project report."></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" onclick="closeModal('receipt-modal')">Cancel</button>
+          <button class="btn secondary" id="receipt-save-btn" onclick="saveReceipt()">Save Receipt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="post-income-modal" onclick="handleModalBackdrop(event, 'post-income-modal')">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div>
+          <h3>Post Net Proceeds to Income</h3>
+          <div class="muted" id="post-income-sub">Logs the net proceeds of this fund raising activity as income.</div>
+        </div>
+        <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('post-income-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="net-proceeds-grid" id="post-income-breakdown"></div>
+        <div class="form-row">
+          <div>
+            <label>Date</label>
+            <input type="date" id="post-income-date" />
+          </div>
+          <div>
+            <label>Receiving Account</label>
+            <select id="post-income-account">
+              <option value="cash-hand">Cash on Hand</option>
+              <option value="cash-bank">Cash in Bank</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Reference / Notes</label>
+          <input id="post-income-notes" placeholder="Optional note for the income record" />
+        </div>
+        <div class="muted" style="margin-bottom:10px;">Posts under <strong>Occasional Offering &rarr; Fund Raisings</strong> and will appear in Income Entry, Print Report, Reports, and Financial Overview.</div>
+        <div class="modal-actions">
+          <button class="btn ghost" type="button" onclick="closeModal('post-income-modal')">Cancel</button>
+          <button class="btn secondary" id="post-income-save-btn" onclick="confirmPostIncome()">Post to Income</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="link-expense-modal" onclick="handleModalBackdrop(event, 'link-expense-modal')">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
@@ -413,6 +512,12 @@
       'mission': 'Mission Fund',
       'investment': 'Investments/TD'
     };
+
+    // Fixed income classification for fund raising net proceeds, so it lands
+    // consistently in Income Entry, Print Report, Reports, and Financial
+    // Overview the same way any other Occasional Offering income does.
+    const FUNDRAISING_INCOME_TYPE = 'Occasional Offering';
+    const FUNDRAISING_BUDGET_CATEGORY = 'Occasional Offering - Fund Raisings';
 
     function fmt(value) { return Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     function peso(value) { return '\u20b1' + fmt(value); }
@@ -1121,6 +1226,9 @@
           batch.delete(db.collection('income').doc(entry.linkedIncomeId));
         }
       });
+      if (project.linkedIncomeId) {
+        batch.delete(db.collection('income').doc(project.linkedIncomeId));
+      }
       batch.delete(db.collection('specialProjects').doc(projectId));
       await batch.commit();
 
@@ -1177,6 +1285,185 @@
       renderAll();
     }
 
+    // ── FUND RAISING: GROSS RECEIPTS ─────────────────────────────────────
+    let editingReceiptId = '';
+
+    function openReceiptModal(entryId = '') {
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      editingReceiptId = entryId;
+      const receipt = entries.find(e => e.id === entryId && e.type === 'Receipt');
+      document.getElementById('receipt-modal-title').textContent = receipt ? 'Edit Gross Receipt' : 'Add Gross Receipt';
+      document.getElementById('receipt-modal-sub').textContent = project.name;
+      document.getElementById('receipt-save-btn').textContent = receipt ? 'Save Changes' : 'Save Receipt';
+      document.getElementById('receipt-date').value = receipt ? (receipt.date || todayIso) : todayIso;
+      document.getElementById('receipt-account').value = receipt ? (receipt.receiveAccount || 'cash-hand') : 'cash-hand';
+      document.getElementById('receipt-description').value = receipt ? (receipt.party || receipt.particulars || '') : '';
+      document.getElementById('receipt-amount').value = receipt ? (receipt.amount || '') : '';
+      document.getElementById('receipt-reference').value = receipt ? (receipt.reference || '') : '';
+      document.getElementById('receipt-notes').value = receipt ? (receipt.notes || '') : '';
+      document.getElementById('receipt-proof').value = '';
+      openModal('receipt-modal');
+      setTimeout(() => document.getElementById('receipt-description').focus(), 50);
+    }
+
+    async function saveReceipt() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can add gross receipts.');
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      const date = document.getElementById('receipt-date').value;
+      const description = document.getElementById('receipt-description').value.trim();
+      const amount = parseFloat(document.getElementById('receipt-amount').value) || 0;
+      const receiveAccount = document.getElementById('receipt-account').value;
+      const proofFile = document.getElementById('receipt-proof').files[0];
+      if (!date || !description || amount <= 0) return alert('Enter date, description, and a valid amount.');
+      if (!validateReceiptFile(proofFile)) return;
+
+      const payload = {
+        projectId: project.id,
+        projectName: project.name,
+        date,
+        type: 'Receipt',
+        sourceType: 'Fundraising Receipt',
+        receiveAccount,
+        receiveAccountName: accountNames[receiveAccount] || receiveAccount,
+        amount,
+        party: description,
+        particulars: description,
+        reference: document.getElementById('receipt-reference').value.trim(),
+        notes: document.getElementById('receipt-notes').value.trim(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const btn = document.getElementById('receipt-save-btn');
+      btn.disabled = true;
+      try {
+        if (editingReceiptId) {
+          const before = entries.find(e => e.id === editingReceiptId) || null;
+          await db.collection('specialProjectEntries').doc(editingReceiptId).update(payload);
+          const proofData = await uploadProofForProjectEntry(editingReceiptId, proofFile);
+          if (proofData) await db.collection('specialProjectEntries').doc(editingReceiptId).update(proofData);
+          await writeAuditLog('special_project_receipt_updated', 'specialProjectEntries', editingReceiptId, before, { ...before, ...payload }, `Updated gross receipt for ${project.name}`);
+        } else {
+          const createPayload = { ...payload, createdAt: new Date().toISOString() };
+          const ref = await db.collection('specialProjectEntries').add(createPayload);
+          const proofData = await uploadProofForProjectEntry(ref.id, proofFile);
+          if (proofData) await ref.update(proofData);
+          await writeAuditLog('special_project_receipt_created', 'specialProjectEntries', ref.id, null, createPayload, `Added gross receipt for ${project.name}`);
+        }
+        editingReceiptId = '';
+        await loadEntries();
+        activeTab = 'fundraising';
+        renderAll();
+        closeModal('receipt-modal');
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+    }
+
+    async function deleteReceiptEntry(entryId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete receipts.');
+      const entry = entries.find(e => e.id === entryId && e.type === 'Receipt');
+      if (!entry) return alert('Receipt not found.');
+      if (!confirm('Delete this gross receipt entry?')) return;
+      await db.collection('specialProjectEntries').doc(entryId).delete();
+      await writeAuditLog('special_project_receipt_deleted', 'specialProjectEntries', entryId, entry, null, `Deleted gross receipt for ${entry.projectName || ''}`);
+      await loadEntries();
+      activeTab = 'fundraising';
+      renderAll();
+    }
+
+    // ── FUND RAISING: POST NET PROCEEDS TO INCOME ────────────────────────
+    function openPostIncomeModal() {
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      const totals = projectTotals(project.id);
+      if (totals.netProceeds <= 0) return alert('Net proceeds must be greater than zero before posting to income (gross receipts must exceed expenses incurred).');
+      document.getElementById('post-income-breakdown').innerHTML = `
+        <div class="stat"><div class="label">Gross Receipts</div><div class="value">${peso(totals.grossReceipts)}</div></div>
+        <div class="stat"><div class="label">Expenses Incurred</div><div class="value">${peso(totals.expensesIncurred)}</div></div>
+        <div class="stat"><div class="label">Net Proceeds</div><div class="value">${peso(totals.netProceeds)}</div></div>`;
+      document.getElementById('post-income-date').value = todayIso;
+      document.getElementById('post-income-account').value = 'cash-hand';
+      document.getElementById('post-income-notes').value = '';
+      openModal('post-income-modal');
+    }
+
+    async function confirmPostIncome() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can post net proceeds to income.');
+      const project = getActiveProject();
+      if (!project) return alert('Select a project first.');
+      if (project.linkedIncomeId) return alert('This project already has a net proceeds posting. Un-post it first if you need to repost.');
+      const totals = projectTotals(project.id);
+      if (totals.netProceeds <= 0) return alert('Net proceeds must be greater than zero before posting to income.');
+      const date = document.getElementById('post-income-date').value;
+      if (!date) return alert('Select a date.');
+      const account = document.getElementById('post-income-account').value;
+      const notes = document.getElementById('post-income-notes').value.trim();
+
+      const incomePayload = {
+        date,
+        memberId: 'GENERAL',
+        member: 'General Collection',
+        type: FUNDRAISING_INCOME_TYPE,
+        amount: totals.netProceeds,
+        payment: account === 'cash-bank' ? 'Bank Transfer' : 'Cash',
+        budgetCategory: FUNDRAISING_BUDGET_CATEGORY,
+        budgetDetails: project.name,
+        notes: notes || `Net proceeds from "${project.name}": Gross ${peso(totals.grossReceipts)} - Expenses ${peso(totals.expensesIncurred)} = Net ${peso(totals.netProceeds)}`,
+        targetAccount: account,
+        specialProjectId: project.id,
+        specialProjectName: project.name,
+        timestamp: new Date().toISOString()
+      };
+
+      const btn = document.getElementById('post-income-save-btn');
+      btn.disabled = true;
+      try {
+        const incomeRef = await db.collection('income').add(incomePayload);
+        const projectUpdate = {
+          linkedIncomeId: incomeRef.id,
+          linkedIncomeAmount: totals.netProceeds,
+          linkedIncomeAccount: account,
+          linkedIncomePostedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        await db.collection('specialProjects').doc(project.id).update(projectUpdate);
+        await writeAuditLog('special_project_income_posted', 'income', incomeRef.id, null, incomePayload, `Posted net proceeds for ${project.name}`);
+        await loadProjects();
+        activeTab = 'fundraising';
+        renderAll();
+        closeModal('post-income-modal');
+      } catch (err) {
+        alert(err.message);
+      }
+      btn.disabled = false;
+    }
+
+    async function unpostNetProceeds(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can un-post net proceeds.');
+      const project = projects.find(p => p.id === projectId);
+      if (!project || !project.linkedIncomeId) return alert('No net proceeds posting found.');
+      if (!confirm('Un-post net proceeds from Income? This deletes the linked income record so it stops appearing in Income Entry, Print Report, Reports, and Financial Overview.')) return;
+
+      const beforeIncomeId = project.linkedIncomeId;
+      const batch = db.batch();
+      batch.delete(db.collection('income').doc(beforeIncomeId));
+      batch.update(db.collection('specialProjects').doc(projectId), {
+        linkedIncomeId: firebase.firestore.FieldValue.delete(),
+        linkedIncomeAmount: firebase.firestore.FieldValue.delete(),
+        linkedIncomeAccount: firebase.firestore.FieldValue.delete(),
+        linkedIncomePostedAt: firebase.firestore.FieldValue.delete(),
+        updatedAt: new Date().toISOString()
+      });
+      await batch.commit();
+      await writeAuditLog('special_project_income_unposted', 'income', beforeIncomeId, { specialProjectId: projectId }, null, `Un-posted net proceeds for ${project.name}`);
+      await loadProjects();
+      activeTab = 'fundraising';
+      renderAll();
+    }
+
     function clearFundingForm() {
       document.getElementById('entry-amount').value = '';
       document.getElementById('entry-payee').value = '';
@@ -1195,7 +1482,12 @@
     function projectTotals(projectId) {
       const project = projects.find(p => p.id === projectId) || {};
       const projectCosts = costs.filter(c => c.projectId === projectId);
-      const projectEntries = entries.filter(e => e.projectId === projectId);
+      // Fund raising gross receipts live in specialProjectEntries too (type
+      // 'Receipt'), but they are money the activity itself collected, not a
+      // funding source paying for the project's cost - excluded here so they
+      // never inflate Funding Secured / Church Funds Used / Remaining Need.
+      const projectEntries = entries.filter(e => e.projectId === projectId && e.type !== 'Receipt');
+      const projectReceipts = entries.filter(e => e.projectId === projectId && e.type === 'Receipt');
       const costBreakdownTotal = projectCosts.reduce((s, c) => s + Number(c.amount || 0), 0);
       const plannedCost = Math.max(costBreakdownTotal, Number(project.targetCost || 0));
       const churchFund = projectEntries.filter(e => e.sourceType === 'Church Fund').reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -1205,7 +1497,16 @@
         .filter(e => !['Church Fund', 'Pledge', 'Direct Contribution'].includes(e.sourceType || ''))
         .reduce((s, e) => s + Number(e.amount || 0), 0);
       const funding = churchFund + pledges + direct + other;
-      return { plannedCost, churchFund, pledges, direct, other, funding, need: Math.max(0, plannedCost - funding) };
+      const grossReceipts = projectReceipts.reduce((s, e) => s + Number(e.amount || 0), 0);
+      // Expenses incurred for the activity = real recorded expense docs tied
+      // to this project (auto-created via Church Fund funding, or attached
+      // via Link Existing Expense), the authoritative actual-cash figure -
+      // not the Cost Breakdown tab, which can hold unpaid estimates.
+      const expensesIncurred = expenses
+        .filter(e => e.specialProjectId === projectId && e.type !== 'transfer')
+        .reduce((s, e) => s + Number(e.amount || 0), 0);
+      const netProceeds = grossReceipts - expensesIncurred;
+      return { plannedCost, churchFund, pledges, direct, other, funding, need: Math.max(0, plannedCost - funding), grossReceipts, expensesIncurred, netProceeds };
     }
 
     function groupBy(rows, keyFn) {
@@ -1230,6 +1531,7 @@
       document.getElementById('project-list').innerHTML = filtered.map(p => {
         const t = projectTotals(p.id);
         const isActive = p.id === activeProjectId;
+        const isFundRaising = p.projectType === 'Fund Raising';
         return `
           <div class="project-item ${isActive ? 'active' : ''}" onclick="selectProject('${p.id}')">
             <div class="project-line">
@@ -1238,9 +1540,16 @@
             </div>
             <div class="project-quick">
               <span class="badge ${p.status === 'Closed' ? 'badge-closed' : 'badge-open'}">${escapeHtml(p.status || 'Open')}</span>
+              ${isFundRaising ? `
+              <span class="badge badge-fundraising">${p.linkedIncomeId ? 'Posted' : 'Not posted'}</span>
+              <span class="project-amount">${peso(t.grossReceipts)} gross</span>
+              <span class="project-amount">${peso(t.expensesIncurred)} spent</span>
+              <span class="project-amount">${peso(t.netProceeds)} net</span>
+              ` : `
               <span class="project-amount">${peso(t.plannedCost)} cost</span>
               <span class="project-amount">${peso(t.funding)} funded</span>
               <span class="project-amount">${peso(t.need)} need</span>
+              `}
             </div>
           </div>`;
       }).join('') || '<div class="empty">No projects found.</div>';
@@ -1274,6 +1583,7 @@
 
       const t = projectTotals(project.id);
       const isClosed = project.status === 'Closed';
+      const isFundRaising = project.projectType === 'Fund Raising';
       workspace.innerHTML = `
         <div class="workspace-head">
           <div class="workspace-title">
@@ -1283,6 +1593,8 @@
           <div class="workspace-actions">
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('project-detail-modal')">&times;</button>
             ${roleIs('Treasurer') && !isClosed ? '<button class="btn secondary" onclick="openCostModal()">Add Cost</button><button class="btn secondary" onclick="openFundingModal()">Add Funding</button><button class="btn ghost" onclick="openLinkExpenseModal()">Link Expense</button>' : ''}
+            ${roleIs('Treasurer') && isFundRaising && !isClosed ? `<button class="btn secondary" onclick="openReceiptModal()">Add Receipt</button>` : ''}
+            ${roleIs('Treasurer') && isFundRaising ? `<button class="btn ${project.linkedIncomeId ? 'ghost' : 'secondary'}" onclick="${project.linkedIncomeId ? `unpostNetProceeds('${project.id}')` : 'openPostIncomeModal()'}">${project.linkedIncomeId ? 'Un-post Net Proceeds' : 'Post Net Proceeds to Income'}</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ghost" onclick="openProjectModal('${project.id}')">Edit Project</button><button class="btn ghost" onclick="deleteProject('${project.id}')">Delete Project</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${isClosed ? 'secondary' : 'ghost'}" onclick="toggleProjectFinished('${project.id}')">${isClosed ? 'Reopen Project' : 'Mark Finished'}</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${project.printReportPublished ? 'ghost' : 'secondary'}" onclick="toggleProjectPrintReport('${project.id}')">${project.printReportPublished ? 'Remove from Print Report' : 'Push to Print Report'}</button>` : ''}
@@ -1290,13 +1602,21 @@
           </div>
         </div>
         <div class="kpi-row">
+          ${isFundRaising ? `
+          <div class="kpi"><div class="label">Gross Receipts</div><div class="value">${peso(t.grossReceipts)}</div></div>
+          <div class="kpi"><div class="label">Expenses Incurred</div><div class="value">${peso(t.expensesIncurred)}</div></div>
+          <div class="kpi"><div class="label">Net Proceeds</div><div class="value">${peso(t.netProceeds)}</div></div>
+          <div class="kpi"><div class="label">Posted to Income</div><div class="value">${project.linkedIncomeId ? peso(project.linkedIncomeAmount) : 'Not yet'}</div></div>
+          ` : `
           <div class="kpi"><div class="label">Total Cost</div><div class="value">${peso(t.plannedCost)}</div></div>
           <div class="kpi"><div class="label">Funding Secured</div><div class="value">${peso(t.funding)}</div></div>
           <div class="kpi"><div class="label">Church Funds Used</div><div class="value">${peso(t.churchFund)}</div></div>
           <div class="kpi"><div class="label">Remaining Need</div><div class="value">${peso(t.need)}</div></div>
+          `}
         </div>
         <div class="tabs">
           ${tabButton('overview', 'Overview')}
+          ${isFundRaising ? tabButton('fundraising', 'Fund Raising') : ''}
           ${tabButton('costs', 'Cost Breakdown')}
           ${tabButton('funding', 'Funding Sources')}
           ${tabButton('ledger', 'Ledger')}
@@ -1310,6 +1630,7 @@
     }
 
     function renderActiveTab(project, totals) {
+      if (activeTab === 'fundraising' && project.projectType === 'Fund Raising') return renderFundraisingTab(project, totals);
       if (activeTab === 'costs') return renderCostsTab(project);
       if (activeTab === 'funding') return renderFundingTab(project);
       if (activeTab === 'ledger') return renderLedgerTab(project);
@@ -1319,7 +1640,7 @@
 
     function renderOverviewTab(project, totals) {
       const projectCosts = costs.filter(c => c.projectId === project.id);
-      const projectEntries = entries.filter(e => e.projectId === project.id);
+      const projectEntries = entries.filter(e => e.projectId === project.id && e.type !== 'Receipt');
       return `
         <div class="two-col">
           <div class="section-card">
@@ -1330,6 +1651,73 @@
             <h3>Funding Summary</h3>
             ${renderFundingGroups(projectEntries, totals, true)}
           </div>
+        </div>`;
+    }
+
+    function renderFundraisingTab(project, totals) {
+      const receipts = entries.filter(e => e.projectId === project.id && e.type === 'Receipt')
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      const linkedExpenses = expenses.filter(e => e.specialProjectId === project.id && e.type !== 'transfer')
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      const isClosed = project.status === 'Closed';
+
+      const receiptRows = receipts.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Description</th><th>Received Into</th><th>Reference</th><th>Proof</th><th>Amount</th><th></th></tr></thead>
+            <tbody>
+              ${receipts.map(r => `<tr>
+                <td>${escapeHtml(r.date || '-')}</td>
+                <td>${escapeHtml(r.party || r.particulars || '-')}${r.notes ? ' <span class="muted">(' + escapeHtml(r.notes) + ')</span>' : ''}</td>
+                <td>${escapeHtml(r.receiveAccountName || accountNames[r.receiveAccount] || '-')}</td>
+                <td>${escapeHtml(r.reference || '-')}</td>
+                <td>${renderProofLink(getProofRecord(r)) || '<span class="proof-none">None</span>'}</td>
+                <td class="amount">${peso(r.amount)}</td>
+                <td>${roleIs('Treasurer') && !isClosed ? `<button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="openReceiptModal('${r.id}')">Edit</button> <button class="btn ghost" style="padding:5px 8px;font-size:11px;" onclick="deleteReceiptEntry('${r.id}')">Delete</button>` : ''}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : '<div class="empty">No gross receipts recorded yet.</div>';
+
+      const expenseRows = linkedExpenses.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Category</th><th>Payee</th><th>Proof</th><th>Amount</th></tr></thead>
+            <tbody>
+              ${linkedExpenses.map(e => `<tr>
+                <td>${escapeHtml(e.date || '-')}</td>
+                <td>${escapeHtml(e.category || e.budgetCategory || 'Expense')}</td>
+                <td>${escapeHtml(e.sub || e.payee || '-')}</td>
+                <td>${e.receiptUrl ? renderProofLink(e) : '<span class="proof-none">None</span>'}</td>
+                <td class="amount">${peso(e.amount)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : '<div class="empty">No expenses linked yet. Use "Add Funding" (Church Fund) or "Link Expense" to record money spent on this activity.</div>';
+
+      const postedNote = project.linkedIncomeId
+        ? `<div class="net-proceeds-card posted"><strong>Posted to Income</strong><div class="muted">${peso(project.linkedIncomeAmount)} posted on ${escapeHtml((project.linkedIncomePostedAt || '').slice(0, 10))} to ${escapeHtml(accountNames[project.linkedIncomeAccount] || project.linkedIncomeAccount || '')}.</div></div>`
+        : `<div class="net-proceeds-card"><strong>Not yet posted to Income</strong><div class="muted">Net proceeds recompute live as receipts/expenses change. Use "Post Net Proceeds to Income" above once the activity is tallied.</div></div>`;
+
+      return `
+        <div class="section-card">
+          <h3>Gross Receipts</h3>
+          ${receiptRows}
+          <div class="report-line total"><span>Total Gross Receipts</span><span>${peso(totals.grossReceipts)}</span></div>
+        </div>
+        <div class="section-card">
+          <h3>Expenses Incurred</h3>
+          ${expenseRows}
+          <div class="report-line total"><span>Total Expenses Incurred</span><span>${peso(totals.expensesIncurred)}</span></div>
+        </div>
+        <div class="section-card">
+          <h3>Net Proceeds</h3>
+          <div class="net-proceeds-grid">
+            <div class="stat"><div class="label">Gross Receipts</div><div class="value">${peso(totals.grossReceipts)}</div></div>
+            <div class="stat"><div class="label">Expenses Incurred</div><div class="value">${peso(totals.expensesIncurred)}</div></div>
+            <div class="stat"><div class="label">Net Proceeds</div><div class="value">${peso(totals.netProceeds)}</div></div>
+          </div>
+          ${postedNote}
         </div>`;
     }
 
@@ -1344,7 +1732,7 @@
     }
 
     function renderFundingTab(project) {
-      const rows = entries.filter(e => e.projectId === project.id);
+      const rows = entries.filter(e => e.projectId === project.id && e.type !== 'Receipt');
       const totals = projectTotals(project.id);
       if (!rows.length) return '<div class="empty">No funding sources yet.</div>';
       return `
@@ -1386,8 +1774,10 @@
 
     function renderReportTab(project, totals) {
       const projectCosts = costs.filter(c => c.projectId === project.id);
-      const projectEntries = entries.filter(e => e.projectId === project.id);
+      const projectEntries = entries.filter(e => e.projectId === project.id && e.type !== 'Receipt');
+      const isFundRaising = project.projectType === 'Fund Raising';
       return `
+        ${isFundRaising ? renderFundraisingReportSection(project, totals) : ''}
         <div class="section-card">
           <h3>Cost Breakdown</h3>
           ${renderCostGroups(projectCosts, false)}
@@ -1398,6 +1788,20 @@
           ${renderFundingGroups(projectEntries, totals, false)}
           <div class="report-line total"><span>Total Funding Secured</span><span>${peso(totals.funding)}</span></div>
           <div class="report-line total"><span>Remaining Need</span><span>${peso(totals.need)}</span></div>
+        </div>`;
+    }
+
+    function renderFundraisingReportSection(project, totals) {
+      const rows = entries.filter(e => e.projectId === project.id && e.type === 'Receipt')
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      return `
+        <div class="section-card">
+          <h3>Gross Receipts</h3>
+          ${rows.length ? rows.map(r => `<div class="report-line indent"><span>${escapeHtml(r.date || '-')} - ${escapeHtml(r.party || r.particulars || 'Receipt')}</span><span>${peso(r.amount)}</span></div>`).join('') : '<div class="empty">No receipts recorded yet.</div>'}
+          <div class="report-line total"><span>Total Gross Receipts</span><span>${peso(totals.grossReceipts)}</span></div>
+          <div class="report-line total"><span>Expenses Incurred</span><span>${peso(totals.expensesIncurred)}</span></div>
+          <div class="report-line total"><span>Net Proceeds</span><span>${peso(totals.netProceeds)}</span></div>
+          ${project.linkedIncomeId ? `<div class="muted" style="margin-top:6px;">Posted to Income on ${escapeHtml((project.linkedIncomePostedAt || '').slice(0, 10))} - ${peso(project.linkedIncomeAmount)}</div>` : ''}
         </div>`;
     }
 
