@@ -1627,8 +1627,23 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
   }
 
   function projectFundingTotal(projectId) {
+    // Gross receipts (type 'Receipt') are money the fund raising activity
+    // itself collected, not a funding source paying for the project's
+    // cost, so they're excluded here just like in special-projects.html.
     return specialProjectEntries
-      .filter(e => e.projectId === projectId)
+      .filter(e => e.projectId === projectId && e.type !== 'Receipt')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  }
+
+  function projectGrossReceiptsTotal(projectId) {
+    return specialProjectEntries
+      .filter(e => e.projectId === projectId && e.type === 'Receipt')
+      .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  }
+
+  function projectExpensesIncurredTotal(projectId) {
+    return allExpenseData
+      .filter(e => e.specialProjectId === projectId && e.type !== 'transfer')
       .reduce((sum, e) => sum + Number(e.amount || 0), 0);
   }
 
@@ -1643,7 +1658,11 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
 
   function generateSpecialProjectReportHTML(project) {
     const projectCosts = specialProjectCosts.filter(c => c.projectId === project.id);
-    const projectEntries = specialProjectEntries.filter(e => e.projectId === project.id);
+    const projectEntries = specialProjectEntries.filter(e => e.projectId === project.id && e.type !== 'Receipt');
+    const isFundRaising = project.projectType === 'Fund Raising';
+    const grossReceipts = isFundRaising ? projectGrossReceiptsTotal(project.id) : 0;
+    const expensesIncurred = isFundRaising ? projectExpensesIncurredTotal(project.id) : 0;
+    const netProceeds = grossReceipts - expensesIncurred;
     const costTotal = projectCostTotal(project.id);
     const fundingTotal = projectFundingTotal(project.id);
     const remainingNeed = Math.max(0, costTotal - fundingTotal);
@@ -1703,6 +1722,17 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
         }).join('')}`;
     }).join('');
 
+    const receiptRows = isFundRaising
+      ? specialProjectEntries.filter(e => e.projectId === project.id && e.type === 'Receipt')
+          .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+          .map(r => `
+            <tr>
+              <td class="col-desc indent-2">${escapeHtml(r.party || r.particulars || 'Receipt')} <span style="color:#777;font-size:11px;">${escapeHtml(r.date || '')}</span></td>
+              <td class="col-sub">₱ ${fmt(r.amount || 0)}</td>
+              <td class="col-main"></td>
+            </tr>`).join('')
+      : '';
+
     return `
       <div class="siksik-container" id="printable-content">
         <div class="rpt-header">
@@ -1729,6 +1759,17 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
           ${fundingPct !== null ? `<tr><td class="col-desc indent-1" style="color:#667085;">Funding Progress</td><td class="col-sub"></td><td class="col-main" style="color:${fundingPct >= 100 ? '#1e8449' : '#9a5b00'};font-weight:700;">${fundingPct}%</td></tr>` : ''}
           <tr class="total-row"><td class="col-desc">${surplus > 0 ? 'Project Surplus' : 'Remaining Need'}</td><td class="col-sub"></td><td class="col-main ${remainingNeed > 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(surplus > 0 ? surplus : remainingNeed)}</td></tr>
           <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          ${isFundRaising ? `
+          <tr class="section-header"><td colspan="3">Fund Raising Results</td></tr>
+          <tr><td class="col-desc indent-1" style="color:#667085;">Total Gross Receipts</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(grossReceipts)}</td></tr>
+          <tr><td class="col-desc indent-1" style="color:#667085;">Expenses Incurred</td><td class="col-sub"></td><td class="col-main">₱ ${fmt(expensesIncurred)}</td></tr>
+          <tr class="total-row"><td class="col-desc">Net Proceeds</td><td class="col-sub"></td><td class="col-main ${netProceeds < 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(netProceeds)}</td></tr>
+          ${project.linkedIncomeId ? `<tr><td class="col-desc indent-1" style="color:#667085;">Posted to Income</td><td class="col-sub"></td><td class="col-main" style="color:#1e8449;">₱ ${fmt(project.linkedIncomeAmount || 0)}${project.linkedIncomePostedAt ? ' on ' + escapeHtml(String(project.linkedIncomePostedAt).slice(0, 10)) : ''}</td></tr>` : ''}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="section-header"><td colspan="3">Gross Receipts</td></tr>
+          ${receiptRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No receipts recorded.</td></tr>'}
+          <tr class="spacer-row"><td colspan="3"></td></tr>` : ''}
 
           <tr class="section-header"><td colspan="3">Cost Breakdown</td></tr>
           ${hasMixedBasis ? `
