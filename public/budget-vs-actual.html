@@ -432,14 +432,14 @@
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  let budgets = { expense: {}, income: {}, expenseSchedule: {} };
+  let budgets = { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
   const scheduleMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  // An expense account is "recurring" (spread evenly across all 12 months)
-  // unless expenseSchedule marks it as a one-time amount assigned to a
-  // specific month, so occasional expenses stop diluting every month's
-  // budgeted figure and the forecast in financial-overview.html can pick
-  // up the real month it's expected to be spent.
+  // An expense/income account is "recurring" (spread evenly across all 12
+  // months) unless expenseSchedule/incomeSchedule marks it as a one-time
+  // amount assigned to a specific month, so occasional expenses/income
+  // stop diluting every month's budgeted figure and the forecast in
+  // financial-overview.html can pick up the real month it's expected.
   function isRecurringExpense(key) {
     const sched = (budgets.expenseSchedule || {})[key];
     return !sched || sched.recurring !== false;
@@ -448,6 +448,16 @@
     const ann = budgets.expense[key] || 0;
     if (isRecurringExpense(key)) return ann / 12;
     const sched = budgets.expenseSchedule[key];
+    return sched && sched.month === month ? ann : 0;
+  }
+  function isRecurringIncome(key) {
+    const sched = (budgets.incomeSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function incomeBudgetForMonth(key, month) {
+    const ann = budgets.income[key] || 0;
+    if (isRecurringIncome(key)) return ann / 12;
+    const sched = budgets.incomeSchedule[key];
     return sched && sched.month === month ? ann : 0;
   }
   let accountOrder = { expense: [], income: [] };
@@ -536,6 +546,7 @@
             budgets = { income: {}, expense: {} };
         }
         if(!budgets.expenseSchedule) budgets.expenseSchedule = {};
+        if(!budgets.incomeSchedule) budgets.incomeSchedule = {};
 
         if(isInitialLoad) {
              ['income', 'expense'].forEach(t => {
@@ -700,7 +711,7 @@
     }
   }
 
-  function renderIncomeBva(fInc) {
+  function renderIncomeBva(fInc, mo) {
   // Helper: Find matching budget category (exact, case-insensitive, or partial match)
   const findMatchingBudgetCategory = (value, availableCategories) => {
     if (!value) return null;
@@ -761,7 +772,7 @@
     const isCollapsed = collapsedBva.income.has(g.main);
     const icon = isCollapsed ? '▶' : '▼';
     const ann = g.items.reduce((s,k)=>s+(budgets.income[k]||0),0);
-    const bud = currentPeriod === 'monthly' ? ann/12 : ann;
+    const bud = currentPeriod === 'monthly' ? g.items.reduce((s,k)=>s+incomeBudgetForMonth(k, mo),0) : ann;
     const act = fInc.filter(d => {
       const rawCat = d.budgetCategory || d.type || '';
       const matchedCat = findMatchingBudgetCategory(rawCat, budgetedKeys) || rawCat;
@@ -788,7 +799,7 @@
       g.items.forEach(k => {
         const label = k.startsWith(g.main + ' - ') ? k.slice(g.main.length + 3) : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ') : k);
         const sAnn = budgets.income[k]||0;
-        const sBud = currentPeriod === 'monthly' ? sAnn/12 : sAnn;
+        const sBud = currentPeriod === 'monthly' ? incomeBudgetForMonth(k, mo) : sAnn;
         const sAct = fInc.filter(d=>{
           const rawCat = d.budgetCategory || d.type || '';
           const matchedCat = findMatchingBudgetCategory(rawCat, budgetedKeys) || rawCat;
@@ -936,20 +947,17 @@
         
         g.items.forEach((k, iIndex) => {
           const isSub = k.includes(' - ');
-          let scheduleHtml = '';
-          if (type === 'expense') {
-            const recurring = isRecurringExpense(k);
-            const sched = (budgets.expenseSchedule || {})[k];
-            const schedMonth = sched && sched.recurring === false ? sched.month : new Date().getMonth();
-            scheduleHtml = `
-              <select onchange="setRecurring('${k}', this)" style="width:auto; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
+          const recurring = type === 'expense' ? isRecurringExpense(k) : isRecurringIncome(k);
+          const sched = (budgets[scheduleField(type)] || {})[k];
+          const schedMonth = sched && sched.recurring === false ? sched.month : new Date().getMonth();
+          const scheduleHtml = `
+              <select onchange="setRecurring('${type}', '${k}', this)" style="width:auto; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
                 <option value="recurring" ${recurring?'selected':''}>🔁 Recurring</option>
                 <option value="onetime" ${!recurring?'selected':''}>📌 One-time</option>
               </select>
-              <select onchange="setScheduleMonth('${k}', this.value)" style="width:auto; display:${recurring?'none':'inline-block'}; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
+              <select onchange="setScheduleMonth('${type}', '${k}', this.value)" style="width:auto; display:${recurring?'none':'inline-block'}; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
                 ${scheduleMonthNames.map((mn,mi)=>`<option value="${mi}" ${schedMonth===mi?'selected':''}>${mn}</option>`).join('')}
               </select>`;
-          }
           html += `<div class="budget-row" style="${isSub ? 'margin-left: 20px;' : ''} flex-wrap: wrap;">
               <button class="btn-del" onclick="delAcc('${type}','${k}')">×</button>
               <button class="btn-edit" onclick="renameAccount('${type}','${k}')">✏️</button>
@@ -995,9 +1003,8 @@
     const tInc = fInc.reduce((s,d)=>s+parseFloat(d.amount||0),0);
     const tExp = fExp.reduce((s,d)=>s+parseFloat(d.amount||0),0);
     const net = tInc - tExp;
-    const annualIncomeBudget = Object.entries(budgets.income || {})
-      .filter(([k]) => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'))
-      .reduce((s, [,v]) => s + (parseFloat(v) || 0), 0);
+    const incomeKeysForAccum = Object.keys(budgets.income || {})
+      .filter(k => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'));
     const elapsedMonths = currentPeriod === 'annual' ? 12 : mo + 1;
     const expenseKeysForAccum = Object.keys(budgets.expense || {});
     const accumulatedExpenseBudget = expenseKeysForAccum.reduce((s,k) => {
@@ -1005,7 +1012,11 @@
       for (let m = 0; m < elapsedMonths; m++) sum += expenseBudgetForMonth(k, m);
       return s + sum;
     }, 0);
-    const accumulatedIncomeBudget = annualIncomeBudget / 12 * elapsedMonths;
+    const accumulatedIncomeBudget = incomeKeysForAccum.reduce((s,k) => {
+      let sum = 0;
+      for (let m = 0; m < elapsedMonths; m++) sum += incomeBudgetForMonth(k, m);
+      return s + sum;
+    }, 0);
     const ytdFilter = (arr) => arr.filter(d => {
       const dt = new Date(d.date);
       return dt.getFullYear() === yr && dt.getMonth() <= mo;
@@ -1035,14 +1046,14 @@
       `;
     }
 
-    renderIncomeBva(fInc);
+    renderIncomeBva(fInc, mo);
     renderExpenseBva(fExp, mo);
     renderMonthlyGrid(yr);
   }
 
   function renderMonthlyGrid(year) {
     const buildingFundKeys = Object.keys(budgets.income || {}).filter(k => k.toLowerCase().includes('building fund'));
-    const targetInc = Object.entries(budgets.income || {}).filter(([k]) => !buildingFundKeys.includes(k)).reduce((s, [,v]) => s + v, 0) / 12;
+    const incomeKeys = Object.keys(budgets.income || {}).filter(k => !buildingFundKeys.includes(k));
     const expenseKeys = Object.keys(budgets.expense || {});
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const grid = document.getElementById('month-grid');
@@ -1051,6 +1062,7 @@
     grid.innerHTML = months.map((m, i) => {
       const mi = actualIncome.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i && !isBuildingFund(d) && !isTransfer(d)).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
       const me = actualExpense.filter(d => new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() === i).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const targetInc = incomeKeys.reduce((s,k)=>s+incomeBudgetForMonth(k, i),0);
       const targetExp = expenseKeys.reduce((s,k)=>s+expenseBudgetForMonth(k, i),0);
 
       return `<div class="month-card">
@@ -1088,24 +1100,28 @@
     }
   }
 
-  function setRecurring(key, selectEl) {
+  function scheduleField(type) { return type === 'income' ? 'incomeSchedule' : 'expenseSchedule'; }
+
+  function setRecurring(type, key, selectEl) {
     saveTempInputs();
-    if (!budgets.expenseSchedule) budgets.expenseSchedule = {};
+    const field = scheduleField(type);
+    if (!budgets[field]) budgets[field] = {};
     const monthSel = selectEl.nextElementSibling;
     if (selectEl.value === 'onetime') {
       const m = monthSel ? parseInt(monthSel.value) || 0 : 0;
-      budgets.expenseSchedule[key] = { recurring: false, month: m };
+      budgets[field][key] = { recurring: false, month: m };
       if (monthSel) monthSel.style.display = 'inline-block';
     } else {
-      delete budgets.expenseSchedule[key];
+      delete budgets[field][key];
       if (monthSel) monthSel.style.display = 'none';
     }
   }
 
-  function setScheduleMonth(key, value) {
+  function setScheduleMonth(type, key, value) {
     saveTempInputs();
-    if (!budgets.expenseSchedule) budgets.expenseSchedule = {};
-    budgets.expenseSchedule[key] = { recurring: false, month: parseInt(value) || 0 };
+    const field = scheduleField(type);
+    if (!budgets[field]) budgets[field] = {};
+    budgets[field][key] = { recurring: false, month: parseInt(value) || 0 };
   }
 
   function toggleGroup(type, gName) { saveTempInputs(); if(collapsedGroups[type].has(gName)) collapsedGroups[type].delete(gName); else collapsedGroups[type].add(gName); renderSetupList(); }
@@ -1131,8 +1147,9 @@
       delete budgets[type][key];
     }
 
-    if (type === 'expense' && budgets.expenseSchedule && budgets.expenseSchedule[key] !== undefined) {
-      delete budgets.expenseSchedule[key];
+    const delSchedField = scheduleField(type);
+    if (budgets[delSchedField] && budgets[delSchedField][key] !== undefined) {
+      delete budgets[delSchedField][key];
     }
 
     if (accountOrder[type]) {
@@ -1157,9 +1174,10 @@
     const newKey = newMain.trim() !== "" ? `${newMain.trim()} - ${subName}` : subName;
     budgets[type][newKey] = budgets[type][oldKey]; delete budgets[type][oldKey];
     const idx = accountOrder[type].indexOf(oldKey); if(idx > -1) accountOrder[type][idx] = newKey;
-    if (type === 'expense' && budgets.expenseSchedule && budgets.expenseSchedule[oldKey] !== undefined) {
-      budgets.expenseSchedule[newKey] = budgets.expenseSchedule[oldKey];
-      delete budgets.expenseSchedule[oldKey];
+    const renSchedField = scheduleField(type);
+    if (budgets[renSchedField] && budgets[renSchedField][oldKey] !== undefined) {
+      budgets[renSchedField][newKey] = budgets[renSchedField][oldKey];
+      delete budgets[renSchedField][oldKey];
     }
 
     await db.collection("budgets").doc(currentYear.toString()).set(budgets); 
