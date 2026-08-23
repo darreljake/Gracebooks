@@ -838,11 +838,16 @@
     btn.disabled = true;
     btn.textContent = editingExpenseId ? 'Updating...' : 'Saving...';
     try {
+      // Editing an expense that originated from Smart Payroll must keep its
+      // payroll identity fields, otherwise it silently drops out of the
+      // Payslips page (which filters strictly on isPayrollGenerated === true).
+      const isEditingPayrollRow = !!(editingExpenseId && editingExpenseOriginal && editingExpenseOriginal.isPayrollGenerated);
+
       const dbPayload = {
         date: dateVal,
         category: subcat,
         sub: document.getElementById('exp-particular').value || '',
-        isPayrollGenerated: false,
+        isPayrollGenerated: isEditingPayrollRow,
         amount: amount,
         workersTithe: tithe,
         sssDeduction: sss,
@@ -853,11 +858,20 @@
         targetAccId: document.getElementById('exp-payment').value,
         payee: document.getElementById('exp-payee').value,
         status: document.getElementById('exp-status').value,
-        isPayroll: false,
+        isPayroll: isEditingPayrollRow ? (editingExpenseOriginal.isPayroll !== false) : false,
         postedAt: editingExpenseOriginal?.postedAt || new Date().toISOString(),
         budgetYear: document.getElementById('budget-year').value,
         expenseMonth: dateVal.substring(0, 7)
       };
+
+      if (isEditingPayrollRow) {
+        dbPayload.role = editingExpenseOriginal.role || '';
+        dbPayload.payrollMonth = editingExpenseOriginal.payrollMonth || dbPayload.expenseMonth;
+        dbPayload.payrollWeek = editingExpenseOriginal.payrollWeek || '';
+        dbPayload.payrollParticulars = editingExpenseOriginal.payrollParticulars || '';
+        dbPayload.isBenefit = !!editingExpenseOriginal.isBenefit;
+        dbPayload.isAllowance = !!editingExpenseOriginal.isAllowance;
+      }
 
       if (document.getElementById('chk-save-recurring').checked) {
           const rec = { particular: dbPayload.sub, payee: dbPayload.payee, amount: amount, mainCat: document.getElementById('exp-category').value, subCat: subcat, payment: dbPayload.payment };
