@@ -442,10 +442,10 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Reference / Notes</label>
-          <input id="post-income-notes" placeholder="Optional note for the income record" />
+          <label>Description</label>
+          <input id="post-income-description" placeholder="What was this fund raising for? (e.g. Anniversary Lechon sale)" />
         </div>
-        <div class="muted" style="margin-bottom:10px;">Posts under <strong>Occasional Offering &rarr; Fund Raisings</strong> and will appear in Income Entry, Print Report, Reports, and Financial Overview.</div>
+        <div class="muted" style="margin-bottom:10px;">Posts under <strong>Occasional Offering &rarr; Fund Raisings</strong> and will appear in Income Entry, Print Report, Reports, and Financial Overview. The description above is used as the account details on the income record.</div>
         <div class="modal-actions">
           <button class="btn ghost" type="button" onclick="closeModal('post-income-modal')">Cancel</button>
           <button class="btn secondary" id="post-income-save-btn" onclick="confirmPostIncome()">Post to Income</button>
@@ -1386,7 +1386,7 @@
         <div class="stat"><div class="label">Net Proceeds</div><div class="value">${peso(totals.netProceeds)}</div></div>`;
       document.getElementById('post-income-date').value = todayIso;
       document.getElementById('post-income-account').value = 'cash-hand';
-      document.getElementById('post-income-notes').value = '';
+      document.getElementById('post-income-description').value = project.name;
       openModal('post-income-modal');
     }
 
@@ -1400,7 +1400,7 @@
       const date = document.getElementById('post-income-date').value;
       if (!date) return alert('Select a date.');
       const account = document.getElementById('post-income-account').value;
-      const notes = document.getElementById('post-income-notes').value.trim();
+      const description = document.getElementById('post-income-description').value.trim() || project.name;
 
       const incomePayload = {
         date,
@@ -1410,8 +1410,8 @@
         amount: totals.netProceeds,
         payment: account === 'cash-bank' ? 'Bank Transfer' : 'Cash',
         budgetCategory: FUNDRAISING_BUDGET_CATEGORY,
-        budgetDetails: project.name,
-        notes: notes || `Net proceeds from "${project.name}": Gross ${peso(totals.grossReceipts)} - Expenses ${peso(totals.expensesIncurred)} = Net ${peso(totals.netProceeds)}`,
+        budgetDetails: description,
+        notes: `Net proceeds from "${project.name}": Gross ${peso(totals.grossReceipts)} - Expenses ${peso(totals.expensesIncurred)} = Net ${peso(totals.netProceeds)}`,
         targetAccount: account,
         specialProjectId: project.id,
         specialProjectName: project.name,
