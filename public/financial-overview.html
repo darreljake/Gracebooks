@@ -372,7 +372,7 @@
       <div class="hero-stat payable">
         <div class="h-label" id="hero-payroll-payable-label">Deductions Payable</div>
         <div class="h-value" id="hero-payroll-payable">&#8369;0.00</div>
-        <button class="payable-btn" onclick="openModal('deduction-payment-modal')">Record Payment</button>
+        <button class="payable-btn treasurer-only-financial" onclick="openModal('deduction-payment-modal')">Record Payment</button>
       </div>
     </div>
     <div class="hero-note" id="hero-cash-after-payable">Cash Hand + Bank after May payable: &#8369;0.00</div>
@@ -396,7 +396,7 @@
       </div>
       <div class="cash-control-rules" id="cash-control-rules"></div>
       <div class="cash-control-rules" id="cash-forecast" style="display:none;"></div>
-      <div class="cash-control-actions">
+      <div class="cash-control-actions treasurer-only-financial">
         <button onclick="openModal('cash-control-modal')">Set Cash Controls</button>
         <button class="secondary" onclick="openModal('begin-modal')">Set Restricted Accounts</button>
       </div>
@@ -432,14 +432,14 @@
         <div class="ds-value out" id="ds-out">₱0.00</div>
       </div>
     </div>
-    <div class="detail-trans">
+    <div class="detail-trans treasurer-only-financial">
       <h5>Account Transactions</h5>
       <div id="detail-trans-list"></div>
     </div>
   </div>
 
   <!-- QUICK ACTIONS -->
-  <div class="quick-actions">
+  <div class="quick-actions treasurer-only-financial">
     <button class="action-btn" onclick="openModal('add-modal')">
       <div class="a-icon">➕</div>
       <div class="a-label">Add Funds</div>
@@ -459,7 +459,7 @@
   </div>
 
   <!-- ALL TRANSACTIONS -->
-  <div class="transactions-card">
+  <div class="transactions-card treasurer-only-financial">
     <div class="trans-header">
       <div>
         <h4>Recent Transactions</h4>
@@ -726,6 +726,30 @@
     firebase.initializeApp(firebaseConfig);
   }
   const db = firebase.firestore();
+
+  // ROLE ACCESS: Treasurer keeps full read/write access (unchanged). Pastor,
+  // Auditor, and Finance Committee get a read-only view of account balances
+  // and the Cash Level SOP card only - no transaction details and no
+  // add/transfer/withdraw/cash-control controls. Any other role is denied.
+  const FINANCIAL_OVERVIEW_ALLOWED_ROLES = ['Treasurer', 'Pastor', 'Auditor', 'Finance Committee'];
+  let activeUserProfile = null;
+  let canManageFinancials = false;
+
+  window.graceBooksAuthReady.then(profile => {
+    activeUserProfile = profile;
+    if (!FINANCIAL_OVERVIEW_ALLOWED_ROLES.includes(profile.role)) {
+      window.location.href = 'index.html';
+      return;
+    }
+    canManageFinancials = profile.role === 'Treasurer';
+    applyFinancialRoleAccess();
+  });
+
+  function applyFinancialRoleAccess() {
+    document.querySelectorAll('.treasurer-only-financial').forEach(el => {
+      el.style.display = canManageFinancials ? '' : 'none';
+    });
+  }
 
   // 3. ORIGINAL ACCOUNTS ARRAY
   const ACCOUNTS = [

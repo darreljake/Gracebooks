@@ -13,6 +13,7 @@ Suggested accounts:
 - `chairperson@gracebooks.local`
 - `district@gracebooks.local`
 - `counter@gracebooks.local`
+- `financecommittee@gracebooks.local`
 
 Then create a matching Firestore document for each account:
 
@@ -40,6 +41,7 @@ Valid current roles:
 - `Auditor`
 - `District`
 - `Money Counter`
+- `Finance Committee`
 
 ## Rules Behavior
 
