@@ -44,18 +44,18 @@ service cloud.firestore {
     }
 
     match /income/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create: if hasRole(['Treasurer', 'Money Counter']);
       allow update, delete: if hasRole(['Treasurer']);
     }
 
     match /expenses/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']) || isPayrollOwner();
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']) || isPayrollOwner();
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /members/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Money Counter', 'Membership Secretary']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Money Counter', 'Membership Secretary', 'Finance Committee']);
       allow create: if hasRole(['Treasurer', 'Money Counter', 'Membership Secretary']);
       allow update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
     }
@@ -66,12 +66,12 @@ service cloud.firestore {
     }
 
     match /churchObligations/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /reportReviews/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create: if hasRole(['Treasurer']);
       allow update: if hasRole(['Treasurer', 'Auditor', 'Finance Chair', 'Chairperson', 'Pastor']);
       allow delete: if hasRole(['Treasurer']);
@@ -113,17 +113,17 @@ service cloud.firestore {
     }
 
     match /specialProjects/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /specialProjectEntries/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /specialProjectCosts/{docId} {
-      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 

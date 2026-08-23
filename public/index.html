@@ -282,6 +282,22 @@
     .notif-msg { color: #222; margin-bottom: 3px; line-height: 1.4; }
     .notif-ts { color: #888; font-size: 11px; }
     .notif-empty { padding: 18px 16px; text-align: center; font-size: 12px; color: #888; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 9999;
+      justify-content: center; align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-box {
+      background: white; border-radius: 12px; padding: 28px 24px;
+      width: 100%; max-width: 360px;
+    }
+    .modal-box h3 { color: #8B0000; font-family: 'Playfair Display', serif; margin-bottom: 18px; text-align: center; }
+    .modal-box .btn.cp-cancel { background: #f5f5f5; color: #555; margin-top: 8px; }
+    .modal-box .btn.cp-cancel:hover { background: #ececec; }
+    .cp-success { color: #1e8449; font-size: 13px; margin-top: 10px; text-align: center; }
   </style>
 </head>
 
@@ -326,6 +342,9 @@
             <div id="notif-list"></div>
           </div>
         </div>
+        <button class="logout-btn" id="change-password-btn" onclick="openChangePassword()" title="Change Password" style="padding:8px 11px;">
+          <i class="fa-solid fa-key"></i>
+        </button>
         <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
     </div>
@@ -338,6 +357,19 @@
 
     <div class="footer">
       GRACEBOOKS (C) ESTABLISHED 2026 - TAGAYTAY UNITED METHODIST CHURCH
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="change-password-modal">
+    <div class="modal-box">
+      <h3>Change Password</h3>
+      <input type="password" id="cp-current" placeholder="Current Password" autocomplete="current-password" />
+      <input type="password" id="cp-new" placeholder="New Password (min. 6 characters)" autocomplete="new-password" />
+      <input type="password" id="cp-confirm" placeholder="Confirm New Password" autocomplete="new-password" />
+      <div class="error" id="cp-error"></div>
+      <div class="cp-success" id="cp-success"></div>
+      <button class="btn" id="cp-submit-btn" onclick="submitChangePassword()">Update Password</button>
+      <button class="btn cp-cancel" onclick="closeChangePassword()">Cancel</button>
     </div>
   </div>
 
@@ -377,6 +409,7 @@
         { iconClass: 'fa-magnifying-glass-chart', label: 'Audit Log', link: 'audit-log.html' }
       ],
       'Pastor': [
+        { iconClass: 'fa-building-columns', label: 'Financial Overview', link: 'financial-overview.html' },
         { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
         { iconClass: 'fa-users-viewfinder', label: 'Member Report View', link: 'member-report.html' },
         { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
@@ -390,6 +423,7 @@
         { iconClass: 'fa-clipboard-check', label: 'Liquidation & Reimbursements', link: 'liquidation-reimbursements.html' }
       ],
       'Auditor': [
+        { iconClass: 'fa-building-columns', label: 'Financial Overview', link: 'financial-overview.html' },
         { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
         { iconClass: 'fa-users-viewfinder', label: 'Member Report View', link: 'member-report.html' },
         { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' },
@@ -430,6 +464,12 @@
       ],
       'Money Counter': [
         { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' }
+      ],
+      'Finance Committee': [
+        { iconClass: 'fa-building-columns', label: 'Financial Overview', link: 'financial-overview.html' },
+        { iconClass: 'fa-chart-line', label: 'Reports', link: 'reports.html' },
+        { iconClass: 'fa-print', label: 'Print Report', link: 'print-report.html' },
+        { iconClass: 'fa-bullseye', label: 'Budget vs Actual', link: 'budget-vs-actual.html' }
       ],
       'Membership Secretary': [
         { iconClass: 'fa-calendar-check', label: 'Weekly Attendance', link: 'membership-attendance.html' },
@@ -647,6 +687,77 @@
         dropdown.style.display = 'none';
       }
     });
+
+    function openChangePassword() {
+      document.getElementById('cp-current').value = '';
+      document.getElementById('cp-new').value = '';
+      document.getElementById('cp-confirm').value = '';
+      document.getElementById('cp-error').textContent = '';
+      document.getElementById('cp-success').textContent = '';
+      document.getElementById('change-password-modal').classList.add('active');
+    }
+
+    function closeChangePassword() {
+      document.getElementById('change-password-modal').classList.remove('active');
+    }
+
+    async function submitChangePassword() {
+      const currentPassword = document.getElementById('cp-current').value;
+      const newPassword = document.getElementById('cp-new').value;
+      const confirmPassword = document.getElementById('cp-confirm').value;
+      const errorMsg = document.getElementById('cp-error');
+      const successMsg = document.getElementById('cp-success');
+      const submitBtn = document.getElementById('cp-submit-btn');
+      errorMsg.textContent = '';
+      successMsg.textContent = '';
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        errorMsg.textContent = 'All fields are required.';
+        return;
+      }
+      if (newPassword.length < 6) {
+        errorMsg.textContent = 'New password must be at least 6 characters.';
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        errorMsg.textContent = 'New password and confirmation do not match.';
+        return;
+      }
+
+      const user = firebase.auth().currentUser;
+      if (!user) {
+        errorMsg.textContent = 'You must be logged in to change your password.';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Updating...';
+
+      try {
+        const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
+        await user.reauthenticateWithCredential(credential);
+        await user.updatePassword(newPassword);
+        successMsg.textContent = 'Password updated successfully.';
+        document.getElementById('cp-current').value = '';
+        document.getElementById('cp-new').value = '';
+        document.getElementById('cp-confirm').value = '';
+        setTimeout(closeChangePassword, 1500);
+      } catch (error) {
+        console.error(error);
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+          errorMsg.textContent = 'Current password is incorrect.';
+        } else if (error.code === 'auth/weak-password') {
+          errorMsg.textContent = 'New password is too weak.';
+        } else if (error.code === 'auth/too-many-requests') {
+          errorMsg.textContent = 'Too many attempts. Please try again later.';
+        } else {
+          errorMsg.textContent = 'Could not update password. Please try again.';
+        }
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Update Password';
+    }
 </script>
   <script>
     if ('serviceWorker' in navigator) {
