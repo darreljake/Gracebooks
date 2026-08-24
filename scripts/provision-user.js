@@ -14,9 +14,12 @@
 //   GB_NAME                  - display name stored on the profile doc
 //   GB_ROLE                  - must exactly match one of VALID_ROLES
 // Optional:
-//   GB_PASSWORD               - explicit password; a random one is
-//                                generated and only used when this is a
-//                                brand-new account and no password was given
+//   GB_PASSWORD               - explicit password. For a brand-new account
+//                                it's used as the initial password (a random
+//                                one is generated if omitted). For an
+//                                existing account, supplying this RESETS
+//                                that account's password; omitting it leaves
+//                                an existing account's password untouched.
 
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
@@ -74,11 +77,18 @@ async function main() {
 
   let userRecord;
   let created = false;
+  let passwordChanged = false;
   let tempPassword = null;
 
   try {
     userRecord = await auth.getUserByEmail(email);
-    console.log(`Existing Auth user found for ${email} (uid: ${userRecord.uid}). Password left unchanged.`);
+    if (explicitPassword) {
+      await auth.updateUser(userRecord.uid, { password: explicitPassword });
+      passwordChanged = true;
+      console.log(`Existing Auth user found for ${email} (uid: ${userRecord.uid}). Password reset to the supplied value.`);
+    } else {
+      console.log(`Existing Auth user found for ${email} (uid: ${userRecord.uid}). Password left unchanged.`);
+    }
   } catch (err) {
     if (err.code !== 'auth/user-not-found') throw err;
     tempPassword = explicitPassword || generatePassword();
@@ -102,12 +112,20 @@ async function main() {
     `- UID: \`${userRecord.uid}\``,
     `- Name: ${name}`,
     `- Role: ${role}`,
-    `- Auth account: ${created ? 'newly created' : 'already existed (password unchanged)'}`
+    `- Auth account: ${created ? 'newly created' : passwordChanged ? 'already existed (password reset)' : 'already existed (password unchanged)'}`
   ];
   if (created) {
     summaryLines.push(
       '',
       `**Temporary password:** \`${tempPassword}\``,
+      '',
+      '⚠️ This appears once, here, in this workflow run\'s summary/log. Sign in with it and ' +
+      'immediately use the "Change Password" button (key icon) on the GraceBooks dashboard to set a permanent one.'
+    );
+  } else if (passwordChanged) {
+    summaryLines.push(
+      '',
+      `**Password reset to:** \`${explicitPassword}\``,
       '',
       '⚠️ This appears once, here, in this workflow run\'s summary/log. Sign in with it and ' +
       'immediately use the "Change Password" button (key icon) on the GraceBooks dashboard to set a permanent one.'
