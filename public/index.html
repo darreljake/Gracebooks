@@ -298,6 +298,7 @@
     .modal-box .btn.cp-cancel { background: #f5f5f5; color: #555; margin-top: 8px; }
     .modal-box .btn.cp-cancel:hover { background: #ececec; }
     .cp-success { color: #1e8449; font-size: 13px; margin-top: 10px; text-align: center; }
+    #change-password-btn.shared-account { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 
@@ -493,6 +494,12 @@
 
     let currentUser = null;
 
+    // Roles that are shared logins (one account, multiple people use it).
+    // Self-service password change is blocked for these - one member
+    // changing the password would lock everyone else out. Only an admin
+    // can reset it (see scripts/provision-user.js / AUTH-MIGRATION.md).
+    const SHARED_ACCOUNT_ROLES = ['Finance Committee'];
+
     // INITIALIZATION
     window.onload = function() {
       const daysLeft = getDaysRemaining();
@@ -565,6 +572,13 @@
       document.getElementById('dashboard-page').style.display = 'block';
       document.getElementById('role-label').textContent = currentUser.role;
       document.getElementById('welcome-name').textContent = currentUser.name;
+
+      const changePasswordBtn = document.getElementById('change-password-btn');
+      const isSharedAccount = SHARED_ACCOUNT_ROLES.includes(currentUser.role);
+      changePasswordBtn.classList.toggle('shared-account', isSharedAccount);
+      changePasswordBtn.title = isSharedAccount
+        ? 'This is a shared account - ask your Treasurer/Admin to reset the password'
+        : 'Change Password';
 
       const grid = document.getElementById('menu-grid');
       grid.innerHTML = '';
@@ -689,6 +703,10 @@
     });
 
     function openChangePassword() {
+      if (currentUser && SHARED_ACCOUNT_ROLES.includes(currentUser.role)) {
+        alert('This is a shared account used by the whole ' + currentUser.role + '. Its password cannot be changed here - ask your Treasurer/Admin to reset it if needed.');
+        return;
+      }
       document.getElementById('cp-current').value = '';
       document.getElementById('cp-new').value = '';
       document.getElementById('cp-confirm').value = '';
@@ -702,6 +720,10 @@
     }
 
     async function submitChangePassword() {
+      if (currentUser && SHARED_ACCOUNT_ROLES.includes(currentUser.role)) {
+        document.getElementById('cp-error').textContent = 'This shared account\'s password cannot be changed here.';
+        return;
+      }
       const currentPassword = document.getElementById('cp-current').value;
       const newPassword = document.getElementById('cp-new').value;
       const confirmPassword = document.getElementById('cp-confirm').value;
