@@ -18,7 +18,9 @@
 //                                generated and only used when this is a
 //                                brand-new account and no password was given
 
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 
 const VALID_ROLES = [
@@ -63,12 +65,12 @@ async function main() {
   const email = normalizeEmail(rawUsername);
   const serviceAccount = JSON.parse(serviceAccountJson);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+  const app = initializeApp({
+    credential: cert(serviceAccount)
   });
 
-  const auth = admin.auth();
-  const db = admin.firestore();
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
   let userRecord;
   let created = false;
