@@ -51,5 +51,18 @@ service firebase.storage {
       allow create, update: if (isTreasurer() || (signedIn() && request.auth.uid == uid)) && validReceiptFile();
       allow delete: if isTreasurer() || (signedIn() && request.auth.uid == uid);
     }
+
+    // Saved report-version snapshots (report-archive.html). Path segments
+    // are unguessable Firestore auto-IDs, matching the same read: signedIn()
+    // convention already used above for receipts/signatures - the real
+    // access gate is the reportArchive Firestore collection's role-gated
+    // rules, which control who can even discover a document's storage path.
+    match /report-archive/{docId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if isTreasurer()
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('text/html');
+      allow delete: if isTreasurer();
+    }
   }
 }
