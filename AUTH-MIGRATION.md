@@ -1,5 +1,21 @@
 # GraceBooks Firebase Auth Migration
 
+## Provisioning via GitHub Actions (recommended)
+
+Repo → Actions → **Provision GraceBooks User** → Run workflow. Fill in the username
+(without `@` for a `@gracebooks.local` account, or a full email), display name, and
+role, then run. This uses the `FIREBASE_SERVICE_ACCOUNT` repository secret (the same
+one the deploy workflow uses) to create the Firebase Auth user and the matching
+`userProfiles/{uid}` Firestore document in one step — see `scripts/provision-user.js`.
+If the account already exists, only the `userProfiles` doc is updated (name/role);
+the existing password is left untouched. For a brand-new account, a temporary
+password is generated (or your own can be supplied via the optional `password`
+input) and printed once in the workflow run's summary — sign in with it and use the
+dashboard's "Change Password" button immediately to set a permanent one.
+
+The manual Firebase Console steps below remain the fallback if you don't have
+access to trigger the Actions workflow.
+
 ## Required Firebase Console Setup
 
 Before deploying the new rules, create Firebase Authentication users using Email/Password.

@@ -1,0 +1,52 @@
+name: Provision GraceBooks User
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Username (no @) or full email; @gracebooks.local is appended automatically if no @ is present'
+        required: true
+      name:
+        description: 'Display name stored on the userProfiles doc (shown in the dashboard welcome banner)'
+        required: true
+      role:
+        description: 'Role - must exactly match a valid GraceBooks role'
+        required: true
+        type: choice
+        options:
+          - Treasurer
+          - Pastor
+          - Finance Chair
+          - Chairperson
+          - Deaconess
+          - Admin Assistant
+          - Auditor
+          - District
+          - Money Counter
+          - Membership Secretary
+          - Finance Committee
+      password:
+        description: 'Optional explicit password (only used if the account does not already exist). Leave blank to auto-generate a temporary one.'
+        required: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Provision user
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_USERNAME: ${{ inputs.username }}
+          GB_NAME: ${{ inputs.name }}
+          GB_ROLE: ${{ inputs.role }}
+          GB_PASSWORD: ${{ inputs.password }}
+        run: node scripts/provision-user.js
