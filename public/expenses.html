@@ -842,6 +842,15 @@
       // payroll identity fields, otherwise it silently drops out of the
       // Payslips page (which filters strictly on isPayrollGenerated === true).
       const isEditingPayrollRow = !!(editingExpenseId && editingExpenseOriginal && editingExpenseOriginal.isPayrollGenerated);
+      // Editing a payroll row must not silently discard the Decker/BOP/other
+      // per-type deduction that Smart Payroll recorded on it - this form has
+      // no inputs for those, so anything other than "carry the original value
+      // forward" would wipe a real withheld amount off the record. Net pay has
+      // to keep subtracting it too, matching how Smart Payroll computed it
+      // originally, or editing would silently inflate net pay by that amount.
+      const preservedDecker = isEditingPayrollRow ? (editingExpenseOriginal.deckerDeduction || 0) : 0;
+      const preservedBop = isEditingPayrollRow ? (editingExpenseOriginal.bopDeduction || 0) : 0;
+      const preservedOtherAmount = isEditingPayrollRow ? (editingExpenseOriginal.otherDeductionAmount || 0) : 0;
 
       const dbPayload = {
         date: dateVal,
@@ -851,9 +860,11 @@
         amount: amount,
         workersTithe: tithe,
         sssDeduction: sss,
-        deckerDeduction: 0,
-        bopDeduction: 0,
-        netPay: (amount - tithe - sss),
+        deckerDeduction: preservedDecker,
+        bopDeduction: preservedBop,
+        otherDeductionName: isEditingPayrollRow ? (editingExpenseOriginal.otherDeductionName || '') : '',
+        otherDeductionAmount: preservedOtherAmount,
+        netPay: (amount - tithe - sss - preservedDecker - preservedBop - preservedOtherAmount),
         payment: document.getElementById('exp-payment').value,
         targetAccId: document.getElementById('exp-payment').value,
         payee: document.getElementById('exp-payee').value,
@@ -1044,6 +1055,9 @@
                           payrollParticulars: `${r.t} - Week ${wkVal}`,
                           isPayrollGenerated: true,
                           amount: g, workersTithe: t, sssDeduction: s,
+                          deckerDeduction: decker, bopDeduction: bop,
+                          otherDeductionName: (!bop && !decker) ? (odName || '') : '',
+                          otherDeductionAmount: (!bop && !decker) ? od : 0,
                           netPay: (g - t - s - od),
                           payment: paymentMode, targetAccId: paymentMode, payee: finalPayee,
                           status: document.getElementById(`pr-status-${i}`).value,
@@ -1155,6 +1169,7 @@
           if (e.sssDeduction) deds.push(`SSS: ₱${e.sssDeduction}`);
           if (e.bopDeduction) deds.push(`BOP: ₱${e.bopDeduction}`);
           if (e.deckerDeduction) deds.push(`Decker: ₱${e.deckerDeduction}`);
+          if (e.otherDeductionAmount) deds.push(`${escapeHtml(e.otherDeductionName || 'Other')}: ₱${e.otherDeductionAmount}`);
 
           let subBadge = e.isBenefit ? `<span style="background:#8e44ad; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left: 4px;">Benefits</span>` : '';
           let dedsHTML = deds.length > 0 ? `<div style="font-size:11px; color:#555; margin-top:4px;">(Ded: ${deds.join(' | ')})</div>` : '';
