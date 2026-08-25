@@ -614,7 +614,11 @@
 <div class="modal-overlay" id="deduction-payment-modal">
   <div class="modal-box">
     <div class="modal-handle"></div>
-    <h3>Record Deduction Payment</h3>
+    <h3 id="deduction-modal-title">Record Deduction Payment</h3>
+    <div id="deduction-edit-banner" style="display:none; align-items:center; justify-content:space-between; background:#fff3e0; border:1px solid #ffe0b2; border-radius:10px; padding:10px 12px; margin-bottom:16px; font-size:12px; color:#8a5a00;">
+      <span id="deduction-edit-banner-text">Editing a recorded payment</span>
+      <button type="button" onclick="cancelDeductionPaymentEdit()" style="background:none; border:none; color:#8B0000; font-weight:600; cursor:pointer; font-size:12px;">Cancel Edit</button>
+    </div>
     <div class="modal-form-group">
       <label>Source Account</label>
       <select id="deduction-account"></select>
@@ -645,8 +649,13 @@
       <label>Description</label>
       <input type="text" id="deduction-desc" placeholder="e.g. SSS remittance" />
     </div>
-    <button class="modal-btn red" onclick="recordDeductionPayment()">Confirm Payment</button>
-    <button class="modal-cancel" onclick="closeModal('deduction-payment-modal')">Cancel</button>
+    <button class="modal-btn red" id="deduction-confirm-btn" onclick="recordDeductionPayment()">Confirm Payment</button>
+    <button class="modal-cancel" onclick="closeDeductionPaymentModal()">Cancel</button>
+
+    <div style="margin-top:22px; border-top:1px solid #f0f0f0; padding-top:16px;">
+      <div style="font-size:12px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:10px;">Recent Deduction Payments</div>
+      <div id="deduction-history-list" style="max-height:220px; overflow-y:auto;"></div>
+    </div>
   </div>
 </div>
 
@@ -2138,13 +2147,108 @@ function openBeginModal() {
     btn.textContent = 'Generate & Save Version';
   }
 
+  let editingDeductionPaymentId = null;
+  let editingDeductionPaymentOriginal = null;
+
   function prepareDeductionPaymentModal() {
     const currentMonth = new Date().toISOString().slice(0, 7);
     const currentDate = new Date().toISOString().slice(0, 10);
     const monthEl = document.getElementById('deduction-month');
     const dateEl = document.getElementById('deduction-date');
-    if (monthEl && !monthEl.value) monthEl.value = currentMonth;
-    if (dateEl && !dateEl.value) dateEl.value = currentDate;
+    if (!editingDeductionPaymentId) {
+      if (monthEl) monthEl.value = currentMonth;
+      if (dateEl) dateEl.value = currentDate;
+    }
+    renderDeductionPaymentHistory();
+  }
+
+  function renderDeductionPaymentHistory() {
+    const list = document.getElementById('deduction-history-list');
+    if (!list) return;
+    const payments = fbExpenses
+      .filter(t => t.isDeductionPayment)
+      .sort((a, b) => (b.postedAt || b.date || '').localeCompare(a.postedAt || a.date || ''))
+      .slice(0, 15);
+
+    if (payments.length === 0) {
+      list.innerHTML = '<div style="font-size:12px; color:#aaa; padding:8px 0;">No deduction payments recorded yet.</div>';
+      return;
+    }
+
+    list.innerHTML = payments.map(t => {
+      const accountName = (ACCOUNTS.find(a => a.id === t.targetAccId) || {}).name || t.targetAccId || '';
+      const isActive = t.id === editingDeductionPaymentId;
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid #f5f5f5; ${isActive ? 'background:#fff8f0;' : ''}">
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:600; color:#333;">${escapeHtml(t.deductionKind || 'Deduction')} &middot; ${escapeHtml(accountName)}</div>
+            <div style="font-size:11px; color:#888;">${escapeHtml(t.date || '')} &middot; ${escapeHtml(t.desc || '')}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+            <div style="font-size:13px; font-weight:700; color:#8B0000;">&#8369;${fmt(t.amount)}</div>
+            <button type="button" onclick="startDeductionPaymentEdit('${t.id}')" style="background:#f5f5f5; color:#555; border:none; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer;">Edit</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function startDeductionPaymentEdit(docId) {
+    const record = fbExpenses.find(t => t.id === docId && t.isDeductionPayment);
+    if (!record) { showToast('Deduction payment not found.'); return; }
+
+    editingDeductionPaymentId = docId;
+    editingDeductionPaymentOriginal = { ...record };
+
+    openModal('deduction-payment-modal');
+    document.getElementById('deduction-account').value = record.targetAccId || '';
+    document.getElementById('deduction-kind').value = record.deductionKind || 'Other';
+    document.getElementById('deduction-month').value = record.payrollMonth || '';
+    document.getElementById('deduction-date').value = record.date || '';
+    document.getElementById('deduction-amount').value = record.amount || '';
+    document.getElementById('deduction-desc').value = record.desc || '';
+
+    document.getElementById('deduction-modal-title').textContent = 'Edit Deduction Payment';
+    document.getElementById('deduction-confirm-btn').textContent = 'Update Payment';
+    const banner = document.getElementById('deduction-edit-banner');
+    banner.style.display = 'flex';
+    document.getElementById('deduction-edit-banner-text').textContent =
+      `Editing ${record.deductionKind || 'Deduction'} payment from ${record.date || ''}`;
+    renderDeductionPaymentHistory();
+  }
+
+  function cancelDeductionPaymentEdit() {
+    editingDeductionPaymentId = null;
+    editingDeductionPaymentOriginal = null;
+    document.getElementById('deduction-modal-title').textContent = 'Record Deduction Payment';
+    document.getElementById('deduction-confirm-btn').textContent = 'Confirm Payment';
+    document.getElementById('deduction-edit-banner').style.display = 'none';
+    document.getElementById('deduction-amount').value = '';
+    document.getElementById('deduction-desc').value = '';
+    document.getElementById('deduction-month').value = new Date().toISOString().slice(0, 7);
+    document.getElementById('deduction-date').value = new Date().toISOString().slice(0, 10);
+    renderDeductionPaymentHistory();
+  }
+
+  function closeDeductionPaymentModal() {
+    cancelDeductionPaymentEdit();
+    closeModal('deduction-payment-modal');
+  }
+
+  async function writeDeductionPaymentAuditLog(action, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: 'expenses',
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '',
+      actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
   }
 
   async function recordDeductionPayment() {
@@ -2154,7 +2258,8 @@ function openBeginModal() {
     const date = document.getElementById('deduction-date').value;
     const amount = parseFloat(document.getElementById('deduction-amount').value) || 0;
     const desc = document.getElementById('deduction-desc').value || `${deductionKind} remittance`;
-    const btn = document.querySelector('#deduction-payment-modal .modal-btn');
+    const btn = document.getElementById('deduction-confirm-btn');
+    const isEditing = !!editingDeductionPaymentId;
 
     if (!accountId || !payrollMonth || !date || amount <= 0) {
       showToast('Please complete the deduction payment details.');
@@ -2162,15 +2267,24 @@ function openBeginModal() {
     }
 
     const account = ACCOUNTS.find(a => a.id === accountId);
-    if (account && account.balance < amount) {
+    const previousAmount = isEditing ? (editingDeductionPaymentOriginal.amount || 0) : 0;
+    const previousAccountId = isEditing ? editingDeductionPaymentOriginal.targetAccId : null;
+    // When editing, the source account's current balance already has the original
+    // payment deducted, so only the incremental increase (if any) needs covering -
+    // unless the account was changed, in which case the new account hasn't absorbed
+    // any of this payment yet and must cover the full new amount.
+    const requiredFromBalance = (isEditing && previousAccountId === accountId)
+      ? Math.max(0, amount - previousAmount)
+      : amount;
+    if (account && account.balance < requiredFromBalance) {
       showToast('Insufficient balance in source account.');
       return;
     }
 
     btn.disabled = true;
-    btn.textContent = 'Saving...';
+    btn.textContent = isEditing ? 'Updating...' : 'Saving...';
     try {
-      await db.collection("expenses").add({
+      const payload = {
         amount,
         category: "Payroll Deductions Payment",
         sub: desc,
@@ -2180,20 +2294,47 @@ function openBeginModal() {
         deductionKind,
         payrollMonth,
         date,
-        status: 'Paid',
-        postedAt: new Date().toISOString()
-      });
+        status: 'Paid'
+      };
 
+      if (isEditing) {
+        payload.updatedAt = new Date().toISOString();
+        await db.collection("expenses").doc(editingDeductionPaymentId).update(payload);
+        await writeDeductionPaymentAuditLog(
+          'deduction_payment_updated',
+          editingDeductionPaymentId,
+          editingDeductionPaymentOriginal,
+          payload,
+          `Updated ${deductionKind} deduction payment for ${payrollMonth}: ₱${fmt(previousAmount)} → ₱${fmt(amount)}`
+        );
+        showToast('Deduction payment updated.');
+      } else {
+        payload.postedAt = new Date().toISOString();
+        const docRef = await db.collection("expenses").add(payload);
+        await writeDeductionPaymentAuditLog(
+          'deduction_payment_recorded',
+          docRef.id,
+          null,
+          payload,
+          `Recorded ${deductionKind} deduction payment for ${payrollMonth}: ₱${fmt(amount)}`
+        );
+        showToast('Deduction payment recorded.');
+      }
+
+      editingDeductionPaymentId = null;
+      editingDeductionPaymentOriginal = null;
       closeModal('deduction-payment-modal');
+      document.getElementById('deduction-modal-title').textContent = 'Record Deduction Payment';
+      document.getElementById('deduction-edit-banner').style.display = 'none';
       document.getElementById('deduction-amount').value = '';
       document.getElementById('deduction-desc').value = '';
-      showToast('Deduction payment recorded.');
+      btn.disabled = false;
+      btn.textContent = 'Confirm Payment';
     } catch (error) {
       console.error('Deduction payment error:', error);
       showToast('Error saving deduction payment.');
-    } finally {
       btn.disabled = false;
-      btn.textContent = 'Confirm Payment';
+      btn.textContent = isEditing ? 'Update Payment' : 'Confirm Payment';
     }
   }
 
