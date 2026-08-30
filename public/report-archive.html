@@ -50,6 +50,7 @@
     .badge-financial-overview { background: #d6eaf8; color: #1a5276; }
     .badge-reports { background: #d5f5e3; color: #1e8449; }
     .badge-budget-vs-actual { background: #fcf3cf; color: #9a6a00; }
+    .badge-budget-vs-actual-cash-budget { background: #d6eaf8; color: #1a5276; }
     .muted { color: #7b8a94; font-size: 12px; }
     .btn-view {
       background: #eaf2f8; color: #1a5276; border: 1px solid #cfe3f1; padding: 7px 10px;
@@ -85,7 +86,7 @@
     <div class="card-header">
       <div>
         <h3>Saved Report Versions</h3>
-        <div class="card-sub">Dated snapshots of Financial Overview, Reports, and Budget vs Actual, saved by the Treasurer. View or download each version below.</div>
+        <div class="card-sub">Dated snapshots of Financial Overview, Reports, Budget vs Actual, and Cash Budget, saved by the Treasurer. View or download each version below.</div>
       </div>
     </div>
 
@@ -95,6 +96,7 @@
         <option value="financial-overview">Financial Overview</option>
         <option value="reports">Reports</option>
         <option value="budget-vs-actual">Budget vs Actual</option>
+        <option value="budget-vs-actual-cash-budget">Cash Budget</option>
       </select>
     </div>
 
@@ -133,7 +135,8 @@
   const SOURCE_LABELS = {
     'financial-overview': 'Financial Overview',
     'reports': 'Reports',
-    'budget-vs-actual': 'Budget vs Actual'
+    'budget-vs-actual': 'Budget vs Actual',
+    'budget-vs-actual-cash-budget': 'Cash Budget'
   };
 
   let activeUserProfile = null;
@@ -209,11 +212,24 @@
   async function viewVersion(id) {
     const entry = archiveEntries.find(e => e.id === id);
     if (!entry || !entry.storagePath) return;
+    // Open the tab synchronously, inside the click's own user-gesture, before
+    // the async getDownloadURL() call - browsers block window.open() called
+    // after an await because the click's "allowed to open a popup" window has
+    // usually already expired by the time the promise resolves. That silent
+    // block (no error, nothing visibly happens) is a likely reason "View /
+    // Download" can look like it does nothing for some viewers/browsers.
+    const newTab = window.open('', '_blank');
     try {
       const url = await storage.ref(entry.storagePath).getDownloadURL();
-      window.open(url, '_blank');
+      if (newTab) {
+        newTab.location.href = url;
+      } else {
+        // Even the synchronous open was blocked - fall back to this tab.
+        window.location.href = url;
+      }
     } catch (error) {
       console.error(error);
+      if (newTab) newTab.close();
       alert('Could not open this version. It may have been removed.');
     }
   }

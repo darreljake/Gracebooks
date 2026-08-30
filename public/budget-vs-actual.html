@@ -335,7 +335,7 @@
       <h4 style="color:#922b21; margin-bottom:10px;">📊 Cash Budget vs Actual — Performance Evaluation</h4>
       <div class="table-scroll-wrapper">
         <table>
-          <thead><tr><th>Period</th><th>Budgeted Net</th><th>Actual Net</th><th>Variance</th><th>Cumulative Actual</th><th>Status</th></tr></thead>
+          <thead><tr><th>Period</th><th>Budgeted Net</th><th>Actual Inflow</th><th>Actual Outflow</th><th>Actual Net</th><th>Variance</th><th>Cumulative Actual</th><th>Status</th></tr></thead>
           <tbody id="cash-budget-eval-body"></tbody>
         </table>
       </div>
@@ -1285,6 +1285,66 @@
     return Math.max(...months) <= now.getMonth();
   }
 
+  // Per-account/per-transaction breakdowns behind each period's Inflow/Outflow
+  // figure, so "detailed" actually means detailed: which budget accounts (for
+  // the forward projection) or which recorded transactions (for the actual
+  // evaluation) make up that total, not just a single lump sum.
+  function getExpenseBreakdownForMonths(months) {
+    const expenseKeys = Object.keys(budgets.expense || {}).filter(k => !k.toLowerCase().includes('transfer'));
+    return expenseKeys
+      .map(k => ({ label: k, amount: months.reduce((s,m)=>s+expenseBudgetForMonth(k, m), 0) }))
+      .filter(r => r.amount > 0)
+      .sort((a,b) => b.amount - a.amount);
+  }
+  function getIncomeBreakdownForMonths(months) {
+    const incomeKeys = Object.keys(budgets.income || {}).filter(k => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'));
+    return incomeKeys
+      .map(k => ({ label: k, amount: months.reduce((s,m)=>s+incomeBudgetForMonth(k, m), 0) }))
+      .filter(r => r.amount > 0)
+      .sort((a,b) => b.amount - a.amount);
+  }
+  function getActualExpenseTxnsForMonths(year, months) {
+    return actualExpense
+      .filter(d => { const dt = new Date(d.date); return dt.getFullYear() === year && months.includes(dt.getMonth()); })
+      .map(d => ({
+        date: d.date || '',
+        label: d.budgetCategory || d.category || 'Uncategorized',
+        detail: d.sub || d.payrollParticulars || d.payee || '',
+        amount: parseFloat(d.amount) || 0
+      }))
+      .sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+  }
+  function getActualIncomeTxnsForMonths(year, months) {
+    return actualIncome
+      .filter(d => { const dt = new Date(d.date); return dt.getFullYear() === year && months.includes(dt.getMonth()) && !isBuildingFund(d) && !isTransfer(d); })
+      .map(d => ({
+        date: d.date || '',
+        label: d.budgetCategory || d.type || 'Uncategorized',
+        detail: d.member || d.budgetDetails || '',
+        amount: parseFloat(d.amount) || 0
+      }))
+      .sort((a,b) => (a.date || '').localeCompare(b.date || ''));
+  }
+  function renderCashBudgetBreakdownRows(rows, emptyText) {
+    if (!rows.length) return `<div style="color:#aaa; font-size:11px;">${escapeHtml(emptyText)}</div>`;
+    return rows.map(r => `<div style="display:flex; justify-content:space-between; gap:10px; padding:2px 0; font-size:11px; color:#555;"><span>${escapeHtml(r.label)}${r.detail ? ' - ' + escapeHtml(r.detail) : ''}${r.date ? ' (' + escapeHtml(r.date) + ')' : ''}</span><span style="flex-shrink:0;">₱${fmt(r.amount)}</span></div>`).join('');
+  }
+  // interactive=true (on-screen): collapsed behind a toggle so the table stays
+  // scannable. interactive=false (archived "Generate & Save Version" snapshot):
+  // always expanded, since the whole point of that report is to show the detail
+  // without needing live JS on a static saved HTML file.
+  function cashBudgetDetailCell(amountText, rows, emptyText, interactive) {
+    const breakdown = renderCashBudgetBreakdownRows(rows, emptyText);
+    if (!interactive) {
+      return `${amountText}<div style="margin-top:4px; padding-top:4px; border-top:1px solid #eee;">${breakdown}</div>`;
+    }
+    return `${amountText} <button type="button" onclick="cbToggleDetail(this)" style="font-size:10px; padding:1px 5px; border-radius:4px; border:1px solid #ddd; background:#fff; color:#888; cursor:pointer; margin-left:2px;">▾</button><div style="display:none; margin-top:4px; padding-top:4px; border-top:1px solid #eee;">${breakdown}</div>`;
+  }
+  function cbToggleDetail(btn) {
+    const panel = btn.nextElementSibling;
+    if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  }
+
   // Mirrors financial-overview.html's ACCOUNTS balance + getCashControlSnapshot()
   // math exactly (Available Operating Cash = General Fund Cash [Cash on Hand +
   // Cash in Bank] - Restricted/Designated Funds - Approved Payables, all as of
@@ -1401,6 +1461,107 @@
     renderCashBudget(currentYear);
   }
 
+  // All the number-crunching behind both Cash Budget tables, independent of
+  // any DOM/toggle state - shared by the on-screen render and the archived
+  // "Generate & Save Version" snapshot so the two never compute differently.
+  function computeCashBudgetData(year) {
+    const startingBalance = parseFloat(budgets.cashBudgetStartingBalance) || 0;
+    const isCurrentRealYear = year === new Date().getFullYear();
+    const anchorEnabled = budgets.cashBudgetLiveAnchorEnabled !== false;
+
+    // Full 12-month series computed once, in order, regardless of which
+    // months "Custom" ends up displaying - so the cumulative/status columns
+    // always reflect every real peso of projected/actual flow, and hiding a
+    // month from the table never quietly drops it from the running totals.
+    const projSeries = [];
+    let runningCumulative = startingBalance;
+    for (let m = 0; m < 12; m++) {
+      const inflow = projectedInflowForMonth(m);
+      const outflow = projectedOutflowForMonth(m);
+      const net = inflow - outflow;
+      runningCumulative += net;
+      projSeries.push({ inflow, outflow, net, cumulative: runningCumulative });
+    }
+
+    // Anchor the current month's cumulative to the live Available Operating
+    // Cash figure (if linking is on and we actually have one), then re-run
+    // every later month forward from that ground truth instead of the
+    // Jan-1-based estimate - keeps the forward projection honest about where
+    // cash actually stands today, rather than compounding any drift between
+    // the Starting Cash Balance and reality. Months already past keep their
+    // originally-projected values; they're historical context, not corrected.
+    if (isCurrentRealYear && anchorEnabled && liveAvailableOperatingCash !== null) {
+      const nowMonth = new Date().getMonth();
+      projSeries[nowMonth].cumulative = liveAvailableOperatingCash;
+      for (let m = nowMonth + 1; m < 12; m++) {
+        projSeries[m].cumulative = projSeries[m - 1].cumulative + projSeries[m].net;
+      }
+    }
+
+    const actualSeries = [];
+    let runningActualCumulative = startingBalance;
+    for (let m = 0; m < 12; m++) {
+      const elapsed = isCashBudgetPeriodElapsed([m], year);
+      const actualInflow = elapsed ? actualInflowForMonth(year, m) : 0;
+      const actualOutflow = elapsed ? actualOutflowForMonth(year, m) : 0;
+      const actualNet = actualInflow - actualOutflow;
+      if (elapsed) runningActualCumulative += actualNet;
+      actualSeries.push({ elapsed, actualInflow, actualOutflow, actualNet, cumulativeActual: runningActualCumulative });
+    }
+
+    const periods = cashBudgetPeriods(cashBudgetCadence);
+    // Scanned across the true full year regardless of what "Custom" is
+    // currently showing, so a hidden month's risk is never silently missed.
+    const lowMonths = projSeries.map((s,m) => s.cumulative < 0 ? cashBudgetMonthShort[m] : null).filter(Boolean);
+
+    return { startingBalance, isCurrentRealYear, anchorEnabled, projSeries, actualSeries, periods, lowMonths };
+  }
+
+  function cashBudgetProjRowHtml(p, projSeries, interactive) {
+    const inflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
+    const outflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
+    const net = inflow - outflow;
+    const cumulative = projSeries[Math.max(...p.months)].cumulative;
+    let status, statusColor;
+    if (cumulative < 0) { status = '🔴 Low'; statusColor = '#c0392b'; }
+    else if (net < 0) { status = '🟡 Watch'; statusColor = '#f39c12'; }
+    else { status = '🟢 Healthy'; statusColor = '#1e8449'; }
+    const inflowCell = cashBudgetDetailCell(`₱${fmt(inflow)}`, getIncomeBreakdownForMonths(p.months), 'No income accounts scheduled in this period.', interactive);
+    const outflowCell = cashBudgetDetailCell(`₱${fmt(outflow)}`, getExpenseBreakdownForMonths(p.months), 'No expense accounts scheduled in this period.', interactive);
+    return `<tr>
+        <td>${p.label}</td>
+        <td>${inflowCell}</td>
+        <td>${outflowCell}</td>
+        <td style="color:${net<0?'#c0392b':'#1e8449'};">${net>=0?'+':'-'}₱${fmt(Math.abs(net))}</td>
+        <td style="font-weight:600;">₱${fmt(cumulative)}</td>
+        <td style="color:${statusColor}; font-weight:600;">${status}</td>
+      </tr>`;
+  }
+
+  function cashBudgetEvalRowHtml(p, year, projSeries, actualSeries, interactive) {
+    const budgetedInflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
+    const budgetedOutflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
+    const budgetedNet = budgetedInflow - budgetedOutflow;
+    const actualInflow = p.months.reduce((s,m)=>s+actualSeries[m].actualInflow, 0);
+    const actualOutflow = p.months.reduce((s,m)=>s+actualSeries[m].actualOutflow, 0);
+    const actualNet = actualInflow - actualOutflow;
+    const variance = actualNet - budgetedNet;
+    const cumulativeActual = actualSeries[Math.max(...p.months)].cumulativeActual;
+    const onPlan = variance >= 0;
+    const actualInflowCell = cashBudgetDetailCell(`₱${fmt(actualInflow)}`, getActualIncomeTxnsForMonths(year, p.months), 'No income recorded in this period.', interactive);
+    const actualOutflowCell = cashBudgetDetailCell(`₱${fmt(actualOutflow)}`, getActualExpenseTxnsForMonths(year, p.months), 'No expenses recorded in this period.', interactive);
+    return `<tr>
+        <td>${p.label}</td>
+        <td>₱${fmt(budgetedNet)}</td>
+        <td>${actualInflowCell}</td>
+        <td>${actualOutflowCell}</td>
+        <td>₱${fmt(actualNet)}</td>
+        <td style="color:${onPlan?'#1e8449':'#c0392b'};">${variance>=0?'+':'-'}₱${fmt(Math.abs(variance))}</td>
+        <td style="font-weight:600;">₱${fmt(cumulativeActual)}</td>
+        <td style="color:${onPlan?'#1e8449':'#c0392b'}; font-weight:600;">${onPlan?'✅ On/Ahead of Plan':'⚠️ Behind Plan'}</td>
+      </tr>`;
+  }
+
   function renderCashBudget(year) {
     const projBody = document.getElementById('cash-budget-projection-body');
     const evalBody = document.getElementById('cash-budget-eval-body');
@@ -1441,72 +1602,9 @@
 
     renderCashBudgetCustomMonthChips();
 
-    // Full 12-month series computed once, in order, regardless of which
-    // months "Custom" ends up displaying - so the cumulative/status columns
-    // always reflect every real peso of projected/actual flow, and hiding a
-    // month from the table never quietly drops it from the running totals.
-    const projSeries = [];
-    let runningCumulative = startingBalance;
-    for (let m = 0; m < 12; m++) {
-      const inflow = projectedInflowForMonth(m);
-      const outflow = projectedOutflowForMonth(m);
-      const net = inflow - outflow;
-      runningCumulative += net;
-      projSeries.push({ inflow, outflow, net, cumulative: runningCumulative });
-    }
+    const { projSeries, actualSeries, periods, lowMonths } = computeCashBudgetData(year);
 
-    // Anchor the current month's cumulative to the live Available Operating
-    // Cash figure (if linking is on and we actually have one), then re-run
-    // every later month forward from that ground truth instead of the
-    // Jan-1-based estimate - keeps the forward projection honest about where
-    // cash actually stands today, rather than compounding any drift between
-    // the Starting Cash Balance and reality. Months already past keep their
-    // originally-projected values; they're historical context, not corrected.
-    if (isCurrentRealYear && cashBudgetLiveAnchorEnabled && liveAvailableOperatingCash !== null) {
-      const nowMonth = new Date().getMonth();
-      projSeries[nowMonth].cumulative = liveAvailableOperatingCash;
-      for (let m = nowMonth + 1; m < 12; m++) {
-        projSeries[m].cumulative = projSeries[m - 1].cumulative + projSeries[m].net;
-      }
-    }
-
-    const actualSeries = [];
-    let runningActualCumulative = startingBalance;
-    for (let m = 0; m < 12; m++) {
-      const elapsed = isCashBudgetPeriodElapsed([m], year);
-      const actualInflow = elapsed ? actualInflowForMonth(year, m) : 0;
-      const actualOutflow = elapsed ? actualOutflowForMonth(year, m) : 0;
-      const actualNet = actualInflow - actualOutflow;
-      if (elapsed) runningActualCumulative += actualNet;
-      actualSeries.push({ elapsed, actualInflow, actualOutflow, actualNet, cumulativeActual: runningActualCumulative });
-    }
-
-    const periods = cashBudgetPeriods(cashBudgetCadence);
-
-    // ── Table 1: full-year projection (forward-looking, for fund-raising timing) ──
-    let projHtml = '';
-    // Scanned across the true full year regardless of what "Custom" is
-    // currently showing, so a hidden month's risk is never silently missed.
-    const lowMonths = projSeries.map((s,m) => s.cumulative < 0 ? cashBudgetMonthShort[m] : null).filter(Boolean);
-    periods.forEach(p => {
-      const inflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
-      const outflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
-      const net = inflow - outflow;
-      const cumulative = projSeries[Math.max(...p.months)].cumulative;
-      let status, statusColor;
-      if (cumulative < 0) { status = '🔴 Low'; statusColor = '#c0392b'; }
-      else if (net < 0) { status = '🟡 Watch'; statusColor = '#f39c12'; }
-      else { status = '🟢 Healthy'; statusColor = '#1e8449'; }
-      projHtml += `<tr>
-        <td>${p.label}</td>
-        <td>₱${fmt(inflow)}</td>
-        <td>₱${fmt(outflow)}</td>
-        <td style="color:${net<0?'#c0392b':'#1e8449'};">${net>=0?'+':'-'}₱${fmt(Math.abs(net))}</td>
-        <td style="font-weight:600;">₱${fmt(cumulative)}</td>
-        <td style="color:${statusColor}; font-weight:600;">${status}</td>
-      </tr>`;
-    });
-    projBody.innerHTML = projHtml;
+    projBody.innerHTML = periods.map(p => cashBudgetProjRowHtml(p, projSeries, true)).join('');
 
     const alertEl = document.getElementById('cash-budget-alert');
     if (alertEl) {
@@ -1519,33 +1617,10 @@
       }
     }
 
-    // ── Table 2: evaluation vs actual, elapsed periods only ──
-    let evalHtml = '';
-    let elapsedCount = 0;
-    periods.forEach(p => {
-      if (!isCashBudgetPeriodElapsed(p.months, year)) return;
-      elapsedCount++;
-      const budgetedInflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
-      const budgetedOutflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
-      const budgetedNet = budgetedInflow - budgetedOutflow;
-      const actualInflow = p.months.reduce((s,m)=>s+actualSeries[m].actualInflow, 0);
-      const actualOutflow = p.months.reduce((s,m)=>s+actualSeries[m].actualOutflow, 0);
-      const actualNet = actualInflow - actualOutflow;
-      const variance = actualNet - budgetedNet;
-      const cumulativeActual = actualSeries[Math.max(...p.months)].cumulativeActual;
-      const onPlan = variance >= 0;
-      evalHtml += `<tr>
-        <td>${p.label}</td>
-        <td>₱${fmt(budgetedNet)}</td>
-        <td>₱${fmt(actualNet)}</td>
-        <td style="color:${onPlan?'#1e8449':'#c0392b'};">${variance>=0?'+':'-'}₱${fmt(Math.abs(variance))}</td>
-        <td style="font-weight:600;">₱${fmt(cumulativeActual)}</td>
-        <td style="color:${onPlan?'#1e8449':'#c0392b'}; font-weight:600;">${onPlan?'✅ On/Ahead of Plan':'⚠️ Behind Plan'}</td>
-      </tr>`;
-    });
-    evalBody.innerHTML = evalHtml;
+    const elapsedPeriods = periods.filter(p => isCashBudgetPeriodElapsed(p.months, year));
+    evalBody.innerHTML = elapsedPeriods.map(p => cashBudgetEvalRowHtml(p, year, projSeries, actualSeries, true)).join('');
     const evalEmpty = document.getElementById('cash-budget-eval-empty');
-    if (evalEmpty) evalEmpty.style.display = elapsedCount ? 'none' : 'block';
+    if (evalEmpty) evalEmpty.style.display = elapsedPeriods.length ? 'none' : 'block';
   }
 
   async function saveCashBudgetVersion() {
@@ -1567,12 +1642,27 @@
         bodyHtml += `<div>Months shown: ${escapeHtml(pickedMonths)}</div>`;
       }
 
-      const projTable = document.getElementById('cash-budget-projection-body')?.closest('table');
-      const evalTable = document.getElementById('cash-budget-eval-body')?.closest('table');
-      if (projTable) bodyHtml += `<h3 class="section-title">📈 Projected Cash Flow Timing</h3>${cleanSnapshotNode(projTable).outerHTML}`;
-      if (evalTable) bodyHtml += `<h3 class="section-title">📊 Cash Budget vs Actual — Performance Evaluation</h3>${cleanSnapshotNode(evalTable).outerHTML}`;
+      // Built fresh from the underlying data (interactive=false, so every
+      // breakdown is always expanded) rather than cloning the live DOM - the
+      // live table keeps detail collapsed behind a toggle button for
+      // on-screen scanning, but a static saved HTML file has no JS to expand
+      // it later, so the archived version needs the detail already showing.
+      const year = parseInt(document.getElementById('sel-year').value);
+      const { projSeries, actualSeries, periods } = computeCashBudgetData(year);
+      const elapsedPeriods = periods.filter(p => isCashBudgetPeriodElapsed(p.months, year));
 
-      const year = document.getElementById('sel-year').value;
+      const projRows = periods.map(p => cashBudgetProjRowHtml(p, projSeries, false)).join('');
+      bodyHtml += `<h3 class="section-title">📈 Projected Cash Flow Timing</h3>
+        <table><thead><tr><th>Period</th><th>Projected Inflow</th><th>Projected Outflow</th><th>Net Cash Flow</th><th>Cumulative Balance</th><th>Status</th></tr></thead>
+        <tbody>${projRows}</tbody></table>`;
+
+      const evalRows = elapsedPeriods.length
+        ? elapsedPeriods.map(p => cashBudgetEvalRowHtml(p, year, projSeries, actualSeries, false)).join('')
+        : `<tr><td colspan="8" style="color:#888;">No elapsed periods yet for this year.</td></tr>`;
+      bodyHtml += `<h3 class="section-title">📊 Cash Budget vs Actual — Performance Evaluation</h3>
+        <table><thead><tr><th>Period</th><th>Budgeted Net</th><th>Actual Inflow</th><th>Actual Outflow</th><th>Actual Net</th><th>Variance</th><th>Cumulative Actual</th><th>Status</th></tr></thead>
+        <tbody>${evalRows}</tbody></table>`;
+
       const cadenceLabels = { monthly: 'Monthly', quarterly: 'Quarterly', semiannual: 'Semi-Annual', annual: 'Annual', custom: 'Custom Months' };
       const cadenceLabel = cadenceLabels[cashBudgetCadence] || 'Monthly';
       const periodLabelText = cashBudgetCadence === 'custom'
