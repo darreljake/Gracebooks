@@ -310,6 +310,14 @@
       </div>
       <div id="cash-budget-start-display" style="font-size:11px; color:#888; margin:-10px 0 16px;"></div>
 
+      <div id="cash-budget-live-anchor-row" style="display:none; align-items:center; gap:8px; margin:-6px 0 16px; font-size:12px;">
+        <label style="display:flex; align-items:center; gap:6px; color:#555; font-weight:600; cursor:pointer;">
+          <input type="checkbox" id="cash-budget-live-anchor" checked onchange="toggleCashBudgetLiveAnchor()">
+          🔗 Link the current month to live Available Operating Cash (Financial Overview)
+        </label>
+        <span id="cash-budget-live-anchor-status" style="color:#888;"></span>
+      </div>
+
       <div id="cash-budget-custom-months" style="display:none; flex-wrap:wrap; gap:6px; align-items:center; margin:-6px 0 16px; background:#fcf3f2; border:1px solid #fadbd8; border-radius:8px; padding:10px 12px;">
         <span style="font-size:12px; color:#555; font-weight:600; margin-right:4px;">Show months:</span>
       </div>
@@ -517,6 +525,10 @@
 
   let cashBudgetCadence = 'monthly';
   let cashBudgetCustomMonths = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
+  let cashBudgetLiveAnchorEnabled = true;
+  let liveAvailableOperatingCash = null;
+  let liveAvailableOperatingCashError = null;
+  let liveAvailableOperatingCashFetchedAt = null;
 
   let budgets = { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
   const scheduleMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -614,6 +626,8 @@
       actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment');
       renderAll();
     });
+
+    fetchLiveAvailableOperatingCash();
   }
 
   // ── MIGRATION SCRIPT PARA SA LUMANG AMOUNTS ──
@@ -1271,6 +1285,115 @@
     return Math.max(...months) <= now.getMonth();
   }
 
+  // Mirrors financial-overview.html's ACCOUNTS balance + getCashControlSnapshot()
+  // math exactly (Available Operating Cash = General Fund Cash [Cash on Hand +
+  // Cash in Bank] - Restricted/Designated Funds - Approved Payables, all as of
+  // today), but as a one-time read here rather than that page's real-time
+  // listeners - this repo's standing instruction is not to touch that page's
+  // listener behavior/design, and a one-time fetch also matches this project's
+  // stated preference for one-time reads on new features. Kept fully
+  // self-contained (own ACCOUNTS copy, own date-effective helper) so nothing
+  // here depends on financial-overview.html loading first.
+  const LIVE_CASH_ACCOUNTS = ['cash-hand', 'cash-bank', 'petty-cash', 'building', 'mission', 'investment'];
+
+  function liveCashParseLocalDate(value) {
+    const parts = String(value || '').slice(0, 10).split('-').map(Number);
+    if (parts.length === 3 && parts.every(Boolean)) return new Date(parts[0], parts[1] - 1, parts[2]);
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+  function liveCashIsEffectiveAsOfToday(dateValue) {
+    const dt = liveCashParseLocalDate(dateValue);
+    if (!dt) return false;
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return dt <= today;
+  }
+
+  async function fetchLiveAvailableOperatingCash() {
+    try {
+      const [beginDoc, ccsDoc, incomeSnap, expenseSnap] = await Promise.all([
+        db.collection('settings').doc('beginningBalances').get(),
+        db.collection('settings').doc('cashControlSettings').get(),
+        db.collection('income').get(),
+        db.collection('expenses').get()
+      ]);
+
+      const accounts = {};
+      LIVE_CASH_ACCOUNTS.forEach(id => { accounts[id] = { balance: 0, includedInGeneralFund: true }; });
+      if (beginDoc.exists) {
+        const data = beginDoc.data();
+        const beg = data.accounts || {};
+        const included = data.generalFundAccounts || {};
+        LIVE_CASH_ACCOUNTS.forEach(id => {
+          accounts[id].balance = parseFloat(beg[id]) || 0;
+          accounts[id].includedInGeneralFund = included[id] !== false;
+        });
+      }
+
+      const txns = [];
+      incomeSnap.forEach(doc => {
+        const data = doc.data();
+        if (data.isSpecialProject) return;
+        let targetAccId = data.targetAccount;
+        if (data.type === 'Building Fund') targetAccId = 'building';
+        else if (data.type === 'Mission Fund') targetAccId = 'mission';
+        else if (data.type === 'Investment Income') targetAccId = 'investment';
+        else if (!targetAccId) targetAccId = data.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+        txns.push({ sign: 1, targetAccId, amount: parseFloat(data.amount) || 0, date: data.date || '2026-01-01' });
+      });
+
+      let grossPayrollDeductions = 0;
+      let paidDeductionPayments = 0;
+      expenseSnap.forEach(doc => {
+        const data = doc.data();
+        const targetAccId = data.targetAccId || (data.payment === 'Bank Transfer' ? 'cash-bank' : data.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
+        const grossAmount = parseFloat(data.amount) || 0;
+        const netPay = parseFloat(data.netPay);
+        const isDeductionPayment = data.type === 'deduction-payment';
+        const hasNetPayroll = data.isPayrollGenerated && !data.isBenefit && Number.isFinite(netPay);
+        const cashImpactAmount = hasNetPayroll ? Math.max(0, netPay) : grossAmount;
+        const date = data.date || '2026-01-01';
+        txns.push({ sign: -1, targetAccId, amount: cashImpactAmount, date });
+        if (liveCashIsEffectiveAsOfToday(date)) {
+          if (hasNetPayroll) grossPayrollDeductions += Math.max(0, grossAmount - netPay);
+          if (isDeductionPayment) paidDeductionPayments += grossAmount;
+        }
+      });
+
+      txns.forEach(t => {
+        if (!liveCashIsEffectiveAsOfToday(t.date)) return;
+        const acc = accounts[t.targetAccId];
+        if (acc) acc.balance += t.sign * t.amount;
+      });
+
+      const generalCash = accounts['cash-hand'].balance + accounts['cash-bank'].balance;
+      const restrictedDesignated = ['petty-cash', 'building', 'mission', 'investment']
+        .filter(id => accounts[id].includedInGeneralFund === false)
+        .reduce((s, id) => s + accounts[id].balance, 0);
+      const payrollPayable = Math.max(0, grossPayrollDeductions - paidDeductionPayments);
+      const ccs = ccsDoc.exists ? ccsDoc.data() : {};
+      const approvedPayables = (parseFloat(ccs.approvedPayables) || 0) + payrollPayable;
+
+      liveAvailableOperatingCash = generalCash - restrictedDesignated - approvedPayables;
+      liveAvailableOperatingCashError = null;
+    } catch (error) {
+      console.warn('Live Available Operating Cash fetch failed', error);
+      liveAvailableOperatingCash = null;
+      liveAvailableOperatingCashError = error;
+    }
+    liveAvailableOperatingCashFetchedAt = new Date();
+    const yr = parseInt(document.getElementById('sel-year')?.value) || currentYear;
+    renderCashBudget(yr);
+  }
+
+  function toggleCashBudgetLiveAnchor() {
+    cashBudgetLiveAnchorEnabled = document.getElementById('cash-budget-live-anchor').checked;
+    budgets.cashBudgetLiveAnchorEnabled = cashBudgetLiveAnchorEnabled;
+    db.collection('budgets').doc(currentYear.toString()).set({ cashBudgetLiveAnchorEnabled }, { merge: true });
+    renderCashBudget(currentYear);
+  }
+
   function saveCashBudgetStartingBalance() {
     const val = parseFloat(document.getElementById('cash-budget-start-input').value) || 0;
     budgets.cashBudgetStartingBalance = val;
@@ -1292,6 +1415,30 @@
     if (startInput && document.activeElement !== startInput) startInput.value = startingBalance;
     if (startDisplay) startDisplay.textContent = `Starting Cash Balance used as the Jan 1 opening balance for the cumulative columns below: ₱${fmt(startingBalance)}.`;
 
+    // Live-linking only makes sense for the year actually happening right now -
+    // a past or future year has no "current month" to anchor to reality.
+    cashBudgetLiveAnchorEnabled = budgets.cashBudgetLiveAnchorEnabled !== false;
+    const isCurrentRealYear = year === new Date().getFullYear();
+    const anchorRow = document.getElementById('cash-budget-live-anchor-row');
+    const anchorCheckbox = document.getElementById('cash-budget-live-anchor');
+    const anchorStatus = document.getElementById('cash-budget-live-anchor-status');
+    if (anchorRow) anchorRow.style.display = isCurrentRealYear ? 'flex' : 'none';
+    if (anchorCheckbox) anchorCheckbox.checked = cashBudgetLiveAnchorEnabled;
+    if (anchorStatus) {
+      if (!isCurrentRealYear) {
+        anchorStatus.textContent = '';
+      } else if (liveAvailableOperatingCashError) {
+        anchorStatus.textContent = 'Could not fetch live cash right now - using Starting Cash Balance instead.';
+      } else if (liveAvailableOperatingCash === null) {
+        anchorStatus.textContent = 'Fetching live Available Operating Cash...';
+      } else {
+        const monthName = cashBudgetMonthShort[new Date().getMonth()];
+        anchorStatus.textContent = cashBudgetLiveAnchorEnabled
+          ? `Current: ₱${fmt(liveAvailableOperatingCash)} (as of ${liveAvailableOperatingCashFetchedAt ? liveAvailableOperatingCashFetchedAt.toLocaleTimeString('en-PH') : 'just now'}) - anchoring ${monthName} below.`
+          : `Current: ₱${fmt(liveAvailableOperatingCash)} - linking is off, so ${monthName} below uses the Starting Cash Balance projection instead.`;
+      }
+    }
+
     renderCashBudgetCustomMonthChips();
 
     // Full 12-month series computed once, in order, regardless of which
@@ -1307,6 +1454,22 @@
       runningCumulative += net;
       projSeries.push({ inflow, outflow, net, cumulative: runningCumulative });
     }
+
+    // Anchor the current month's cumulative to the live Available Operating
+    // Cash figure (if linking is on and we actually have one), then re-run
+    // every later month forward from that ground truth instead of the
+    // Jan-1-based estimate - keeps the forward projection honest about where
+    // cash actually stands today, rather than compounding any drift between
+    // the Starting Cash Balance and reality. Months already past keep their
+    // originally-projected values; they're historical context, not corrected.
+    if (isCurrentRealYear && cashBudgetLiveAnchorEnabled && liveAvailableOperatingCash !== null) {
+      const nowMonth = new Date().getMonth();
+      projSeries[nowMonth].cumulative = liveAvailableOperatingCash;
+      for (let m = nowMonth + 1; m < 12; m++) {
+        projSeries[m].cumulative = projSeries[m - 1].cumulative + projSeries[m].net;
+      }
+    }
+
     const actualSeries = [];
     let runningActualCumulative = startingBalance;
     for (let m = 0; m < 12; m++) {
@@ -1391,7 +1554,7 @@
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
-      const sections = ['cash-budget-alert', 'cash-budget-start-display'];
+      const sections = ['cash-budget-alert', 'cash-budget-start-display', 'cash-budget-live-anchor-status'];
       let bodyHtml = sections.map(id => {
         const el = document.getElementById(id);
         if (!el || !el.textContent.trim()) return '';
