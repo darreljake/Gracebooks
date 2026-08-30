@@ -1204,18 +1204,22 @@
 
       if (!incGroups[finalMain]) incGroups[finalMain] = {t:0, s:{}};
   if (!incGroups[finalMain].s[sub]) {
-      incGroups[finalMain].s[sub] = {t:0, m:{}, ids:{}}; // Added ids object here
+      incGroups[finalMain].s[sub] = {t:0, m:{}, ids:{}, items:[]}; // Added ids object here
   }
-  
+
   let amt = parseFloat(d.amount || 0);
   let member = resolveMemberName(d);
   let mId = getMemberId(d); // Capture Member ID from database
-  
+
   incGroups[finalMain].s[sub].t += amt;
-  
+
   if (member.toLowerCase() !== 'general collection') {
     incGroups[finalMain].s[sub].m[member] = (incGroups[finalMain].s[sub].m[member] || 0) + amt;
     if (mId) incGroups[finalMain].s[sub].ids[member] = mId; // Map name to ID
+  } else if (details) {
+    // General-collection entries (e.g. Fund Raising net proceeds) carry no
+    // member to break down by, so surface their description/details line instead.
+    incGroups[finalMain].s[sub].items.push({ detail: details, amount: amt, date: d.date || '' });
   }
   incGroups[finalMain].t += amt;
 });
@@ -1298,6 +1302,15 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       <tr>
         <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${m}</td>
         <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[sub].m[m])}</td>
+        <td class="col-main"></td>
+      </tr>`;
+  });
+
+  (g.s[sub].items || []).forEach(item => {
+    incRows += `
+      <tr>
+        <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(item.detail)}${item.date ? ` <span style="color:#aaa;">(${escapeHtml(item.date)})</span>` : ''}</td>
+        <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(item.amount)}</td>
         <td class="col-main"></td>
       </tr>`;
   });
