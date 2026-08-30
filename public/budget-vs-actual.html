@@ -301,6 +301,7 @@
           <button class="cb-cad-btn" id="cb-cad-quarterly" onclick="setCashBudgetCadence('quarterly',this)">Quarterly</button>
           <button class="cb-cad-btn" id="cb-cad-semiannual" onclick="setCashBudgetCadence('semiannual',this)">Semi-Annual</button>
           <button class="cb-cad-btn" id="cb-cad-annual" onclick="setCashBudgetCadence('annual',this)">Annual</button>
+          <button class="cb-cad-btn" id="cb-cad-custom" onclick="setCashBudgetCadence('custom',this)">✏️ Custom Months</button>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
           <label style="font-size:12px; color:#555; font-weight:600;">Starting Cash Balance (₱):</label>
@@ -308,6 +309,10 @@
         </div>
       </div>
       <div id="cash-budget-start-display" style="font-size:11px; color:#888; margin:-10px 0 16px;"></div>
+
+      <div id="cash-budget-custom-months" style="display:none; flex-wrap:wrap; gap:6px; align-items:center; margin:-6px 0 16px; background:#fcf3f2; border:1px solid #fadbd8; border-radius:8px; padding:10px 12px;">
+        <span style="font-size:12px; color:#555; font-weight:600; margin-right:4px;">Show months:</span>
+      </div>
 
       <div class="alert-banner alert-exceeded" id="cash-budget-alert"></div>
 
@@ -511,6 +516,7 @@
   });
 
   let cashBudgetCadence = 'monthly';
+  let cashBudgetCustomMonths = new Set([0,1,2,3,4,5,6,7,8,9,10,11]);
 
   let budgets = { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
   const scheduleMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -1180,6 +1186,8 @@
   }
 
   // ── CASH BUDGET: projected inflow/outflow timing + actual evaluation ──
+  const cashBudgetMonthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
   function setCashBudgetCadence(cad, btn) {
     cashBudgetCadence = cad;
     document.querySelectorAll('.cb-cad-btn').forEach(b => b.classList.remove('active'));
@@ -1188,8 +1196,41 @@
     renderCashBudget(yr);
   }
 
+  function toggleCashBudgetCustomMonth(m) {
+    if (cashBudgetCustomMonths.has(m)) {
+      if (cashBudgetCustomMonths.size > 1) cashBudgetCustomMonths.delete(m); // keep at least one shown
+    } else {
+      cashBudgetCustomMonths.add(m);
+    }
+    const yr = parseInt(document.getElementById('sel-year').value);
+    renderCashBudget(yr);
+  }
+
+  function renderCashBudgetCustomMonthChips() {
+    const wrap = document.getElementById('cash-budget-custom-months');
+    if (!wrap) return;
+    wrap.style.display = cashBudgetCadence === 'custom' ? 'flex' : 'none';
+    if (cashBudgetCadence !== 'custom') return;
+    // Rebuild just the chip buttons, keeping the "Show months:" label already in the markup.
+    wrap.querySelectorAll('button').forEach(b => b.remove());
+    cashBudgetMonthShort.forEach((mn, mi) => {
+      const on = cashBudgetCustomMonths.has(mi);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = mn;
+      btn.onclick = () => toggleCashBudgetCustomMonth(mi);
+      btn.style.cssText = `font-size:11px; padding:5px 9px; border-radius:6px; cursor:pointer; font-weight:700; border:1px solid ${on?'#922b21':'#ddd'}; background:${on?'#922b21':'#fff'}; color:${on?'#fff':'#888'};`;
+      wrap.appendChild(btn);
+    });
+  }
+
+  // Fixed cadences group the full year into contiguous, gap-free buckets, so
+  // summing/accumulating month-by-month in order always stays accurate. Only
+  // "Custom" can skip months (the Treasurer hides ones they don't care about
+  // right now) - handled by computing the full 12-month series first and
+  // reading each shown month's true running values off of it, so hiding a
+  // month never drops its real cash flow from the cumulative totals.
   function cashBudgetPeriods(cadence) {
-    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     if (cadence === 'quarterly') return [
       { label: 'Q1 (Jan-Mar)', months: [0,1,2] },
       { label: 'Q2 (Apr-Jun)', months: [3,4,5] },
@@ -1201,7 +1242,10 @@
       { label: 'H2 (Jul-Dec)', months: [6,7,8,9,10,11] }
     ];
     if (cadence === 'annual') return [{ label: 'Full Year', months: [0,1,2,3,4,5,6,7,8,9,10,11] }];
-    return monthShort.map((m,i) => ({ label: m, months: [i] }));
+    if (cadence === 'custom') {
+      return [...cashBudgetCustomMonths].sort((a,b)=>a-b).map(m => ({ label: cashBudgetMonthShort[m], months: [m] }));
+    }
+    return cashBudgetMonthShort.map((m,i) => ({ label: m, months: [i] }));
   }
 
   function projectedInflowForMonth(m) {
@@ -1248,19 +1292,46 @@
     if (startInput && document.activeElement !== startInput) startInput.value = startingBalance;
     if (startDisplay) startDisplay.textContent = `Starting Cash Balance used as the Jan 1 opening balance for the cumulative columns below: ₱${fmt(startingBalance)}.`;
 
+    renderCashBudgetCustomMonthChips();
+
+    // Full 12-month series computed once, in order, regardless of which
+    // months "Custom" ends up displaying - so the cumulative/status columns
+    // always reflect every real peso of projected/actual flow, and hiding a
+    // month from the table never quietly drops it from the running totals.
+    const projSeries = [];
+    let runningCumulative = startingBalance;
+    for (let m = 0; m < 12; m++) {
+      const inflow = projectedInflowForMonth(m);
+      const outflow = projectedOutflowForMonth(m);
+      const net = inflow - outflow;
+      runningCumulative += net;
+      projSeries.push({ inflow, outflow, net, cumulative: runningCumulative });
+    }
+    const actualSeries = [];
+    let runningActualCumulative = startingBalance;
+    for (let m = 0; m < 12; m++) {
+      const elapsed = isCashBudgetPeriodElapsed([m], year);
+      const actualInflow = elapsed ? actualInflowForMonth(year, m) : 0;
+      const actualOutflow = elapsed ? actualOutflowForMonth(year, m) : 0;
+      const actualNet = actualInflow - actualOutflow;
+      if (elapsed) runningActualCumulative += actualNet;
+      actualSeries.push({ elapsed, actualInflow, actualOutflow, actualNet, cumulativeActual: runningActualCumulative });
+    }
+
     const periods = cashBudgetPeriods(cashBudgetCadence);
 
     // ── Table 1: full-year projection (forward-looking, for fund-raising timing) ──
-    let cumulative = startingBalance;
     let projHtml = '';
-    const lowPeriods = [];
+    // Scanned across the true full year regardless of what "Custom" is
+    // currently showing, so a hidden month's risk is never silently missed.
+    const lowMonths = projSeries.map((s,m) => s.cumulative < 0 ? cashBudgetMonthShort[m] : null).filter(Boolean);
     periods.forEach(p => {
-      const inflow = p.months.reduce((s,m)=>s+projectedInflowForMonth(m), 0);
-      const outflow = p.months.reduce((s,m)=>s+projectedOutflowForMonth(m), 0);
+      const inflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
+      const outflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
       const net = inflow - outflow;
-      cumulative += net;
+      const cumulative = projSeries[Math.max(...p.months)].cumulative;
       let status, statusColor;
-      if (cumulative < 0) { status = '🔴 Low'; statusColor = '#c0392b'; lowPeriods.push(p.label); }
+      if (cumulative < 0) { status = '🔴 Low'; statusColor = '#c0392b'; }
       else if (net < 0) { status = '🟡 Watch'; statusColor = '#f39c12'; }
       else { status = '🟢 Healthy'; statusColor = '#1e8449'; }
       projHtml += `<tr>
@@ -1276,9 +1347,9 @@
 
     const alertEl = document.getElementById('cash-budget-alert');
     if (alertEl) {
-      if (lowPeriods.length) {
+      if (lowMonths.length) {
         alertEl.style.display = 'block';
-        alertEl.innerHTML = `⚠️ <b>Projected cash may run low in:</b> ${lowPeriods.join(', ')} (${year}). Consider timing a fund raising ahead of these periods.`;
+        alertEl.innerHTML = `⚠️ <b>Projected cash may run low in:</b> ${lowMonths.join(', ')} (${year}). Consider timing a fund raising ahead of these periods.`;
       } else {
         alertEl.style.display = 'none';
         alertEl.innerHTML = '';
@@ -1286,20 +1357,19 @@
     }
 
     // ── Table 2: evaluation vs actual, elapsed periods only ──
-    let cumulativeActual = startingBalance;
     let evalHtml = '';
     let elapsedCount = 0;
     periods.forEach(p => {
       if (!isCashBudgetPeriodElapsed(p.months, year)) return;
       elapsedCount++;
-      const budgetedInflow = p.months.reduce((s,m)=>s+projectedInflowForMonth(m), 0);
-      const budgetedOutflow = p.months.reduce((s,m)=>s+projectedOutflowForMonth(m), 0);
+      const budgetedInflow = p.months.reduce((s,m)=>s+projSeries[m].inflow, 0);
+      const budgetedOutflow = p.months.reduce((s,m)=>s+projSeries[m].outflow, 0);
       const budgetedNet = budgetedInflow - budgetedOutflow;
-      const actualInflow = p.months.reduce((s,m)=>s+actualInflowForMonth(year, m), 0);
-      const actualOutflow = p.months.reduce((s,m)=>s+actualOutflowForMonth(year, m), 0);
+      const actualInflow = p.months.reduce((s,m)=>s+actualSeries[m].actualInflow, 0);
+      const actualOutflow = p.months.reduce((s,m)=>s+actualSeries[m].actualOutflow, 0);
       const actualNet = actualInflow - actualOutflow;
       const variance = actualNet - budgetedNet;
-      cumulativeActual += actualNet;
+      const cumulativeActual = actualSeries[Math.max(...p.months)].cumulativeActual;
       const onPlan = variance >= 0;
       evalHtml += `<tr>
         <td>${p.label}</td>
@@ -1327,6 +1397,12 @@
         if (!el || !el.textContent.trim()) return '';
         return `<div>${cleanSnapshotNode(el).innerHTML}</div>`;
       }).join('\n');
+      // cleanSnapshotNode strips buttons, so the month toggle chips wouldn't
+      // survive - state the picked months as plain text instead.
+      if (cashBudgetCadence === 'custom') {
+        const pickedMonths = [...cashBudgetCustomMonths].sort((a,b)=>a-b).map(m=>cashBudgetMonthShort[m]).join(', ');
+        bodyHtml += `<div>Months shown: ${escapeHtml(pickedMonths)}</div>`;
+      }
 
       const projTable = document.getElementById('cash-budget-projection-body')?.closest('table');
       const evalTable = document.getElementById('cash-budget-eval-body')?.closest('table');
@@ -1334,9 +1410,11 @@
       if (evalTable) bodyHtml += `<h3 class="section-title">📊 Cash Budget vs Actual — Performance Evaluation</h3>${cleanSnapshotNode(evalTable).outerHTML}`;
 
       const year = document.getElementById('sel-year').value;
-      const cadenceLabels = { monthly: 'Monthly', quarterly: 'Quarterly', semiannual: 'Semi-Annual', annual: 'Annual' };
+      const cadenceLabels = { monthly: 'Monthly', quarterly: 'Quarterly', semiannual: 'Semi-Annual', annual: 'Annual', custom: 'Custom Months' };
       const cadenceLabel = cadenceLabels[cashBudgetCadence] || 'Monthly';
-      const periodLabelText = `${cadenceLabel} - ${year}`;
+      const periodLabelText = cashBudgetCadence === 'custom'
+        ? `Custom (${[...cashBudgetCustomMonths].sort((a,b)=>a-b).map(m=>cashBudgetMonthShort[m]).join(', ')}) - ${year}`
+        : `${cadenceLabel} - ${year}`;
       const title = `Cash Budget & Performance Evaluation — ${periodLabelText}`;
       await saveReportVersion({
         sourcePage: 'budget-vs-actual-cash-budget',
