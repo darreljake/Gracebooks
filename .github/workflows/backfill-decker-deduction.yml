@@ -1,0 +1,57 @@
+name: Backfill Decker Deduction
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD, inclusive)'
+        required: false
+        default: '2026-01-01'
+      end_date:
+        description: 'End date (YYYY-MM-DD, inclusive)'
+        required: false
+        default: '2026-08-31'
+      role:
+        description: 'Payroll role to match'
+        required: false
+        default: 'Deaconess'
+      particulars_prefix:
+        description: 'payrollParticulars must start with this (case-insensitive)'
+        required: false
+        default: 'Salary'
+      decker_amount:
+        description: 'Amount to set deckerDeduction to on each matching record'
+        required: false
+        default: '75'
+      apply:
+        description: 'Actually write changes? Leave as dry_run to only preview matches first.'
+        required: true
+        default: 'dry_run'
+        type: choice
+        options:
+          - dry_run
+          - apply
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Run backfill
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_START_DATE: ${{ inputs.start_date }}
+          GB_END_DATE: ${{ inputs.end_date }}
+          GB_ROLE: ${{ inputs.role }}
+          GB_PARTICULARS_PREFIX: ${{ inputs.particulars_prefix }}
+          GB_DECKER_AMOUNT: ${{ inputs.decker_amount }}
+          GB_APPLY: ${{ inputs.apply == 'apply' && 'true' || 'false' }}
+        run: node scripts/backfill-decker-deduction.js

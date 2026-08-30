@@ -1002,6 +1002,19 @@ async function loadBudgetForForecast() {
 // dividing the annual figure by 12 - keeps the 30-60 day forecast below
 // from being diluted by occasional expenses that don't actually recur
 // every month.
+// budget-vs-actual.html stores an occasional account's active months as
+// sched.months (quarterly/semi-annual/one-time/custom all use this array
+// now); sched.month is only around for older saved data, normalized here
+// into a single-entry list so both shapes resolve the same way.
+function getScheduleMonths(sched) {
+  if (!sched) return [];
+  if (Array.isArray(sched.months) && sched.months.length) {
+    return sched.months.map(m => parseInt(m)).filter(m => Number.isInteger(m) && m >= 0 && m <= 11);
+  }
+  if (Number.isInteger(sched.month)) return [sched.month];
+  return [];
+}
+
 function budgetedExpenseForMonth(month) {
   const expense = currentYearBudget.expense || {};
   const schedule = currentYearBudget.expenseSchedule || {};
@@ -1010,7 +1023,8 @@ function budgetedExpenseForMonth(month) {
     const ann = parseFloat(expense[k]) || 0;
     const sched = schedule[k];
     if (sched && sched.recurring === false) {
-      return s + (sched.month === month ? ann : 0);
+      const months = getScheduleMonths(sched);
+      return s + (months.length && months.includes(month) ? ann / months.length : 0);
     }
     return s + ann / 12;
   }, 0);
@@ -1028,7 +1042,8 @@ function budgetedIncomeForMonth(month) {
     const ann = parseFloat(income[k]) || 0;
     const sched = schedule[k];
     if (sched && sched.recurring === false) {
-      return s + (sched.month === month ? ann : 0);
+      const months = getScheduleMonths(sched);
+      return s + (months.length && months.includes(month) ? ann / months.length : 0);
     }
     return s + ann / 12;
   }, 0);

@@ -77,6 +77,13 @@
     .period-btn.active { background: #922b21; color: white; border-color: #922b21; }
     .period-btn:hover:not(.active) { border-color: #922b21; color: #922b21; }
 
+    /* Separate class (not .period-btn) so the top Monthly/Annual toggle's
+       global ".period-btn" active-state reset doesn't also clear whichever
+       Cash Budget cadence button is selected - they're independent controls. */
+    .cb-cad-btn { padding: 9px 18px; border-radius: 20px; font-family: 'Poppins', sans-serif; border: 2px solid #ddd; background: white; color: #555; font-size: 13px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+    .cb-cad-btn.active { background: #1a5276; color: white; border-color: #1a5276; }
+    .cb-cad-btn:hover:not(.active) { border-color: #1a5276; color: #1a5276; }
+
     .alert-banner { border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; font-size: 13px; display: none; line-height: 1.8; }
     .alert-exceeded { background: #fadbd8; border-left: 5px solid #c0392b; color: #922b21; }
 
@@ -257,6 +264,7 @@
       <button class="tab-btn active" id="btn-tab-income" onclick="showTab('tab-income-bva',this)">💰 Income BvA</button>
       <button class="tab-btn" onclick="showTab('tab-expense-bva',this)">🧾 Expense BvA</button>
       <button class="tab-btn" onclick="showTab('tab-monthly-view',this)">📅 Monthly View</button>
+      <button class="tab-btn" onclick="showTab('tab-cash-budget',this)">💵 Cash Budget</button>
       <button class="tab-btn" onclick="showTab('tab-setup',this)">⚙️ Setup Budget</button>
     </div>
 
@@ -281,6 +289,55 @@
     </div>
 
     <div class="tab-content" id="tab-monthly-view"><div class="month-grid" id="month-grid"></div></div>
+
+    <div class="tab-content" id="tab-cash-budget">
+      <div style="margin-bottom: 12px; font-size: 13px; color: #1a5276; background:#eaf2f8; padding:12px; border-radius:8px;">
+        💡 <b>Purpose:</b> project when cash comes in and goes out across the year so fund raisings can be timed ahead of a likely shortfall, and check how that plan held up against what actually happened.
+      </div>
+
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px;">
+        <div class="period-bar" style="margin-bottom:0;" id="cash-budget-cadence-bar">
+          <button class="cb-cad-btn active" id="cb-cad-monthly" onclick="setCashBudgetCadence('monthly',this)">Monthly</button>
+          <button class="cb-cad-btn" id="cb-cad-quarterly" onclick="setCashBudgetCadence('quarterly',this)">Quarterly</button>
+          <button class="cb-cad-btn" id="cb-cad-semiannual" onclick="setCashBudgetCadence('semiannual',this)">Semi-Annual</button>
+          <button class="cb-cad-btn" id="cb-cad-annual" onclick="setCashBudgetCadence('annual',this)">Annual</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="font-size:12px; color:#555; font-weight:600;">Starting Cash Balance (₱):</label>
+          <input type="number" id="cash-budget-start-input" step="0.01" style="width:130px; padding:7px 10px; border:1px solid #ddd; border-radius:8px; font-family:'Poppins',sans-serif;" onchange="saveCashBudgetStartingBalance()">
+        </div>
+      </div>
+      <div id="cash-budget-start-display" style="font-size:11px; color:#888; margin:-10px 0 16px;"></div>
+
+      <div class="alert-banner alert-exceeded" id="cash-budget-alert"></div>
+
+      <h4 style="color:#1a5276; margin-bottom:10px;">📈 Projected Cash Flow Timing — <span id="cash-budget-year-label"></span></h4>
+      <div class="table-scroll-wrapper" style="margin-bottom:24px;">
+        <table>
+          <thead><tr><th>Period</th><th>Projected Inflow</th><th>Projected Outflow</th><th>Net Cash Flow</th><th>Cumulative Balance</th><th>Status</th></tr></thead>
+          <tbody id="cash-budget-projection-body"></tbody>
+        </table>
+      </div>
+
+      <h4 style="color:#922b21; margin-bottom:10px;">📊 Cash Budget vs Actual — Performance Evaluation</h4>
+      <div class="table-scroll-wrapper">
+        <table>
+          <thead><tr><th>Period</th><th>Budgeted Net</th><th>Actual Net</th><th>Variance</th><th>Cumulative Actual</th><th>Status</th></tr></thead>
+          <tbody id="cash-budget-eval-body"></tbody>
+        </table>
+      </div>
+      <div id="cash-budget-eval-empty" style="font-size:12px; color:#888; padding:12px 0; display:none;">No elapsed periods yet for this year - the evaluation fills in once the year is under way.</div>
+
+      <div class="card" id="cash-budget-save-section" style="display:none; margin-top:20px; box-shadow:none; border:1px solid #eee; padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#333;">📁 Report Archive</div>
+            <div style="font-size:12px;color:#888;">Save the current Cash Budget projection and evaluation as a dated version for Auditor/Pastor/Chairperson/Finance Committee to review.</div>
+          </div>
+          <button class="period-btn" id="cash-budget-save-btn" style="background:#1a5276;color:white;border-color:#1a5276;" onclick="saveCashBudgetVersion()">Generate &amp; Save Version</button>
+        </div>
+      </div>
+    </div>
 
     <div class="tab-content" id="tab-setup">
       <div style="margin-bottom: 15px; font-size: 13px; color: #922b21; background: #fadbd8; padding: 12px; border-radius: 8px; font-weight: 500;">
@@ -449,16 +506,35 @@
     activeUserProfile = profile;
     const saveVersionSection = document.getElementById('save-version-section');
     if (saveVersionSection) saveVersionSection.style.display = profile.role === 'Treasurer' ? 'block' : 'none';
+    const cashBudgetSaveSection = document.getElementById('cash-budget-save-section');
+    if (cashBudgetSaveSection) cashBudgetSaveSection.style.display = profile.role === 'Treasurer' ? 'block' : 'none';
   });
+
+  let cashBudgetCadence = 'monthly';
 
   let budgets = { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
   const scheduleMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   // An expense/income account is "recurring" (spread evenly across all 12
-  // months) unless expenseSchedule/incomeSchedule marks it as a one-time
-  // amount assigned to a specific month, so occasional expenses/income
-  // stop diluting every month's budgeted figure and the forecast in
-  // financial-overview.html can pick up the real month it's expected.
+  // months) unless expenseSchedule/incomeSchedule marks it as occurring only
+  // in a specific set of months (quarterly, semi-annual, one-time, or any
+  // custom combination), so occasional expenses/income stop diluting every
+  // month's budgeted figure and the forecast in financial-overview.html can
+  // pick up the real months it's expected. The annual amount is split evenly
+  // across whichever months are selected.
+  //
+  // Schedule shape: { recurring: false, months: [0-11, ...] }. `months` is
+  // the source of truth; a lone `month` (older data, or a "One-time" pick)
+  // is normalized into a single-entry months array so every reader only has
+  // to deal with one shape.
+  function getScheduleMonths(sched) {
+    if (!sched) return [];
+    if (Array.isArray(sched.months) && sched.months.length) {
+      return [...new Set(sched.months.map(m => parseInt(m)).filter(m => Number.isInteger(m) && m >= 0 && m <= 11))].sort((a,b)=>a-b);
+    }
+    if (Number.isInteger(sched.month)) return [sched.month];
+    return [];
+  }
   function isRecurringExpense(key) {
     const sched = (budgets.expenseSchedule || {})[key];
     return !sched || sched.recurring !== false;
@@ -466,8 +542,9 @@
   function expenseBudgetForMonth(key, month) {
     const ann = budgets.expense[key] || 0;
     if (isRecurringExpense(key)) return ann / 12;
-    const sched = budgets.expenseSchedule[key];
-    return sched && sched.month === month ? ann : 0;
+    const months = getScheduleMonths(budgets.expenseSchedule[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
   }
   function isRecurringIncome(key) {
     const sched = (budgets.incomeSchedule || {})[key];
@@ -476,8 +553,9 @@
   function incomeBudgetForMonth(key, month) {
     const ann = budgets.income[key] || 0;
     if (isRecurringIncome(key)) return ann / 12;
-    const sched = budgets.incomeSchedule[key];
-    return sched && sched.month === month ? ann : 0;
+    const months = getScheduleMonths(budgets.incomeSchedule[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
   }
   let accountOrder = { expense: [], income: [] };
   let availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026]; 
@@ -968,15 +1046,15 @@
           const isSub = k.includes(' - ');
           const recurring = type === 'expense' ? isRecurringExpense(k) : isRecurringIncome(k);
           const sched = (budgets[scheduleField(type)] || {})[k];
-          const schedMonth = sched && sched.recurring === false ? sched.month : new Date().getMonth();
+          const schedMonths = recurring ? [] : getScheduleMonths(sched);
+          const preset = detectFrequencyPreset(schedMonths, recurring);
           const scheduleHtml = `
-              <select onchange="setRecurring('${type}', '${k}', this)" style="width:auto; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
-                <option value="recurring" ${recurring?'selected':''}>🔁 Recurring</option>
-                <option value="onetime" ${!recurring?'selected':''}>📌 One-time</option>
+              <select onchange="applyFrequencyPreset('${type}', '${k}', this.value)" style="width:auto; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
+                ${Object.keys(frequencyPresetLabels).map(p => `<option value="${p}" ${preset===p?'selected':''}>${frequencyPresetLabels[p]}</option>`).join('')}
               </select>
-              <select onchange="setScheduleMonth('${type}', '${k}', this.value)" style="width:auto; display:${recurring?'none':'inline-block'}; font-size:11px; padding:4px 6px; border-radius:6px; border:1px solid #ddd; text-align:left;">
-                ${scheduleMonthNames.map((mn,mi)=>`<option value="${mi}" ${schedMonth===mi?'selected':''}>${mn}</option>`).join('')}
-              </select>`;
+              <span style="display:${recurring?'none':'inline-flex'}; gap:2px; flex-wrap:wrap; align-items:center;">
+                ${scheduleMonthNames.map((mn,mi)=>`<button type="button" onclick="toggleScheduleMonth('${type}','${k}',${mi})" title="${mn}" style="font-size:10px; padding:3px 5px; border-radius:4px; border:1px solid ${schedMonths.includes(mi)?'#922b21':'#ddd'}; background:${schedMonths.includes(mi)?'#922b21':'#fff'}; color:${schedMonths.includes(mi)?'#fff':'#888'}; cursor:pointer; font-weight:700;">${mn.slice(0,3)}</button>`).join('')}
+              </span>`;
           html += `<div class="budget-row" style="${isSub ? 'margin-left: 20px;' : ''} flex-wrap: wrap;">
               <button class="btn-del" onclick="delAcc('${type}','${k}')">×</button>
               <button class="btn-edit" onclick="renameAccount('${type}','${k}')">✏️</button>
@@ -1068,6 +1146,7 @@
     renderIncomeBva(fInc, mo);
     renderExpenseBva(fExp, mo);
     renderMonthlyGrid(yr);
+    renderCashBudget(yr);
   }
 
   function renderMonthlyGrid(year) {
@@ -1100,6 +1179,180 @@
     }).join('');
   }
 
+  // ── CASH BUDGET: projected inflow/outflow timing + actual evaluation ──
+  function setCashBudgetCadence(cad, btn) {
+    cashBudgetCadence = cad;
+    document.querySelectorAll('.cb-cad-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const yr = parseInt(document.getElementById('sel-year').value);
+    renderCashBudget(yr);
+  }
+
+  function cashBudgetPeriods(cadence) {
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if (cadence === 'quarterly') return [
+      { label: 'Q1 (Jan-Mar)', months: [0,1,2] },
+      { label: 'Q2 (Apr-Jun)', months: [3,4,5] },
+      { label: 'Q3 (Jul-Sep)', months: [6,7,8] },
+      { label: 'Q4 (Oct-Dec)', months: [9,10,11] }
+    ];
+    if (cadence === 'semiannual') return [
+      { label: 'H1 (Jan-Jun)', months: [0,1,2,3,4,5] },
+      { label: 'H2 (Jul-Dec)', months: [6,7,8,9,10,11] }
+    ];
+    if (cadence === 'annual') return [{ label: 'Full Year', months: [0,1,2,3,4,5,6,7,8,9,10,11] }];
+    return monthShort.map((m,i) => ({ label: m, months: [i] }));
+  }
+
+  function projectedInflowForMonth(m) {
+    const incomeKeys = Object.keys(budgets.income || {}).filter(k => !k.toLowerCase().includes('building fund') && !k.toLowerCase().includes('transfer'));
+    return incomeKeys.reduce((s,k)=>s+incomeBudgetForMonth(k, m), 0);
+  }
+  function projectedOutflowForMonth(m) {
+    const expenseKeys = Object.keys(budgets.expense || {}).filter(k => !k.toLowerCase().includes('transfer'));
+    return expenseKeys.reduce((s,k)=>s+expenseBudgetForMonth(k, m), 0);
+  }
+  function actualInflowForMonth(year, m) {
+    return actualIncome.filter(d => { const dt = new Date(d.date); return dt.getFullYear() === year && dt.getMonth() === m && !isBuildingFund(d) && !isTransfer(d); })
+      .reduce((s,d)=>s+parseFloat(d.amount||0),0);
+  }
+  function actualOutflowForMonth(year, m) {
+    return actualExpense.filter(d => { const dt = new Date(d.date); return dt.getFullYear() === year && dt.getMonth() === m; })
+      .reduce((s,d)=>s+parseFloat(d.amount||0),0);
+  }
+  function isCashBudgetPeriodElapsed(months, year) {
+    const now = new Date();
+    if (year < now.getFullYear()) return true;
+    if (year > now.getFullYear()) return false;
+    return Math.max(...months) <= now.getMonth();
+  }
+
+  function saveCashBudgetStartingBalance() {
+    const val = parseFloat(document.getElementById('cash-budget-start-input').value) || 0;
+    budgets.cashBudgetStartingBalance = val;
+    db.collection('budgets').doc(currentYear.toString()).set({ cashBudgetStartingBalance: val }, { merge: true });
+    renderCashBudget(currentYear);
+  }
+
+  function renderCashBudget(year) {
+    const projBody = document.getElementById('cash-budget-projection-body');
+    const evalBody = document.getElementById('cash-budget-eval-body');
+    if (!projBody || !evalBody) return;
+
+    const yearLabelEl = document.getElementById('cash-budget-year-label');
+    if (yearLabelEl) yearLabelEl.textContent = year;
+
+    const startInput = document.getElementById('cash-budget-start-input');
+    const startDisplay = document.getElementById('cash-budget-start-display');
+    const startingBalance = parseFloat(budgets.cashBudgetStartingBalance) || 0;
+    if (startInput && document.activeElement !== startInput) startInput.value = startingBalance;
+    if (startDisplay) startDisplay.textContent = `Starting Cash Balance used as the Jan 1 opening balance for the cumulative columns below: ₱${fmt(startingBalance)}.`;
+
+    const periods = cashBudgetPeriods(cashBudgetCadence);
+
+    // ── Table 1: full-year projection (forward-looking, for fund-raising timing) ──
+    let cumulative = startingBalance;
+    let projHtml = '';
+    const lowPeriods = [];
+    periods.forEach(p => {
+      const inflow = p.months.reduce((s,m)=>s+projectedInflowForMonth(m), 0);
+      const outflow = p.months.reduce((s,m)=>s+projectedOutflowForMonth(m), 0);
+      const net = inflow - outflow;
+      cumulative += net;
+      let status, statusColor;
+      if (cumulative < 0) { status = '🔴 Low'; statusColor = '#c0392b'; lowPeriods.push(p.label); }
+      else if (net < 0) { status = '🟡 Watch'; statusColor = '#f39c12'; }
+      else { status = '🟢 Healthy'; statusColor = '#1e8449'; }
+      projHtml += `<tr>
+        <td>${p.label}</td>
+        <td>₱${fmt(inflow)}</td>
+        <td>₱${fmt(outflow)}</td>
+        <td style="color:${net<0?'#c0392b':'#1e8449'};">${net>=0?'+':'-'}₱${fmt(Math.abs(net))}</td>
+        <td style="font-weight:600;">₱${fmt(cumulative)}</td>
+        <td style="color:${statusColor}; font-weight:600;">${status}</td>
+      </tr>`;
+    });
+    projBody.innerHTML = projHtml;
+
+    const alertEl = document.getElementById('cash-budget-alert');
+    if (alertEl) {
+      if (lowPeriods.length) {
+        alertEl.style.display = 'block';
+        alertEl.innerHTML = `⚠️ <b>Projected cash may run low in:</b> ${lowPeriods.join(', ')} (${year}). Consider timing a fund raising ahead of these periods.`;
+      } else {
+        alertEl.style.display = 'none';
+        alertEl.innerHTML = '';
+      }
+    }
+
+    // ── Table 2: evaluation vs actual, elapsed periods only ──
+    let cumulativeActual = startingBalance;
+    let evalHtml = '';
+    let elapsedCount = 0;
+    periods.forEach(p => {
+      if (!isCashBudgetPeriodElapsed(p.months, year)) return;
+      elapsedCount++;
+      const budgetedInflow = p.months.reduce((s,m)=>s+projectedInflowForMonth(m), 0);
+      const budgetedOutflow = p.months.reduce((s,m)=>s+projectedOutflowForMonth(m), 0);
+      const budgetedNet = budgetedInflow - budgetedOutflow;
+      const actualInflow = p.months.reduce((s,m)=>s+actualInflowForMonth(year, m), 0);
+      const actualOutflow = p.months.reduce((s,m)=>s+actualOutflowForMonth(year, m), 0);
+      const actualNet = actualInflow - actualOutflow;
+      const variance = actualNet - budgetedNet;
+      cumulativeActual += actualNet;
+      const onPlan = variance >= 0;
+      evalHtml += `<tr>
+        <td>${p.label}</td>
+        <td>₱${fmt(budgetedNet)}</td>
+        <td>₱${fmt(actualNet)}</td>
+        <td style="color:${onPlan?'#1e8449':'#c0392b'};">${variance>=0?'+':'-'}₱${fmt(Math.abs(variance))}</td>
+        <td style="font-weight:600;">₱${fmt(cumulativeActual)}</td>
+        <td style="color:${onPlan?'#1e8449':'#c0392b'}; font-weight:600;">${onPlan?'✅ On/Ahead of Plan':'⚠️ Behind Plan'}</td>
+      </tr>`;
+    });
+    evalBody.innerHTML = evalHtml;
+    const evalEmpty = document.getElementById('cash-budget-eval-empty');
+    if (evalEmpty) evalEmpty.style.display = elapsedCount ? 'none' : 'block';
+  }
+
+  async function saveCashBudgetVersion() {
+    if (!activeUserProfile || activeUserProfile.role !== 'Treasurer') return;
+    const btn = document.getElementById('cash-budget-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const sections = ['cash-budget-alert', 'cash-budget-start-display'];
+      let bodyHtml = sections.map(id => {
+        const el = document.getElementById(id);
+        if (!el || !el.textContent.trim()) return '';
+        return `<div>${cleanSnapshotNode(el).innerHTML}</div>`;
+      }).join('\n');
+
+      const projTable = document.getElementById('cash-budget-projection-body')?.closest('table');
+      const evalTable = document.getElementById('cash-budget-eval-body')?.closest('table');
+      if (projTable) bodyHtml += `<h3 class="section-title">📈 Projected Cash Flow Timing</h3>${cleanSnapshotNode(projTable).outerHTML}`;
+      if (evalTable) bodyHtml += `<h3 class="section-title">📊 Cash Budget vs Actual — Performance Evaluation</h3>${cleanSnapshotNode(evalTable).outerHTML}`;
+
+      const year = document.getElementById('sel-year').value;
+      const cadenceLabels = { monthly: 'Monthly', quarterly: 'Quarterly', semiannual: 'Semi-Annual', annual: 'Annual' };
+      const cadenceLabel = cadenceLabels[cashBudgetCadence] || 'Monthly';
+      const periodLabelText = `${cadenceLabel} - ${year}`;
+      const title = `Cash Budget & Performance Evaluation — ${periodLabelText}`;
+      await saveReportVersion({
+        sourcePage: 'budget-vs-actual-cash-budget',
+        title,
+        periodLabel: periodLabelText,
+        bodyHtml
+      });
+      alert('Version saved to Report Archive.');
+    } catch (error) {
+      console.error(error);
+      alert('Could not save version. Please try again.');
+    }
+    btn.disabled = false;
+    btn.textContent = 'Generate & Save Version';
+  }
+
   function saveTempInputs() {
     document.querySelectorAll('.inp-inc').forEach(i => budgets.income[i.dataset.key] = parseFloat(i.value)||0);
     document.querySelectorAll('.inp-exp').forEach(i => budgets.expense[i.dataset.key] = parseFloat(i.value)||0);
@@ -1121,26 +1374,58 @@
 
   function scheduleField(type) { return type === 'income' ? 'incomeSchedule' : 'expenseSchedule'; }
 
-  function setRecurring(type, key, selectEl) {
-    saveTempInputs();
-    const field = scheduleField(type);
-    if (!budgets[field]) budgets[field] = {};
-    const monthSel = selectEl.nextElementSibling;
-    if (selectEl.value === 'onetime') {
-      const m = monthSel ? parseInt(monthSel.value) || 0 : 0;
-      budgets[field][key] = { recurring: false, month: m };
-      if (monthSel) monthSel.style.display = 'inline-block';
-    } else {
-      delete budgets[field][key];
-      if (monthSel) monthSel.style.display = 'none';
-    }
+  const frequencyPresetLabels = {
+    recurring: '🔁 Recurring (Monthly)',
+    quarterly: '📌 Quarterly',
+    semiannual: '📌 Semi-Annually',
+    onetime: '📌 One-time',
+    custom: '✏️ Custom'
+  };
+
+  // Guesses which preset a stored months[] most likely came from, purely to
+  // pick the dropdown's initial selection - the months[] array itself (via
+  // the toggle chips) is always the real source of truth, so an odd count
+  // just falls back to "Custom" rather than being coerced into a wrong preset.
+  function detectFrequencyPreset(months, recurring) {
+    if (recurring) return 'recurring';
+    if (months.length === 4) return 'quarterly';
+    if (months.length === 2) return 'semiannual';
+    if (months.length === 1) return 'onetime';
+    return 'custom';
   }
 
-  function setScheduleMonth(type, key, value) {
+  function applyFrequencyPreset(type, key, preset) {
     saveTempInputs();
     const field = scheduleField(type);
     if (!budgets[field]) budgets[field] = {};
-    budgets[field][key] = { recurring: false, month: parseInt(value) || 0 };
+    if (preset === 'recurring') {
+      delete budgets[field][key];
+      renderSetupList();
+      return;
+    }
+    const existing = getScheduleMonths(budgets[field][key]);
+    const start = existing.length ? existing[0] : new Date().getMonth();
+    let months;
+    if (preset === 'quarterly') months = [0, 3, 6, 9].map(o => (start + o) % 12);
+    else if (preset === 'semiannual') months = [0, 6].map(o => (start + o) % 12);
+    else if (preset === 'onetime') months = [start];
+    else months = existing.length ? existing : [start]; // custom: keep whatever was already picked
+    budgets[field][key] = { recurring: false, months: [...new Set(months)].sort((a,b)=>a-b) };
+    renderSetupList();
+  }
+
+  function toggleScheduleMonth(type, key, month) {
+    saveTempInputs();
+    const field = scheduleField(type);
+    if (!budgets[field]) budgets[field] = {};
+    const months = new Set(getScheduleMonths(budgets[field][key]));
+    if (months.has(month)) {
+      if (months.size > 1) months.delete(month); // always keep at least one month selected
+    } else {
+      months.add(month);
+    }
+    budgets[field][key] = { recurring: false, months: [...months].sort((a,b)=>a-b) };
+    renderSetupList();
   }
 
   function toggleGroup(type, gName) { saveTempInputs(); if(collapsedGroups[type].has(gName)) collapsedGroups[type].delete(gName); else collapsedGroups[type].add(gName); renderSetupList(); }
