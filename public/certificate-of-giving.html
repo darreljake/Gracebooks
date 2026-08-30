@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link rel="stylesheet" href="page-transitions.css">
+  <script src="page-transitions.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
@@ -244,7 +246,7 @@
       <option value="a4" style="color:#333;">📄 A4 (8.27×11.7)</option>
     </select>
     <button class="btn-action btn-print" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-    <button class="btn-action btn-back" onclick="window.location.href='index.html'"><i class="fas fa-arrow-left"></i> Dashboard</button>
+    <button class="btn-action btn-back" onclick="gbFadeNav('index.html')"><i class="fas fa-arrow-left"></i> Dashboard</button>
   </div>
 </div>
 

@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link rel="stylesheet" href="page-transitions.css">
+  <script src="page-transitions.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
@@ -125,7 +127,7 @@
   <div class="top-actions">
     <button class="btn-action btn-import" id="btn-open-import" onclick="openImportModal()" style="display:none;"><i class="fas fa-file-csv"></i> Import CSV</button>
     <button class="btn-action btn-add" id="btn-open-add" onclick="openAddModal()" style="display:none;"><i class="fas fa-plus"></i> Add Item</button>
-    <button class="btn-action btn-back" onclick="window.location.href='index.html'"><i class="fas fa-arrow-left"></i> Dashboard</button>
+    <button class="btn-action btn-back" onclick="gbFadeNav('index.html')"><i class="fas fa-arrow-left"></i> Dashboard</button>
   </div>
 </div>
 

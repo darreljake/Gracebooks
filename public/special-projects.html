@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <link rel="stylesheet" href="page-transitions.css">
+  <script src="page-transitions.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
@@ -1598,7 +1600,7 @@
             ${roleIs('Treasurer') ? `<button class="btn ghost" onclick="openProjectModal('${project.id}')">Edit Project</button><button class="btn ghost" onclick="deleteProject('${project.id}')">Delete Project</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${isClosed ? 'secondary' : 'ghost'}" onclick="toggleProjectFinished('${project.id}')">${isClosed ? 'Reopen Project' : 'Mark Finished'}</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${project.printReportPublished ? 'ghost' : 'secondary'}" onclick="toggleProjectPrintReport('${project.id}')">${project.printReportPublished ? 'Remove from Print Report' : 'Push to Print Report'}</button>` : ''}
-            ${project.printReportPublished ? `<button class="btn ghost" onclick="window.location.href='print-report.html?type=special-project&project=${project.id}'">Open Print Report</button>` : ''}
+            ${project.printReportPublished ? `<button class="btn ghost" onclick="gbFadeNav('print-report.html?type=special-project&project=${project.id}')">Open Print Report</button>` : ''}
           </div>
         </div>
         <div class="kpi-row">
