@@ -103,6 +103,54 @@
     .history { max-height: 360px; overflow: auto; }
     .history-item { border-top: 1px solid #eef1f4; padding: 10px 0; }
     .history-item:first-child { border-top: none; }
+
+    .receipt-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-bottom: 12px; }
+    .receipt-summary .rs-total { font-weight: 700; font-size: 13px; color: #344054; }
+    .rpill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+      border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+    .rpill.good { background: #d5f5e3; color: #196f3d; }
+    .rpill.bad { background: #fdecea; color: #a93226; }
+    .rpill.neutral { background: #f2f4f7; color: #667085; }
+    .receipt-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .receipt-filters .btn { padding: 6px 11px; font-size: 11px; }
+    .receipt-table-wrap { overflow-x: auto; }
+    table.receipt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.receipt-table th {
+      text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
+      color: #667085; border-bottom: 1px solid #e6e8eb; padding: 6px 8px; white-space: nowrap;
+    }
+    table.receipt-table td { padding: 8px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+    table.receipt-table tr.missing-row td { background: #fdf3f2; }
+    .rcat { font-size: 11px; color: #c0392b; margin-top: 2px; }
+    .rname { font-size: 10px; color: #999; margin-top: 3px; }
+    .rbadge { font-size: 9px; color: #1a5276; font-weight: 700; margin-top: 3px; text-transform: uppercase; }
+    .btn-receipt-view {
+      border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-family: inherit;
+      font-weight: 700; font-size: 11px; background: #1a5276; color: white; min-height: 36px;
+    }
+    .chip-missing {
+      display: inline-block; background: #fdecea; color: #a93226; font-weight: 700; font-size: 10.5px;
+      padding: 5px 9px; border-radius: 6px;
+    }
+    .chip-payroll {
+      display: inline-block; background: #f2f4f7; color: #667085; font-weight: 700; font-size: 10.5px;
+      padding: 5px 9px; border-radius: 6px;
+    }
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(20,20,25,0.55);
+      align-items: center; justify-content: center; padding: 16px; z-index: 60;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-content {
+      background: white; border-radius: 10px; padding: 18px; max-width: 620px; width: 100%;
+      max-height: 88vh; overflow: auto;
+    }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-head h3 { font-size: 15px; color: #8B0000; }
+    .close-modal { border: none; background: transparent; font-size: 20px; cursor: pointer; color: #667085; line-height: 1; }
+    .receipt-frame { max-width: 100%; max-height: 65vh; display: block; margin: 0 auto; border-radius: 6px; }
     @media (max-width: 820px) {
       .status-card, .grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
@@ -179,6 +227,21 @@
           <div class="action-row" id="action-buttons"></div>
         </div>
 
+        <div class="card" id="receipt-card" style="display:none;">
+          <h2>Expense Receipts / Proof of Payment</h2>
+          <div class="receipt-summary" id="receipt-summary"></div>
+          <div class="receipt-filters" id="receipt-filters"></div>
+          <div class="receipt-table-wrap">
+            <table class="receipt-table">
+              <thead>
+                <tr><th>Date</th><th>Particular / Category</th><th>Payee</th><th>Account</th><th>Amount</th><th>Proof</th></tr>
+              </thead>
+              <tbody id="receipt-table-body"></tbody>
+            </table>
+          </div>
+          <div class="action-row" style="margin-top:12px;" id="receipt-actions"></div>
+        </div>
+
         <div class="card">
           <h2>Approval Chain</h2>
           <div id="chain-list"></div>
@@ -216,6 +279,16 @@
           <div id="signature-list"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="receiptViewerModal">
+    <div class="modal-content">
+      <div class="modal-head">
+        <h3 id="receipt-viewer-title">Receipt / Voucher</h3>
+        <button class="close-modal" onclick="closeReceiptViewer()">&times;</button>
+      </div>
+      <div id="receipt-viewer-body"></div>
     </div>
   </div>
 
@@ -259,6 +332,7 @@
       document.getElementById('profile-summary').textContent = `${profile.name} (${profile.role})`;
       initSignaturePad();
       await loadSignatureProfile();
+      await loadExpenseReceiptsData();
       await loadWorkflow();
     });
 
@@ -370,6 +444,7 @@
       renderReturnNoteBanner(status, data);
       renderHistory(data.history || []);
       renderActions(status);
+      renderReceiptPanel();
     }
 
     function renderReturnNoteBanner(status, data) {
@@ -846,6 +921,235 @@
       el.className = `message ${type} show`;
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => el.classList.remove('show'), 4500);
+    }
+
+    let receiptData = null;
+    let receiptFilterState = null;
+    let receiptProofRegistry = [];
+
+    async function loadExpenseReceiptsData() {
+      try {
+        const snap = await db.collection('expenses').get();
+        const expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const spProofByExpense = {};
+        try {
+          const spSnap = await db.collection('specialProjectEntries').get();
+          spSnap.docs.forEach(d => {
+            const v = d.data();
+            if (v.linkedExpenseId && v.proofUrl) {
+              spProofByExpense[v.linkedExpenseId] = { url: v.proofUrl, name: v.proofName || 'Project proof' };
+            }
+          });
+        } catch (e) { console.warn('specialProjectEntries unreadable for this role', e); }
+
+        const liqById = {};
+        let liqReadable = true;
+        try {
+          const liqSnap = await db.collection('liquidationRequests').get();
+          liqSnap.docs.forEach(d => { liqById[d.id] = d.data(); });
+        } catch (e) {
+          liqReadable = false;
+          console.warn('liquidationRequests unreadable for this role', e);
+        }
+
+        receiptData = { expenses, spProofByExpense, liqById, liqReadable };
+      } catch (error) {
+        console.error(error);
+        receiptData = { expenses: [], spProofByExpense: {}, liqById: {}, liqReadable: true, loadFailed: true };
+      }
+    }
+
+    function classifyExpenseProof(e) {
+      if (e.receiptUrl) return { state: 'has', via: '', name: e.receiptName || '', url: e.receiptUrl };
+      const sp = receiptData.spProofByExpense[e.id];
+      if (sp) return { state: 'has', via: 'Special Project', name: sp.name, url: sp.url };
+      if (e.linkedLiquidationRequestId) {
+        const req = receiptData.liqById[e.linkedLiquidationRequestId];
+        if (req && req.receiptUrl) return { state: 'has', via: 'Liquidation', name: req.receiptName || '', url: req.receiptUrl };
+        if (!receiptData.liqReadable) return { state: 'unknown', name: '', url: '' };
+        return { state: 'missing', name: '', url: '' };
+      }
+      if (e.isPayrollGenerated) return { state: 'payroll', name: '', url: '' };
+      return { state: 'missing', name: '', url: '' };
+    }
+
+    function receiptPanelPeriod() {
+      const type = document.getElementById('report-type').value;
+      if (type === 'special-project') return null;
+      const year = Number(document.getElementById('period-year').value);
+      const isAnnual = type === 'annual';
+      const month = isAnnual ? null : Number(document.getElementById('period-month').value);
+      return { year, month, isAnnual };
+    }
+
+    function receiptAccountLabel(payment) {
+      return payment === 'cash-bank' ? 'Bank'
+        : payment === 'petty-cash' ? 'Petty Cash'
+        : payment === 'building' ? 'Building'
+        : payment === 'mission' ? 'Mission'
+        : payment === 'investment' ? 'Investment'
+        : 'Cash Hand';
+    }
+
+    function pesoFmt(n) {
+      return '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderReceiptPanel() {
+      const card = document.getElementById('receipt-card');
+      if (!profile || !['Treasurer', 'Auditor', 'Finance Chair'].includes(profile.role)) {
+        card.style.display = 'none';
+        return;
+      }
+      const period = receiptPanelPeriod();
+      if (!period) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+
+      if (!receiptData) {
+        document.getElementById('receipt-summary').innerHTML = '<div class="muted">Loading expense receipts...</div>';
+        document.getElementById('receipt-filters').innerHTML = '';
+        document.getElementById('receipt-table-body').innerHTML = '';
+        document.getElementById('receipt-actions').innerHTML = '';
+        return;
+      }
+      if (receiptData.loadFailed) {
+        document.getElementById('receipt-summary').innerHTML = '<div class="muted">Unable to load expense receipts.</div>';
+        document.getElementById('receipt-filters').innerHTML = '';
+        document.getElementById('receipt-table-body').innerHTML = '';
+        document.getElementById('receipt-actions').innerHTML = '';
+        return;
+      }
+
+      if (receiptFilterState === null) {
+        receiptFilterState = (profile.role === 'Auditor' || profile.role === 'Finance Chair') ? 'missing' : 'all';
+      }
+
+      const { year, month, isAnnual } = period;
+      const rows = receiptData.expenses
+        .filter(e => e.type !== 'transfer' && e.type !== 'deduction-payment')
+        .filter(e => {
+          if (!e.date) return false;
+          const dt = new Date(e.date);
+          return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
+        })
+        .map(e => ({ e, r: classifyExpenseProof(e) }))
+        .sort((a, b) => {
+          const dateCmp = (a.e.date || '').localeCompare(b.e.date || '');
+          if (dateCmp !== 0) return dateCmp;
+          return (parseFloat(b.e.amount) || 0) - (parseFloat(a.e.amount) || 0);
+        });
+
+      const has = rows.filter(t => t.r.state === 'has');
+      const missing = rows.filter(t => t.r.state === 'missing');
+      const payroll = rows.filter(t => t.r.state === 'payroll');
+      const unknown = rows.filter(t => t.r.state === 'unknown');
+      const sum = list => list.reduce((n, t) => n + (parseFloat(t.e.amount) || 0), 0);
+
+      document.getElementById('receipt-summary').innerHTML = `
+        <span class="rs-total">${rows.length} expense${rows.length === 1 ? '' : 's'} - ${pesoFmt(sum(rows))}</span>
+        <span class="rpill good"><i class="fa-solid fa-check"></i> ${has.length} with proof (${pesoFmt(sum(has))})</span>
+        <span class="rpill bad"><i class="fa-solid fa-triangle-exclamation"></i> ${missing.length} missing proof (${pesoFmt(sum(missing))})</span>
+        ${payroll.length ? `<span class="rpill neutral">${payroll.length} payroll - no voucher expected (${pesoFmt(sum(payroll))})</span>` : ''}
+        ${unknown.length ? `<span class="rpill neutral">${unknown.length} unverifiable for your role</span>` : ''}
+      `;
+
+      const filterDefs = [
+        { key: 'all', label: `All (${rows.length})` },
+        { key: 'missing', label: `Missing proof (${missing.length})` },
+        { key: 'has', label: `With proof (${has.length})` },
+        { key: 'payroll', label: `No voucher expected (${payroll.length})` }
+      ];
+      document.getElementById('receipt-filters').innerHTML = filterDefs.map(f => `
+        <button type="button" class="btn ${receiptFilterState === f.key ? 'btn-primary' : 'btn-muted'}" onclick="setReceiptFilter('${f.key}')">${f.label}</button>
+      `).join('');
+
+      let visible = rows;
+      if (receiptFilterState === 'missing') visible = rows.filter(t => t.r.state === 'missing' || t.r.state === 'unknown');
+      else if (receiptFilterState === 'has') visible = rows.filter(t => t.r.state === 'has');
+      else if (receiptFilterState === 'payroll') visible = rows.filter(t => t.r.state === 'payroll');
+
+      receiptProofRegistry = [];
+      document.getElementById('receipt-table-body').innerHTML = rows.length === 0
+        ? '<tr><td colspan="6" class="muted">No expenses recorded for this period.</td></tr>'
+        : (visible.length ? visible.map(receiptRowHtml).join('') : '<tr><td colspan="6" class="muted">No expenses match this filter.</td></tr>');
+
+      const canReturn = profile.role === 'Auditor' || profile.role === 'Finance Chair';
+      document.getElementById('receipt-actions').innerHTML = (canReturn && missing.length > 0)
+        ? `<button type="button" class="btn btn-secondary" onclick="appendMissingToReturnNotes()"><i class="fa-solid fa-list-check"></i> Add missing list to return notes</button>`
+        : '';
+
+      window._receiptMissingRows = missing;
+    }
+
+    function receiptRowHtml(t) {
+      const e = t.e, r = t.r;
+      const particular = escapeHtml(e.sub || e.payrollParticulars || 'Expense');
+      const category = escapeHtml(e.category || e.budgetCategory || 'Uncategorized');
+      const payee = escapeHtml(e.payee || '-');
+      const account = escapeHtml(receiptAccountLabel(e.payment || e.targetAccId));
+      const amount = pesoFmt(e.amount);
+      let proofCell;
+      if (r.state === 'has') {
+        const idx = receiptProofRegistry.push({ url: r.url, name: r.name || 'Receipt / Voucher' }) - 1;
+        proofCell = `<button type="button" class="btn-receipt-view" onclick="openWorkflowReceiptViewer(${idx})">View</button>`
+          + (r.name ? `<div class="rname">${escapeHtml(r.name)}</div>` : '')
+          + (r.via ? `<div class="rbadge">via ${escapeHtml(r.via)}</div>` : '');
+      } else if (r.state === 'payroll') {
+        proofCell = '<span class="chip-payroll">Payroll - no voucher</span>';
+      } else if (r.state === 'unknown') {
+        proofCell = '<span class="chip-payroll">Held with liquidation request</span>';
+      } else {
+        proofCell = '<span class="chip-missing">MISSING</span>';
+      }
+      return `
+        <tr class="${r.state === 'missing' ? 'missing-row' : ''}">
+          <td>${escapeHtml(e.date || '')}</td>
+          <td><strong>${particular}</strong><div class="rcat">${category}</div></td>
+          <td>${payee}</td>
+          <td>${account}</td>
+          <td style="text-align:right; font-weight:700;">${amount}</td>
+          <td>${proofCell}</td>
+        </tr>`;
+    }
+
+    function setReceiptFilter(key) {
+      receiptFilterState = key;
+      renderReceiptPanel();
+    }
+
+    function appendMissingToReturnNotes() {
+      const missing = window._receiptMissingRows || [];
+      if (!missing.length) return;
+      const textarea = document.getElementById('route-notes');
+      const lines = missing.map(t => `- ${t.e.date || ''} | ${t.e.category || t.e.budgetCategory || ''} | ${t.e.sub || t.e.payrollParticulars || ''} | ${t.e.payee || '-'} | ${pesoFmt(t.e.amount)}`);
+      const block = `Missing proof of expense (${missing.length}):\n${lines.join('\n')}`;
+      textarea.value = textarea.value ? `${textarea.value}\n\n${block}` : block;
+      textarea.focus();
+      textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function openWorkflowReceiptViewer(idx) {
+      const item = receiptProofRegistry[idx];
+      if (!item) return;
+      document.getElementById('receipt-viewer-title').textContent = item.name || 'Receipt / Voucher';
+      const isPdf = (item.name || '').toLowerCase().endsWith('.pdf');
+      document.getElementById('receipt-viewer-body').innerHTML = isPdf
+        ? `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:160px;">
+             <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+             <a href="${escapeAttr(item.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Open PDF in New Tab</a>
+           </div>`
+        : `<img class="receipt-frame" src="${escapeAttr(item.url)}" alt="Receipt image">
+           <div style="text-align:center; margin-top:10px;"><a href="${escapeAttr(item.url)}" target="_blank" rel="noopener noreferrer">Open in new tab</a></div>`;
+      document.getElementById('receiptViewerModal').classList.add('show');
+    }
+
+    function closeReceiptViewer() {
+      document.getElementById('receipt-viewer-body').innerHTML = '';
+      document.getElementById('receiptViewerModal').classList.remove('show');
     }
 
     function formatDateTime(value) {
