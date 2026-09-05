@@ -113,6 +113,25 @@
     .name-row { padding: 6px 4px; border-bottom: 1px solid #f4e8e7; font-size: 13px; }
     .name-row:last-child { border-bottom: none; }
     .name-row .n-org { color: #999; font-size: 11px; margin-left: 6px; }
+    .calendar-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .calendar-legend {
+      display: flex; align-items: center; gap: 6px; margin: 12px 0 16px; font-size: 11px; color: #777;
+    }
+    .calendar-legend .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.08); }
+    .month-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
+    }
+    .month-card {
+      border: 1px solid #f4d3d0; border-radius: 10px; background: #fffafa; padding: 12px;
+    }
+    .month-card-title { font-weight: bold; font-size: 13px; color: #c0392b; margin-bottom: 10px; }
+    .date-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+    .date-chip {
+      border-radius: 6px; padding: 6px 8px; font-size: 11px; min-width: 56px; text-align: center;
+      border: 1px solid rgba(0,0,0,.06);
+    }
+    .date-chip .d-date { font-weight: bold; display: block; }
+    .date-chip .d-count { display: block; margin-top: 2px; }
     .visitation-flag { color: #c0392b; font-weight: bold; }
     @media (max-width: 760px) {
       .form-grid { grid-template-columns: 1fr; }
@@ -267,6 +286,33 @@
 
   <div class="card">
     <div class="card-header">
+      <h3>Attendance Calendar</h3>
+      <div class="calendar-controls">
+        <select id="calendar-year" onchange="renderAttendanceCalendar()"></select>
+        <select id="calendar-cadence" onchange="onCalendarCadenceChange()">
+          <option value="month">Monthly</option>
+          <option value="quarter">Quarterly</option>
+          <option value="half">Semi-Annual</option>
+          <option value="year" selected>Annual</option>
+        </select>
+        <select id="calendar-period" onchange="renderAttendanceCalendar()" style="display:none;"></select>
+      </div>
+    </div>
+    <div class="calendar-legend">
+      <span>Attendance:</span>
+      <span class="swatch" style="background:#cde2fb"></span> Low
+      <span class="swatch" style="background:#6da7ec"></span>
+      <span class="swatch" style="background:#256abf"></span>
+      <span class="swatch" style="background:#184f95"></span>
+      <span class="swatch" style="background:#0d366b"></span> High
+    </div>
+    <div class="month-grid" id="attendance-calendar">
+      <div class="empty">Loading calendar...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
       <h3>Present / Absent for a Sunday</h3>
       <select id="week-detail-select" onchange="renderWeekDetail()">
         <option value="">Select a service date...</option>
@@ -344,6 +390,8 @@
     await Promise.all([loadMembers(), loadAttendance()]);
     populateWeekDetailSelect();
     renderVisitationList();
+    populateCalendarYearSelect();
+    renderAttendanceCalendar();
   });
 
   function escapeHtml(value) {
@@ -429,6 +477,8 @@
       await loadAttendance();
       populateWeekDetailSelect();
       renderVisitationList();
+      populateCalendarYearSelect();
+      renderAttendanceCalendar();
     } catch (error) {
       alert(error.message);
     } finally {
@@ -752,6 +802,107 @@
           <td>${lastAttended ? escapeHtml(shortDate(lastAttended)) : 'Never recorded present'}</td>
         </tr>`;
     }).join('');
+  };
+
+  // ── ATTENDANCE CALENDAR (Monthly/Quarterly/Semi-Annual/Annual grid) ────
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const CALENDAR_BUCKET_COLORS = ['#cde2fb', '#6da7ec', '#256abf', '#184f95', '#0d366b'];
+
+  function populateCalendarYearSelect() {
+    const select = document.getElementById('calendar-year');
+    const previousValue = select.value;
+    const years = Array.from(new Set(attendanceRecords.filter(row => row.year).map(row => String(row.year))))
+      .sort((a, b) => b.localeCompare(a));
+    if (!years.length) years.push(String(new Date().getFullYear()));
+    select.innerHTML = years.map(year => `<option value="${year}">${year}</option>`).join('');
+    select.value = years.includes(previousValue) ? previousValue : years[0];
+  }
+
+  window.onCalendarCadenceChange = function() {
+    const cadence = document.getElementById('calendar-cadence').value;
+    const periodSelect = document.getElementById('calendar-period');
+    let options = [];
+    if (cadence === 'month') {
+      options = MONTH_NAMES.map((name, i) => ({ value: String(i + 1), label: name }));
+    } else if (cadence === 'quarter') {
+      options = [
+        { value: 'Q1', label: 'Q1 (Jan-Mar)' },
+        { value: 'Q2', label: 'Q2 (Apr-Jun)' },
+        { value: 'Q3', label: 'Q3 (Jul-Sep)' },
+        { value: 'Q4', label: 'Q4 (Oct-Dec)' }
+      ];
+    } else if (cadence === 'half') {
+      options = [
+        { value: 'H1', label: 'H1 (Jan-Jun)' },
+        { value: 'H2', label: 'H2 (Jul-Dec)' }
+      ];
+    }
+    periodSelect.style.display = cadence === 'year' ? 'none' : '';
+    periodSelect.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+    renderAttendanceCalendar();
+  };
+
+  function monthsInScope(cadence, period) {
+    if (cadence === 'month') return [Number(period)];
+    if (cadence === 'quarter') {
+      return { Q1: [1, 2, 3], Q2: [4, 5, 6], Q3: [7, 8, 9], Q4: [10, 11, 12] }[period] || [1, 2, 3];
+    }
+    if (cadence === 'half') {
+      return { H1: [1, 2, 3, 4, 5, 6], H2: [7, 8, 9, 10, 11, 12] }[period] || [1, 2, 3, 4, 5, 6];
+    }
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  }
+
+  function bucketColorForValue(value, min, max) {
+    if (max === min) return CALENDAR_BUCKET_COLORS[2];
+    const ratio = (value - min) / (max - min);
+    const idx = Math.min(CALENDAR_BUCKET_COLORS.length - 1, Math.floor(ratio * CALENDAR_BUCKET_COLORS.length));
+    return CALENDAR_BUCKET_COLORS[idx];
+  }
+
+  function textColorForBucket(color) {
+    return (CALENDAR_BUCKET_COLORS.indexOf(color) >= 2) ? '#fff' : '#333';
+  }
+
+  window.renderAttendanceCalendar = function() {
+    const container = document.getElementById('attendance-calendar');
+    const year = document.getElementById('calendar-year').value;
+    const cadence = document.getElementById('calendar-cadence').value;
+    const period = document.getElementById('calendar-period').value;
+    const months = monthsInScope(cadence, period);
+
+    const weeksInScope = attendanceRecords.filter(row =>
+      row.serviceDate && String(row.year) === String(year) && months.includes(Number(row.month)));
+
+    if (!weeksInScope.length) {
+      container.innerHTML = '<div class="empty">No attendance records for this period.</div>';
+      return;
+    }
+
+    const values = weeksInScope.map(row => Number(row.attendance || 0));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    container.innerHTML = months.map(monthNum => {
+      const weeks = weeksInScope.filter(row => Number(row.month) === monthNum)
+        .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
+      if (!weeks.length) return '';
+      const chips = weeks.map(row => {
+        const value = Number(row.attendance || 0);
+        const color = bucketColorForValue(value, min, max);
+        const textColor = textColorForBucket(color);
+        return `
+          <div class="date-chip" style="background:${color}; color:${textColor};" title="${escapeHtml(row.serviceDate)}: ${value} attendance">
+            <span class="d-date">${escapeHtml(shortDate(row.serviceDate))}</span>
+            <span class="d-count">${value.toLocaleString('en-PH')}</span>
+          </div>`;
+      }).join('');
+      return `
+        <div class="month-card">
+          <div class="month-card-title">${MONTH_NAMES[monthNum - 1]} ${escapeHtml(year)}</div>
+          <div class="date-chip-wrap">${chips}</div>
+        </div>`;
+    }).join('') || '<div class="empty">No attendance records for this period.</div>';
   };
 </script>
   <script>
