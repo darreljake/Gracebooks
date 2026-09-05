@@ -406,10 +406,38 @@
     document.getElementById('btn-generate-profile').disabled = selectedProfileIds.size === 0;
   }
 
-  window.openProfileModal = function() {
+  let attendanceRecordsCache = null;
+
+  async function loadAttendanceRecordsOnce() {
+    if (attendanceRecordsCache) return attendanceRecordsCache;
+    const snap = await db.collection('attendance').get();
+    attendanceRecordsCache = snap.docs
+      .map(doc => doc.data())
+      .filter(row => row.serviceDate)
+      .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
+    return attendanceRecordsCache;
+  }
+
+  function attendanceSummaryFor(memberId, attendanceRecords) {
+    const totalWeeks = attendanceRecords.length;
+    const attended = attendanceRecords.filter(row => (row.presentMemberIds || []).includes(memberId));
+    if (totalWeeks === 0) {
+      return `<div class="profile-field" style="grid-column: 1 / -1;"><div class="pf-label">Attendance</div><div class="pf-value">No attendance records yet.</div></div>`;
+    }
+    const rate = Math.round((attended.length / totalWeeks) * 100);
+    const lastAttended = attended.length ? attended[attended.length - 1].serviceDate : '—';
+    return `
+      <div class="profile-field"><div class="pf-label">Weeks Attended</div><div class="pf-value">${attended.length} of ${totalWeeks} (${rate}%)</div></div>
+      <div class="profile-field"><div class="pf-label">Last Attended</div><div class="pf-value">${escapeHtml(lastAttended)}</div></div>`;
+  }
+
+  window.openProfileModal = async function() {
     if (selectedProfileIds.size === 0) return;
     const selected = members.filter(m => selectedProfileIds.has(m.memberId));
     const area = document.getElementById('profile-print-area');
+    area.innerHTML = '<div class="empty-state">Loading attendance history...</div>';
+    openModal('profile-modal');
+    const attendanceRecords = await loadAttendanceRecordsOnce();
     area.innerHTML = selected.map(m => `
       <div class="profile-card">
         <h4>${escapeHtml(m.lastName)}, ${escapeHtml(m.firstName)}</h4>
@@ -419,9 +447,9 @@
           <div class="profile-field"><div class="pf-label">Membership Type</div><div class="pf-value">${escapeHtml(m.membershipType)}</div></div>
           <div class="profile-field"><div class="pf-label">Age-Level</div><div class="pf-value">${escapeHtml(m.ageLevel)}</div></div>
           <div class="profile-field"><div class="pf-label">Status</div><div class="pf-value">${escapeHtml(m.status)}</div></div>
+          ${attendanceSummaryFor(m.memberId, attendanceRecords)}
         </div>
       </div>`).join('');
-    openModal('profile-modal');
   };
 
   function updateStats() {
