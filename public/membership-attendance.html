@@ -114,25 +114,15 @@
     .name-row:last-child { border-bottom: none; }
     .name-row .n-org { color: #999; font-size: 11px; margin-left: 6px; }
     .calendar-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .calendar-legend {
-      display: flex; align-items: center; gap: 6px; margin: 12px 0 16px; font-size: 11px; color: #777;
-    }
-    .calendar-legend .swatch { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.08); }
-    .month-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
-    }
-    .month-card {
-      border: 1px solid #f4d3d0; border-radius: 10px; background: #fffafa; padding: 12px;
-    }
-    .month-card-title { font-weight: bold; font-size: 13px; color: #c0392b; margin-bottom: 10px; }
-    .date-chip-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
-    .date-chip {
-      border-radius: 6px; padding: 6px 8px; font-size: 11px; min-width: 56px; text-align: center;
-      border: 1px solid rgba(0,0,0,.06);
-    }
-    .date-chip .d-date { font-weight: bold; display: block; }
-    .date-chip .d-count { display: block; margin-top: 2px; }
     .visitation-flag { color: #c0392b; font-weight: bold; }
+    #attendance-sheet-table th, #attendance-sheet-table td { text-align: center; white-space: nowrap; }
+    #attendance-sheet-table th:first-child, #attendance-sheet-table td:first-child {
+      text-align: left; position: sticky; left: 0; background: white; z-index: 1;
+    }
+    #attendance-sheet-table tr:hover td:first-child { background: #fff5f5; }
+    .mark-present { color: #1e8449; font-weight: bold; }
+    .mark-absent { color: #c0392b; }
+    #attendance-sheet-table tfoot td { font-weight: bold; background: #fdf2f2; }
     @media (max-width: 760px) {
       .form-grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: span 1; }
@@ -284,30 +274,42 @@
     </div>
   </div>
 
+  <div class="card" id="tracking-settings-card">
+    <div class="card-header">
+      <h3>Per-Member Tracking Start Date</h3>
+    </div>
+    <div class="muted" style="margin-bottom: 10px;">
+      Only weeks on or after this date are used for the Attendance Sheet below, the Present/Absent lookup,
+      and the Members Needing Visitation list - this keeps older headcount-only records (saved before
+      per-member checklists existed) from being misread as everyone having been absent.
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input type="date" id="tracking-start-input" style="max-width: 200px;" />
+      <button class="btn" id="tracking-start-save" onclick="saveTrackingStartDate()">Save</button>
+      <span class="muted" id="tracking-start-status"></span>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-header">
-      <h3>Attendance Calendar</h3>
+      <h3>Attendance Sheet</h3>
       <div class="calendar-controls">
-        <select id="calendar-year" onchange="renderAttendanceCalendar()"></select>
+        <select id="calendar-year" onchange="renderAttendanceSheet()"></select>
         <select id="calendar-cadence" onchange="onCalendarCadenceChange()">
           <option value="month">Monthly</option>
           <option value="quarter">Quarterly</option>
           <option value="half">Semi-Annual</option>
           <option value="year" selected>Annual</option>
         </select>
-        <select id="calendar-period" onchange="renderAttendanceCalendar()" style="display:none;"></select>
+        <select id="calendar-period" onchange="renderAttendanceSheet()" style="display:none;"></select>
       </div>
     </div>
-    <div class="calendar-legend">
-      <span>Attendance:</span>
-      <span class="swatch" style="background:#cde2fb"></span> Low
-      <span class="swatch" style="background:#6da7ec"></span>
-      <span class="swatch" style="background:#256abf"></span>
-      <span class="swatch" style="background:#184f95"></span>
-      <span class="swatch" style="background:#0d366b"></span> High
-    </div>
-    <div class="month-grid" id="attendance-calendar">
-      <div class="empty">Loading calendar...</div>
+    <div class="muted" style="margin-bottom: 10px;">Rows are members, columns are recorded Sunday dates (like a school attendance register) - ✓ present, — absent.</div>
+    <div class="table-wrap">
+      <table id="attendance-sheet-table">
+        <thead><tr><th>Member</th></tr></thead>
+        <tbody id="attendance-sheet"><tr><td class="empty">Loading attendance sheet...</td></tr></tbody>
+      </table>
     </div>
   </div>
 
@@ -375,6 +377,8 @@
   let recentAttendanceRecords = [];
   let members = [];
   let selectedMemberIds = new Set();
+  let trackingStartDate = new Date().toISOString().slice(0, 10);
+  let canEdit = false;
 
   document.getElementById('service-date').value = new Date().toISOString().slice(0, 10);
 
@@ -385,13 +389,15 @@
       window.location.href = 'index.html';
       return;
     }
-    const canEdit = ['Membership Secretary', 'Treasurer'].includes(profile.role);
+    canEdit = ['Membership Secretary', 'Treasurer'].includes(profile.role);
     document.getElementById('entry-card').style.display = canEdit ? '' : 'none';
-    await Promise.all([loadMembers(), loadAttendance()]);
+    document.getElementById('tracking-start-input').disabled = !canEdit;
+    document.getElementById('tracking-start-save').style.display = canEdit ? '' : 'none';
+    await Promise.all([loadMembers(), loadAttendance(), loadTrackingSettings()]);
     populateWeekDetailSelect();
     renderVisitationList();
     populateCalendarYearSelect();
-    renderAttendanceCalendar();
+    renderAttendanceSheet();
   });
 
   function escapeHtml(value) {
@@ -478,7 +484,7 @@
       populateWeekDetailSelect();
       renderVisitationList();
       populateCalendarYearSelect();
-      renderAttendanceCalendar();
+      renderAttendanceSheet();
     } catch (error) {
       alert(error.message);
     } finally {
@@ -503,6 +509,44 @@
     const snap = await db.collection('membershipRoll').get();
     members = snap.docs.map(doc => ({ memberId: doc.id, ...doc.data() }));
     renderMemberRoster();
+  }
+
+  // Stored on attendance/_settings (not a weekly record - excluded from
+  // attendanceRecords by the entryType/serviceDate filter above) so it reuses
+  // the attendance collection's existing rules (read: signedIn(); write:
+  // Treasurer/Membership Secretary) with no firestore.rules change needed.
+  async function loadTrackingSettings() {
+    const doc = await db.collection('attendance').doc('_settings').get();
+    trackingStartDate = (doc.exists && doc.data().trackingStartDate) || new Date().toISOString().slice(0, 10);
+    document.getElementById('tracking-start-input').value = trackingStartDate;
+  }
+
+  window.saveTrackingStartDate = async function() {
+    if (!canEdit) return;
+    const value = document.getElementById('tracking-start-input').value;
+    if (!value) return alert('Select a date.');
+    const statusEl = document.getElementById('tracking-start-status');
+    try {
+      const before = trackingStartDate;
+      await db.collection('attendance').doc('_settings').set({ trackingStartDate: value }, { merge: true });
+      await writeAuditLog('attendance_tracking_start_updated', '_settings', { trackingStartDate: before }, { trackingStartDate: value }, `Set per-member attendance tracking start date to ${value}`);
+      trackingStartDate = value;
+      statusEl.textContent = 'Saved.';
+      setTimeout(() => statusEl.textContent = '', 2200);
+      populateWeekDetailSelect();
+      renderVisitationList();
+      renderAttendanceSheet();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  // Only weeks on/after trackingStartDate carry trustworthy per-member data -
+  // older weeks were saved before per-member checklists existed (or against
+  // the old tither roster's member IDs), so treating them as absences would
+  // misreport everyone as absent for a habit that only just started.
+  function trackedWeeks() {
+    return attendanceRecords.filter(row => row.serviceDate && row.serviceDate >= trackingStartDate);
   }
 
   function renderMemberRoster() {
@@ -722,7 +766,7 @@
   // ── PRESENT/ABSENT FOR A SPECIFIC SUNDAY ────────────────
   function populateWeekDetailSelect() {
     const select = document.getElementById('week-detail-select');
-    const rows = attendanceRecords.filter(row => row.serviceDate);
+    const rows = trackedWeeks();
     select.innerHTML = '<option value="">Select a service date...</option>' +
       rows.map(row => `<option value="${escapeHtml(row.serviceDate)}">${escapeHtml(shortDate(row.serviceDate))} (${row.year || ''})</option>`).join('');
     if (rows.length) {
@@ -763,9 +807,9 @@
   function computeAbsenceStreaks() {
     // Walk recorded weeks most-recent-first; each member's streak is how
     // many consecutive weeks (starting from the latest) they were absent,
-    // stopping at the first week they were present.
-    const weeksDesc = attendanceRecords
-      .filter(row => row.serviceDate)
+    // stopping at the first week they were present. Only weeks on/after
+    // trackingStartDate count - see trackedWeeks().
+    const weeksDesc = trackedWeeks()
       .slice()
       .sort((a, b) => String(b.serviceDate).localeCompare(String(a.serviceDate)));
 
@@ -804,9 +848,8 @@
     }).join('');
   };
 
-  // ── ATTENDANCE CALENDAR (Monthly/Quarterly/Semi-Annual/Annual grid) ────
+  // ── ATTENDANCE SHEET (Monthly/Quarterly/Semi-Annual/Annual spreadsheet) ─
   const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const CALENDAR_BUCKET_COLORS = ['#cde2fb', '#6da7ec', '#256abf', '#184f95', '#0d366b'];
 
   function populateCalendarYearSelect() {
     const select = document.getElementById('calendar-year');
@@ -839,7 +882,7 @@
     }
     periodSelect.style.display = cadence === 'year' ? 'none' : '';
     periodSelect.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-    renderAttendanceCalendar();
+    renderAttendanceSheet();
   };
 
   function monthsInScope(cadence, period) {
@@ -853,56 +896,48 @@
     return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
   }
 
-  function bucketColorForValue(value, min, max) {
-    if (max === min) return CALENDAR_BUCKET_COLORS[2];
-    const ratio = (value - min) / (max - min);
-    const idx = Math.min(CALENDAR_BUCKET_COLORS.length - 1, Math.floor(ratio * CALENDAR_BUCKET_COLORS.length));
-    return CALENDAR_BUCKET_COLORS[idx];
-  }
-
-  function textColorForBucket(color) {
-    return (CALENDAR_BUCKET_COLORS.indexOf(color) >= 2) ? '#fff' : '#333';
-  }
-
-  window.renderAttendanceCalendar = function() {
-    const container = document.getElementById('attendance-calendar');
+  window.renderAttendanceSheet = function() {
+    const thead = document.querySelector('#attendance-sheet-table thead tr');
+    const tbody = document.getElementById('attendance-sheet');
     const year = document.getElementById('calendar-year').value;
     const cadence = document.getElementById('calendar-cadence').value;
     const period = document.getElementById('calendar-period').value;
     const months = monthsInScope(cadence, period);
 
-    const weeksInScope = attendanceRecords.filter(row =>
-      row.serviceDate && String(row.year) === String(year) && months.includes(Number(row.month)));
+    // Only weeks with trustworthy per-member data (see trackedWeeks()).
+    const weeksInScope = trackedWeeks()
+      .filter(row => String(row.year) === String(year) && months.includes(Number(row.month)))
+      .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
 
     if (!weeksInScope.length) {
-      container.innerHTML = '<div class="empty">No attendance records for this period.</div>';
+      thead.innerHTML = '<th>Member</th>';
+      tbody.innerHTML = '<tr><td class="empty">No tracked dates in this period yet.</td></tr>';
       return;
     }
 
-    const values = weeksInScope.map(row => Number(row.attendance || 0));
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const sortedMembers = members.slice().sort((a, b) =>
+      `${a.lastName || ''} ${a.firstName || ''}`.localeCompare(`${b.lastName || ''} ${b.firstName || ''}`));
 
-    container.innerHTML = months.map(monthNum => {
-      const weeks = weeksInScope.filter(row => Number(row.month) === monthNum)
-        .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
-      if (!weeks.length) return '';
-      const chips = weeks.map(row => {
-        const value = Number(row.attendance || 0);
-        const color = bucketColorForValue(value, min, max);
-        const textColor = textColorForBucket(color);
-        return `
-          <div class="date-chip" style="background:${color}; color:${textColor};" title="${escapeHtml(row.serviceDate)}: ${value} attendance">
-            <span class="d-date">${escapeHtml(shortDate(row.serviceDate))}</span>
-            <span class="d-count">${value.toLocaleString('en-PH')}</span>
-          </div>`;
+    thead.innerHTML = '<th>Member</th>' +
+      weeksInScope.map(week => `<th title="${escapeHtml(week.serviceDate)}">${escapeHtml(shortDate(week.serviceDate))}</th>`).join('') +
+      '<th>Present</th>';
+
+    tbody.innerHTML = sortedMembers.map(member => {
+      const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+      let presentCount = 0;
+      const cells = weeksInScope.map(week => {
+        const present = (week.presentMemberIds || []).includes(member.memberId);
+        if (present) presentCount += 1;
+        return present ? '<td class="mark-present">✓</td>' : '<td class="mark-absent">—</td>';
       }).join('');
-      return `
-        <div class="month-card">
-          <div class="month-card-title">${MONTH_NAMES[monthNum - 1]} ${escapeHtml(year)}</div>
-          <div class="date-chip-wrap">${chips}</div>
-        </div>`;
-    }).join('') || '<div class="empty">No attendance records for this period.</div>';
+      return `<tr><td>${escapeHtml(name)}</td>${cells}<td><strong>${presentCount}</strong></td></tr>`;
+    }).join('');
+
+    const totalsRow = weeksInScope.map(week => {
+      const count = sortedMembers.filter(member => (week.presentMemberIds || []).includes(member.memberId)).length;
+      return `<td>${count}</td>`;
+    }).join('');
+    tbody.innerHTML += `<tr><td>Total Present</td>${totalsRow}<td></td></tr>`;
   };
 </script>
   <script>

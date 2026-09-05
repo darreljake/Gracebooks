@@ -408,12 +408,21 @@
 
   let attendanceRecordsCache = null;
 
+  // Only weeks on/after the "Per-Member Tracking Start Date" set on the
+  // Weekly Attendance page count toward this stat - older weeks were saved
+  // before per-member checklists existed (or against the old tither
+  // roster's member IDs), so counting them would misreport everyone as
+  // never having attended.
   async function loadAttendanceRecordsOnce() {
     if (attendanceRecordsCache) return attendanceRecordsCache;
-    const snap = await db.collection('attendance').get();
+    const [snap, settingsDoc] = await Promise.all([
+      db.collection('attendance').get(),
+      db.collection('attendance').doc('_settings').get()
+    ]);
+    const trackingStartDate = (settingsDoc.exists && settingsDoc.data().trackingStartDate) || new Date().toISOString().slice(0, 10);
     attendanceRecordsCache = snap.docs
       .map(doc => doc.data())
-      .filter(row => row.serviceDate)
+      .filter(row => row.serviceDate && row.serviceDate >= trackingStartDate)
       .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
     return attendanceRecordsCache;
   }
