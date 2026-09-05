@@ -100,9 +100,24 @@
       margin-right: 6px;
       vertical-align: -1px;
     }
+    .card-header select {
+      padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px;
+      background: white; font-family: Arial, sans-serif;
+    }
+    .two-col-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .list-title { font-weight: bold; font-size: 13px; color: #c0392b; margin-bottom: 8px; }
+    .name-list {
+      border: 1px solid #f4d3d0; border-radius: 8px; background: #fffafa; padding: 10px;
+      max-height: 280px; overflow-y: auto;
+    }
+    .name-row { padding: 6px 4px; border-bottom: 1px solid #f4e8e7; font-size: 13px; }
+    .name-row:last-child { border-bottom: none; }
+    .name-row .n-org { color: #999; font-size: 11px; margin-left: 6px; }
+    .visitation-flag { color: #c0392b; font-weight: bold; }
     @media (max-width: 760px) {
       .form-grid { grid-template-columns: 1fr; }
       .span-2 { grid-column: span 1; }
+      .two-col-lists { grid-template-columns: 1fr; }
     }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -249,6 +264,53 @@
       </table>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Present / Absent for a Sunday</h3>
+      <select id="week-detail-select" onchange="renderWeekDetail()">
+        <option value="">Select a service date...</option>
+      </select>
+    </div>
+    <div id="week-detail-summary" class="muted" style="margin-bottom: 12px;"></div>
+    <div class="two-col-lists">
+      <div>
+        <div class="list-title">✅ Present</div>
+        <div class="name-list" id="week-present-list"><div class="empty">Select a date above.</div></div>
+      </div>
+      <div>
+        <div class="list-title">❌ Absent</div>
+        <div class="name-list" id="week-absent-list"><div class="empty">Select a date above.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Members Needing Visitation</h3>
+      <select id="visitation-threshold" onchange="renderVisitationList()">
+        <option value="2">2+ consecutive absences</option>
+        <option value="3" selected>3+ consecutive absences</option>
+        <option value="4">4+ consecutive absences</option>
+        <option value="5">5+ consecutive absences</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Organization</th>
+            <th>Consecutive Absences</th>
+            <th>Last Attended</th>
+          </tr>
+        </thead>
+        <tbody id="visitation-body">
+          <tr><td colspan="4" class="empty">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -270,17 +332,18 @@
 
   document.getElementById('service-date').value = new Date().toISOString().slice(0, 10);
 
-  window.graceBooksAuthReady.then(profile => {
+  window.graceBooksAuthReady.then(async profile => {
     activeUserProfile = profile;
     document.getElementById('role-label').textContent = profile.role;
-    if (!['Membership Secretary', 'Treasurer', 'Deaconess'].includes(profile.role)) {
+    if (!['Membership Secretary', 'Treasurer', 'Deaconess', 'Pastor', 'Chairperson'].includes(profile.role)) {
       window.location.href = 'index.html';
       return;
     }
     const canEdit = ['Membership Secretary', 'Treasurer'].includes(profile.role);
     document.getElementById('entry-card').style.display = canEdit ? '' : 'none';
-    if (canEdit) loadMembers();
-    loadAttendance();
+    await Promise.all([loadMembers(), loadAttendance()]);
+    populateWeekDetailSelect();
+    renderVisitationList();
   });
 
   function escapeHtml(value) {
@@ -363,7 +426,9 @@
       document.getElementById('attendance-notes').value = '';
       selectedMemberIds.clear();
       renderMemberRoster();
-      loadAttendance();
+      await loadAttendance();
+      populateWeekDetailSelect();
+      renderVisitationList();
     } catch (error) {
       alert(error.message);
     } finally {
@@ -603,6 +668,91 @@
       </tr>
     `).join('');
   }
+
+  // ── PRESENT/ABSENT FOR A SPECIFIC SUNDAY ────────────────
+  function populateWeekDetailSelect() {
+    const select = document.getElementById('week-detail-select');
+    const rows = attendanceRecords.filter(row => row.serviceDate);
+    select.innerHTML = '<option value="">Select a service date...</option>' +
+      rows.map(row => `<option value="${escapeHtml(row.serviceDate)}">${escapeHtml(shortDate(row.serviceDate))} (${row.year || ''})</option>`).join('');
+    if (rows.length) {
+      select.value = rows[0].serviceDate;
+      renderWeekDetail();
+    }
+  }
+
+  function memberLabel(member) {
+    const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+    return `<div class="name-row">${escapeHtml(name)}${member.layOrg ? `<span class="n-org">${escapeHtml(member.layOrg)}</span>` : ''}</div>`;
+  }
+
+  window.renderWeekDetail = function() {
+    const serviceDate = document.getElementById('week-detail-select').value;
+    const summary = document.getElementById('week-detail-summary');
+    const presentList = document.getElementById('week-present-list');
+    const absentList = document.getElementById('week-absent-list');
+    if (!serviceDate) {
+      summary.textContent = '';
+      presentList.innerHTML = '<div class="empty">Select a date above.</div>';
+      absentList.innerHTML = '<div class="empty">Select a date above.</div>';
+      return;
+    }
+    const record = attendanceRecords.find(row => row.serviceDate === serviceDate);
+    const presentIds = new Set((record && record.presentMemberIds) || []);
+    const present = members.filter(m => presentIds.has(m.memberId))
+      .sort((a, b) => `${a.lastName || ''} ${a.firstName || ''}`.localeCompare(`${b.lastName || ''} ${b.firstName || ''}`));
+    const absent = members.filter(m => !presentIds.has(m.memberId))
+      .sort((a, b) => `${a.lastName || ''} ${a.firstName || ''}`.localeCompare(`${b.lastName || ''} ${b.firstName || ''}`));
+
+    summary.textContent = `${shortDate(serviceDate)}: ${present.length} present, ${absent.length} absent, out of ${members.length} on the roll (${record ? Number(record.attendance || 0).toLocaleString('en-PH') : 0} total attendance incl. guests).`;
+    presentList.innerHTML = present.length ? present.map(memberLabel).join('') : '<div class="empty">No one from the roll was marked present.</div>';
+    absentList.innerHTML = absent.length ? absent.map(memberLabel).join('') : '<div class="empty">Everyone on the roll was present.</div>';
+  };
+
+  // ── ABSENCE STREAKS / MEMBERS NEEDING VISITATION ────────
+  function computeAbsenceStreaks() {
+    // Walk recorded weeks most-recent-first; each member's streak is how
+    // many consecutive weeks (starting from the latest) they were absent,
+    // stopping at the first week they were present.
+    const weeksDesc = attendanceRecords
+      .filter(row => row.serviceDate)
+      .slice()
+      .sort((a, b) => String(b.serviceDate).localeCompare(String(a.serviceDate)));
+
+    return members.map(member => {
+      let streak = 0;
+      let lastAttended = null;
+      for (const week of weeksDesc) {
+        const present = (week.presentMemberIds || []).includes(member.memberId);
+        if (present) { lastAttended = week.serviceDate; break; }
+        streak += 1;
+      }
+      return { member, streak, lastAttended, totalWeeks: weeksDesc.length };
+    });
+  }
+
+  window.renderVisitationList = function() {
+    const body = document.getElementById('visitation-body');
+    const threshold = parseInt(document.getElementById('visitation-threshold').value, 10) || 3;
+    const streaks = computeAbsenceStreaks()
+      .filter(row => row.totalWeeks > 0 && (row.member.status || 'Active') === 'Active' && row.streak >= threshold)
+      .sort((a, b) => b.streak - a.streak);
+
+    if (!streaks.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty">No active members currently meet this threshold.</td></tr>';
+      return;
+    }
+    body.innerHTML = streaks.map(({ member, streak, lastAttended }) => {
+      const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+      return `
+        <tr>
+          <td><strong>${escapeHtml(name)}</strong></td>
+          <td>${escapeHtml(member.layOrg || '—')}</td>
+          <td class="visitation-flag">${streak}</td>
+          <td>${lastAttended ? escapeHtml(shortDate(lastAttended)) : 'Never recorded present'}</td>
+        </tr>`;
+    }).join('');
+  };
 </script>
   <script>
     if ('serviceWorker' in navigator) {
