@@ -8,7 +8,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>Members — GraceBooks</title>
+  <title>Tithers — GraceBooks</title>
   <style>
     /* All original CSS preserved */
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -66,18 +66,18 @@
 </head>
 <body>
 <div class="topbar">
-  <h2>👥 Members</h2>
+  <h2>👥 Tithers</h2>
   <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
 </div>
 
 <div class="container">
   <div class="card">
     <div class="card-header">
-      <h3>Church Members</h3>
+      <h3>Tithers</h3>
       <div class="btn-group">
         <button class="btn btn-template" onclick="downloadTemplate()">📄 CSV Template</button>
         <button class="btn btn-csv" onclick="openCsvModal()">📂 Upload CSV</button>
-        <button class="btn btn-add" onclick="openAddModal()">+ Add Member</button>
+        <button class="btn btn-add" onclick="openAddModal()">+ Add Tither</button>
       </div>
     </div>
 
@@ -97,7 +97,7 @@
         <input type="text" class="search-bar" id="search-input" placeholder="🔍 Search by name or ID..." oninput="handleSearchSort()" />
         <select class="sort-select" id="sort-select" onchange="handleSearchSort()">
             <option value="last">Sort by: Name (A-Z)</option>
-            <option value="memberId">Sort by: Member ID</option>
+            <option value="memberId">Sort by: Tither ID</option>
             <option value="status">Sort by: Status</option>
             <option value="type">Sort by: Type</option>
         </select>
@@ -107,7 +107,7 @@
       <table>
         <thead>
           <tr>
-            <th>Member ID</th><th>Last Name</th><th>First Name</th><th>Contact</th><th>Type</th><th>Status</th><th>Actions</th>
+            <th>Tither ID</th><th>Last Name</th><th>First Name</th><th>Contact</th><th>Type</th><th>Status</th><th>Actions</th>
           </tr>
         </thead>
         <tbody id="members-body"></tbody>
@@ -118,9 +118,9 @@
 
 <div class="modal-overlay" id="member-modal">
   <div class="modal-box">
-    <h3 id="modal-title">➕ Add New Member</h3>
+    <h3 id="modal-title">➕ Add New Tither</h3>
     <br>
-    <div class="form-group"><label>Member ID</label><input type="text" id="m-id" /></div>
+    <div class="form-group"><label>Tither ID</label><input type="text" id="m-id" /></div>
     <div style="display:flex; gap:10px;">
       <div class="form-group" style="flex:1;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
       <div class="form-group" style="flex:1;"><label>First Name</label><input type="text" id="m-firstname" /></div>
@@ -141,8 +141,8 @@
         </div>
     </div>
     <div class="modal-btns">
-      <button class="btn-modal-save" id="btn-save-member" onclick="saveMember()">💾 Save Member</button>
-      <button class="btn-modal-delete" id="btn-delete-member" style="display:none;" onclick="confirmDelete()">🗑️ Delete Member</button>
+      <button class="btn-modal-save" id="btn-save-member" onclick="saveMember()">💾 Save Tither</button>
+      <button class="btn-modal-delete" id="btn-delete-member" style="display:none;" onclick="confirmDelete()">🗑️ Delete Tither</button>
       <button class="btn-modal-cancel" onclick="closeModal('member-modal')">Cancel</button>
     </div>
   </div>
@@ -156,7 +156,7 @@
             <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="handleCsvFile(event)" />
         </div>
         <div id="csv-preview" style="display:none; font-size:12px; background:#f9f9f9; padding:10px; border-radius:5px; margin-bottom:10px;"></div>
-        <button class="btn-import" id="btn-import" style="display:none; width:100%; background:#1e8449; color:white; padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;" onclick="importCsv()">✅ Import Members</button>
+        <button class="btn-import" id="btn-import" style="display:none; width:100%; background:#1e8449; color:white; padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;" onclick="importCsv()">✅ Import Tithers</button>
         <button class="btn-modal-cancel" style="width:100%; margin-top:5px;" onclick="closeModal('csv-modal')">Cancel</button>
     </div>
 </div>
@@ -259,7 +259,7 @@
 
   window.renderTable = function(list) {
     const tbody = document.getElementById('members-body');
-    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding:20px;">No members found.</td></tr>' : 
+    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding:20px;">No tithers found.</td></tr>' :
       list.map(m => `
         <tr>
           <td><strong>${m.memberId}</strong></td>
@@ -287,7 +287,7 @@
 
   window.openAddModal = () => {
     editingId = null;
-    document.getElementById('modal-title').textContent = '➕ Add New Member';
+    document.getElementById('modal-title').textContent = '➕ Add New Tither';
     document.getElementById('btn-delete-member').style.display = 'none';
     document.getElementById('m-id').disabled = false;
     ['m-id','m-lastname','m-firstname','m-contact','m-email','m-address'].forEach(id => document.getElementById(id).value = '');
@@ -298,7 +298,7 @@
     const m = members.find(x => x.memberId === id);
     if (!m) return;
     editingId = id;
-    document.getElementById('modal-title').textContent = '✏️ Edit Member';
+    document.getElementById('modal-title').textContent = '✏️ Edit Tither';
     document.getElementById('btn-delete-member').style.display = 'block';
     
     document.getElementById('m-id').value = m.memberId;
@@ -316,7 +316,7 @@
   // ── SAVE & DELETE ────────────────────────────────────
   window.saveMember = async () => {
     const id = document.getElementById('m-id').value.trim();
-    if (!id) return alert("Member ID Required");
+    if (!id) return alert("Tither ID Required");
 
     const data = {
       memberId: id,
@@ -333,7 +333,7 @@
       await setDoc(doc(db, "members", id), data);
       await loadMembers();
       closeModal('member-modal');
-      showSuccess("Member saved successfully!");
+      showSuccess("Tither saved successfully!");
     } catch (e) { alert("Error: " + e.message); }
   };
 
@@ -344,7 +344,7 @@
             await deleteDoc(doc(db, "members", editingId));
             await loadMembers();
             closeModal('member-modal');
-            showSuccess("Member deleted.");
+            showSuccess("Tither deleted.");
         } catch (e) { alert("Error deleting: " + e.message); }
     }
   };
@@ -373,7 +373,7 @@
         });
       }
       document.getElementById('csv-preview').style.display = 'block';
-      document.getElementById('csv-preview').innerText = `Found ${csvParsed.length} members in file.`;
+      document.getElementById('csv-preview').innerText = `Found ${csvParsed.length} tithers in file.`;
       document.getElementById('btn-import').style.display = 'block';
     };
     reader.readAsText(file);
@@ -385,7 +385,7 @@
     }
     await loadMembers();
     closeModal('csv-modal');
-    showSuccess(`Imported ${csvParsed.length} members!`);
+    showSuccess(`Imported ${csvParsed.length} tithers!`);
   };
 
   function showSuccess(msg) {
@@ -395,7 +395,7 @@
   }
 
   window.downloadTemplate = () => {
-    const csv = `MemberID,LastName,FirstName,Contact,Email,Address,Type,Status\nM001,Santos,Maria,09171234567,maria@email.com,Tagaytay,Professing,Active`;
+    const csv = `TitherID,LastName,FirstName,Contact,Email,Address,Type,Status\nM001,Santos,Maria,09171234567,maria@email.com,Tagaytay,Professing,Active`;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = 'template.csv'; a.click();
