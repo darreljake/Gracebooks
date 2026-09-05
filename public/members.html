@@ -35,14 +35,21 @@
     .org-box .o-num { font-size: 20px; font-weight: bold; color: #1a5276; }
     .org-box .o-label { font-size: 11px; color: #666; margin-top: 4px; }
 
-    .controls-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .controls-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
     .search-bar { flex: 2; min-width: 200px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-    .sort-select { flex: 1; min-width: 160px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: white; }
+    .selection-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .btn-profile { background: #7d3c98; color: white; }
+    .btn-profile:disabled { background: #d6c3e0; cursor: not-allowed; }
 
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { background: #1a5276; color: white; padding: 10px 12px; text-align: left; white-space: nowrap; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { background: #154360; }
+    th.sortable .sort-arrow { margin-left: 4px; opacity: .6; }
+    th.sortable.sort-active .sort-arrow { opacity: 1; }
     td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+    .select-col { width: 32px; text-align: center; }
     .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; white-space: nowrap; }
     .badge-active { background: #d5f5e3; color: #1e8449; }
     .badge-inactive { background: #fadbd8; color: #c0392b; }
@@ -68,6 +75,20 @@
 
     .csv-drop { border: 2px dashed #a9dfbf; border-radius: 8px; padding: 30px; text-align: center; color: #888; cursor: pointer; margin-bottom: 16px; }
     .empty-state { text-align: center; padding: 30px; color: #888; }
+
+    .profile-modal-box { max-width: 760px; }
+    .profile-card { border: 1px solid #d6eaf8; border-radius: 10px; padding: 20px; margin-bottom: 16px; page-break-inside: avoid; }
+    .profile-card h4 { color: #1a5276; font-size: 17px; margin-bottom: 4px; }
+    .profile-card .profile-id { color: #888; font-size: 12px; margin-bottom: 14px; }
+    .profile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 20px; }
+    .profile-field .pf-label { font-size: 11px; color: #888; text-transform: uppercase; font-weight: bold; }
+    .profile-field .pf-value { font-size: 14px; color: #333; margin-top: 2px; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #profile-print-area, #profile-print-area * { visibility: visible; }
+      #profile-print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 20px; }
+    }
   </style>
 </head>
 <body>
@@ -119,20 +140,27 @@
 
       <div class="controls-row">
         <input type="text" class="search-bar" id="search-input" placeholder="🔍 Search by name or ID..." oninput="handleSearchSort()" />
-        <select class="sort-select" id="sort-select" onchange="handleSearchSort()">
-          <option value="lastName">Sort by: Name (A-Z)</option>
-          <option value="memberId">Sort by: Member ID</option>
-          <option value="membershipType">Sort by: Membership Type</option>
-          <option value="layOrg">Sort by: Lay Organization</option>
-          <option value="status">Sort by: Status</option>
-        </select>
+      </div>
+
+      <div class="selection-bar">
+        <button class="btn btn-profile" id="btn-generate-profile" onclick="openProfileModal()" disabled>🪪 Generate Profile</button>
+        <span class="muted" id="selected-count">0 selected</span>
+        <button class="btn btn-template" onclick="clearSelection()">Clear Selection</button>
       </div>
 
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Member ID</th><th>Last Name</th><th>First Name</th><th>Lay Org</th><th>Membership Type</th><th>Age-Level</th><th>Status</th><th>Actions</th>
+              <th class="select-col"><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this.checked)" /></th>
+              <th class="sortable" data-field="memberId" onclick="sortByColumn('memberId')">Member ID<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="lastName" onclick="sortByColumn('lastName')">Last Name<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="firstName" onclick="sortByColumn('firstName')">First Name<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="layOrg" onclick="sortByColumn('layOrg')">Lay Org<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="membershipType" onclick="sortByColumn('membershipType')">Membership Type<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="ageLevel" onclick="sortByColumn('ageLevel')">Age-Level<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="status" onclick="sortByColumn('status')">Status<span class="sort-arrow"></span></th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="members-body"></tbody>
@@ -199,6 +227,18 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal-box profile-modal-box">
+    <h3>🪪 Member Profile</h3>
+    <br>
+    <div id="profile-print-area"></div>
+    <div class="modal-btns">
+      <button class="btn-modal-save" onclick="window.print()">🖨️ Print</button>
+      <button class="btn-modal-cancel" onclick="closeModal('profile-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -225,6 +265,9 @@
   let members = [];
   let csvParsed = [];
   let editingId = null;
+  let sortState = { field: 'lastName', dir: 'asc' };
+  let selectedProfileIds = new Set();
+  let currentFilteredList = [];
 
   window.graceBooksAuthReady.then(profile => {
     activeUserProfile = profile;
@@ -274,9 +317,31 @@
   }
 
   // ── SEARCH & SORT LOGIC ───────────────────────────
+  window.sortByColumn = function(field) {
+    if (sortState.field === field) {
+      sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortState = { field, dir: 'asc' };
+    }
+    handleSearchSort();
+  };
+
+  function updateSortHeaders() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+      const arrow = th.querySelector('.sort-arrow');
+      if (th.dataset.field === sortState.field) {
+        th.classList.add('sort-active');
+        arrow.textContent = sortState.dir === 'asc' ? '▲' : '▼';
+      } else {
+        th.classList.remove('sort-active');
+        arrow.textContent = '';
+      }
+    });
+  }
+
   window.handleSearchSort = function() {
     const q = document.getElementById('search-input').value.toLowerCase();
-    const sortBy = document.getElementById('sort-select').value;
+    const { field, dir } = sortState;
 
     let filtered = members.filter(m =>
       (m.memberId || '').toLowerCase().includes(q) ||
@@ -285,19 +350,23 @@
     );
 
     filtered.sort((a, b) => {
-      let valA = (a[sortBy] || '').toLowerCase();
-      let valB = (b[sortBy] || '').toLowerCase();
-      return valA.localeCompare(valB);
+      let valA = (a[field] || '').toLowerCase();
+      let valB = (b[field] || '').toLowerCase();
+      const cmp = valA.localeCompare(valB);
+      return dir === 'asc' ? cmp : -cmp;
     });
 
+    updateSortHeaders();
     renderTable(filtered);
   };
 
   window.renderTable = function(list) {
+    currentFilteredList = list;
     const tbody = document.getElementById('members-body');
-    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:20px;">No members found.</td></tr>' :
+    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="9" style="text-align:center; padding:20px;">No members found.</td></tr>' :
       list.map(m => `
         <tr>
+          <td class="select-col"><input type="checkbox" ${selectedProfileIds.has(m.memberId) ? 'checked' : ''} onchange="toggleMemberSelection('${escapeHtml(m.memberId)}', this.checked)" /></td>
           <td><strong>${escapeHtml(m.memberId)}</strong></td>
           <td>${escapeHtml(m.lastName)}</td><td>${escapeHtml(m.firstName)}</td>
           <td>${escapeHtml(m.layOrg || '—')}</td>
@@ -306,7 +375,53 @@
           <td><span class="badge badge-${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
           <td>${canEdit ? `<button class="action-btn btn-edit" onclick="editMember('${escapeHtml(m.memberId)}')">✏️ Edit</button>` : ''}</td>
         </tr>`).join('');
+    const selectAll = document.getElementById('select-all-checkbox');
+    selectAll.checked = list.length > 0 && list.every(m => selectedProfileIds.has(m.memberId));
     updateStats();
+    updateSelectionUI();
+  };
+
+  // ── SELECTION & MEMBER PROFILE ────────────────────────
+  window.toggleMemberSelection = function(id, checked) {
+    if (checked) selectedProfileIds.add(id); else selectedProfileIds.delete(id);
+    const selectAll = document.getElementById('select-all-checkbox');
+    selectAll.checked = currentFilteredList.length > 0 && currentFilteredList.every(m => selectedProfileIds.has(m.memberId));
+    updateSelectionUI();
+  };
+
+  window.toggleSelectAll = function(checked) {
+    currentFilteredList.forEach(m => {
+      if (checked) selectedProfileIds.add(m.memberId); else selectedProfileIds.delete(m.memberId);
+    });
+    renderTable(currentFilteredList);
+  };
+
+  window.clearSelection = function() {
+    selectedProfileIds.clear();
+    renderTable(currentFilteredList);
+  };
+
+  function updateSelectionUI() {
+    document.getElementById('selected-count').textContent = `${selectedProfileIds.size} selected`;
+    document.getElementById('btn-generate-profile').disabled = selectedProfileIds.size === 0;
+  }
+
+  window.openProfileModal = function() {
+    if (selectedProfileIds.size === 0) return;
+    const selected = members.filter(m => selectedProfileIds.has(m.memberId));
+    const area = document.getElementById('profile-print-area');
+    area.innerHTML = selected.map(m => `
+      <div class="profile-card">
+        <h4>${escapeHtml(m.lastName)}, ${escapeHtml(m.firstName)}</h4>
+        <div class="profile-id">Member ID: ${escapeHtml(m.memberId)}</div>
+        <div class="profile-grid">
+          <div class="profile-field"><div class="pf-label">Lay Organization</div><div class="pf-value">${escapeHtml(m.layOrg || '—')}</div></div>
+          <div class="profile-field"><div class="pf-label">Membership Type</div><div class="pf-value">${escapeHtml(m.membershipType)}</div></div>
+          <div class="profile-field"><div class="pf-label">Age-Level</div><div class="pf-value">${escapeHtml(m.ageLevel)}</div></div>
+          <div class="profile-field"><div class="pf-label">Status</div><div class="pf-value">${escapeHtml(m.status)}</div></div>
+        </div>
+      </div>`).join('');
+    openModal('profile-modal');
   };
 
   function updateStats() {
