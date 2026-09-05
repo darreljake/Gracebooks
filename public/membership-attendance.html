@@ -49,6 +49,7 @@
     .success { display: none; background: #d5f5e3; color: #1e8449; padding: 11px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; font-weight: bold; }
     .member-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 18px 0 12px; }
     .member-toolbar input { flex: 1; min-width: 220px; }
+    .member-toolbar select { min-width: 150px; padding: 10px 11px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; background: white; font-family: Arial, sans-serif; }
     .btn-light {
       background: #fff5f5; color: #c0392b; border: 1px solid #f0c7c3; border-radius: 8px;
       padding: 10px 12px; cursor: pointer; font-weight: bold; font-size: 13px;
@@ -147,6 +148,18 @@
     </div>
     <div class="member-toolbar">
       <input type="text" id="member-search" placeholder="Search member name or ID..." oninput="renderMemberRoster()" />
+      <select id="member-org-filter" onchange="renderMemberRoster()">
+        <option value="">All Organizations</option>
+        <option value="UMM">UMM</option>
+        <option value="WSCS">WSCS</option>
+        <option value="MYAF">MYAF</option>
+        <option value="UMYF">UMYF</option>
+        <option value="Children">Children</option>
+      </select>
+      <select id="member-sort" onchange="renderMemberRoster()">
+        <option value="name">Sort by: Name (A-Z)</option>
+        <option value="layOrg">Sort by: Organization</option>
+      </select>
       <button class="btn-light" type="button" onclick="selectActiveMembers()">Select Active</button>
       <button class="btn-light" type="button" onclick="clearSelectedMembers()">Clear</button>
       <span class="muted" id="selected-count">0 members selected</span>
@@ -268,8 +281,9 @@
       .filter(member => selectedMemberIds.has(member.memberId))
       .map(member => ({
         memberId: member.memberId,
-        first: member.first || '',
-        last: member.last || '',
+        firstName: member.firstName || '',
+        lastName: member.lastName || '',
+        layOrg: member.layOrg || '',
         status: member.status || ''
       }));
     if (!serviceDate) return alert('Select a service date.');
@@ -321,19 +335,31 @@
   }
 
   async function loadMembers() {
-    const snap = await db.collection('members').get();
-    members = snap.docs.map(doc => ({ memberId: doc.id, ...doc.data() }))
-      .sort((a, b) => `${a.last || ''} ${a.first || ''}`.localeCompare(`${b.last || ''} ${b.first || ''}`));
+    const snap = await db.collection('membershipRoll').get();
+    members = snap.docs.map(doc => ({ memberId: doc.id, ...doc.data() }));
     renderMemberRoster();
   }
 
   function renderMemberRoster() {
     const roster = document.getElementById('member-roster');
     const search = document.getElementById('member-search').value.toLowerCase();
-    const filtered = members.filter(member => {
-      const haystack = `${member.memberId || ''} ${member.first || ''} ${member.last || ''} ${member.status || ''}`.toLowerCase();
+    const orgFilter = document.getElementById('member-org-filter').value;
+    const sortBy = document.getElementById('member-sort').value;
+
+    let filtered = members.filter(member => {
+      if (orgFilter && member.layOrg !== orgFilter) return false;
+      const haystack = `${member.memberId || ''} ${member.firstName || ''} ${member.lastName || ''} ${member.status || ''} ${member.layOrg || ''} ${member.membershipType || ''}`.toLowerCase();
       return !search || haystack.includes(search);
     });
+
+    filtered = filtered.slice().sort((a, b) => {
+      if (sortBy === 'layOrg') {
+        const orgCmp = (a.layOrg || '').localeCompare(b.layOrg || '');
+        if (orgCmp !== 0) return orgCmp;
+      }
+      return `${a.lastName || ''} ${a.firstName || ''}`.localeCompare(`${b.lastName || ''} ${b.firstName || ''}`);
+    });
+
     document.getElementById('selected-count').textContent = `${selectedMemberIds.size} members selected`;
     if (!filtered.length) {
       roster.innerHTML = '<div class="empty">No members found.</div>';
@@ -342,8 +368,9 @@
     roster.innerHTML = filtered.map(member => {
       const id = escapeHtml(member.memberId || '');
       const checked = selectedMemberIds.has(member.memberId) ? 'checked' : '';
-      const name = escapeHtml(`${member.last || ''}, ${member.first || ''}`.replace(/^, /, '').trim() || member.memberId || 'Member');
-      const meta = escapeHtml(`${member.memberId || ''}${member.status ? ' - ' + member.status : ''}`);
+      const name = escapeHtml(`${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId || 'Member');
+      const metaParts = [member.memberId || '', member.layOrg || '', member.status || ''].filter(Boolean);
+      const meta = escapeHtml(metaParts.join(' - '));
       return `
         <label class="member-item">
           <input type="checkbox" value="${id}" ${checked} onchange="toggleMember('${id}', this.checked)" />
