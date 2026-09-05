@@ -1,0 +1,32 @@
+name: Seed Membership Roll
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Actually write changes? Leave as dry_run to only preview first.'
+        required: true
+        default: 'dry_run'
+        type: choice
+        options:
+          - dry_run
+          - apply
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Run seed
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_APPLY: ${{ inputs.apply == 'apply' && 'true' || 'false' }}
+        run: node scripts/seed-membership-roll.js
