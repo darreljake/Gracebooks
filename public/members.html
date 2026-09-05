@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Membership List — GraceBooks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; min-height: 100vh; }
+    .topbar { background: #1a5276; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .topbar h2 { font-size: 20px; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
+    .card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 24px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #d6eaf8; flex-wrap: wrap; gap: 10px; }
+    .card-header h3 { color: #1a5276; font-size: 18px; }
+    .muted { color: #888; font-size: 12px; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: bold; }
+    .btn-add { background: #1a5276; color: white; }
+    .btn-csv { background: #1e8449; color: white; }
+    .btn-template { background: #f0f4f8; color: #555; border: 1px solid #ddd; }
+    .stats-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-box { background: #f0f4f8; border-radius: 8px; padding: 14px 20px; text-align: center; border-left: 4px solid #1a5276; flex: 1; min-width: 90px; }
+    .stat-box .s-num { font-size: 24px; font-weight: bold; color: #1a5276; }
+    .stat-box .s-label { font-size: 12px; color: #888; margin-top: 4px; }
+
+    .org-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .org-box { background: #eaf3fb; border-radius: 8px; padding: 12px 18px; text-align: center; flex: 1; min-width: 90px; }
+    .org-box .o-num { font-size: 20px; font-weight: bold; color: #1a5276; }
+    .org-box .o-label { font-size: 11px; color: #666; margin-top: 4px; }
+
+    .controls-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .search-bar { flex: 2; min-width: 200px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .sort-select { flex: 1; min-width: 160px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: white; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #1a5276; color: white; padding: 10px 12px; text-align: left; white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+    .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+    .badge-active { background: #d5f5e3; color: #1e8449; }
+    .badge-inactive { background: #fadbd8; color: #c0392b; }
+    .badge-overseas { background: #fdebd0; color: #d35400; }
+    .badge-professing-member { background: #d6eaf8; color: #1a5276; }
+    .badge-baptized-member { background: #d5f5e3; color: #1e8449; }
+    .badge-pastor { background: #e8daef; color: #7d3c98; }
+    .badge-deaconess { background: #e8daef; color: #7d3c98; }
+    .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; }
+    .btn-edit { background: #d6eaf8; color: #1a5276; }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: white; border-radius: 12px; padding: 30px; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: bold; }
+    .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; }
+
+    .modal-btns { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .btn-modal-save { width: 100%; padding: 12px; background: #1a5276; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .btn-modal-delete { width: 100%; padding: 10px; background: #f9ebeb; color: #c0392b; border: 1px solid #fadbd8; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 12px; }
+    .btn-modal-cancel { background: none; border: none; color: #888; cursor: pointer; padding: 5px; }
+
+    .csv-drop { border: 2px dashed #a9dfbf; border-radius: 8px; padding: 30px; text-align: center; color: #888; cursor: pointer; margin-bottom: 16px; }
+    .empty-state { text-align: center; padding: 30px; color: #888; }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <h2>📋 Membership List</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+</div>
+
+<div class="container">
+  <div class="card" id="not-allowed-card" style="display:none;">
+    <div class="empty-state">You do not have access to this page.</div>
+  </div>
+
+  <div id="members-page" style="display:none;">
+    <div class="card">
+      <div class="card-header">
+        <h3>Official Membership Roll</h3>
+        <div class="muted" id="role-label"></div>
+      </div>
+
+      <div class="success" id="success-msg" style="display:none; background:#d5f5e3; color:#1e8449; padding:10px; border-radius:8px; margin-bottom:10px; text-align:center;"></div>
+
+      <div class="stats-row">
+        <div class="stat-box"><div class="s-num" id="stat-total">0</div><div class="s-label">Total</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-active">0</div><div class="s-label">Active</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-inactive">0</div><div class="s-label">Inactive</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-overseas">0</div><div class="s-label">Overseas</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-professing">0</div><div class="s-label">Professing</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-baptized">0</div><div class="s-label">Baptized</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-clergy">0</div><div class="s-label">Pastor / Deaconess</div></div>
+      </div>
+
+      <div class="card-header" style="border:none; margin-bottom:10px; padding-bottom:0;">
+        <h3 style="font-size:14px;">Lay Organization / Age-Level Fellowship</h3>
+      </div>
+      <div class="org-row">
+        <div class="org-box"><div class="o-num" id="org-umm">0</div><div class="o-label">UMM</div></div>
+        <div class="org-box"><div class="o-num" id="org-wscs">0</div><div class="o-label">WSCS</div></div>
+        <div class="org-box"><div class="o-num" id="org-myaf">0</div><div class="o-label">MYAF</div></div>
+        <div class="org-box"><div class="o-num" id="org-umyf">0</div><div class="o-label">UMYF</div></div>
+        <div class="org-box"><div class="o-num" id="org-children">0</div><div class="o-label">Children</div></div>
+      </div>
+
+      <div class="btn-group" id="edit-controls" style="margin-bottom:20px;">
+        <button class="btn btn-template" onclick="downloadTemplate()">📄 CSV Template</button>
+        <button class="btn btn-csv" onclick="openCsvModal()">📂 Upload CSV</button>
+        <button class="btn btn-add" onclick="openAddModal()">+ Add Member</button>
+      </div>
+
+      <div class="controls-row">
+        <input type="text" class="search-bar" id="search-input" placeholder="🔍 Search by name or ID..." oninput="handleSearchSort()" />
+        <select class="sort-select" id="sort-select" onchange="handleSearchSort()">
+          <option value="lastName">Sort by: Name (A-Z)</option>
+          <option value="memberId">Sort by: Member ID</option>
+          <option value="membershipType">Sort by: Membership Type</option>
+          <option value="layOrg">Sort by: Lay Organization</option>
+          <option value="status">Sort by: Status</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Member ID</th><th>Last Name</th><th>First Name</th><th>Lay Org</th><th>Membership Type</th><th>Age-Level</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="members-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="member-modal">
+  <div class="modal-box">
+    <h3 id="modal-title">➕ Add New Member</h3>
+    <br>
+    <div class="form-group"><label>Member ID</label><input type="text" id="m-id" /></div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
+      <div class="form-group" style="flex:1;"><label>First Name</label><input type="text" id="m-firstname" /></div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Lay Organization</label>
+        <select id="m-layorg">
+          <option value="">— None —</option>
+          <option>UMM</option><option>WSCS</option><option>MYAF</option><option>UMYF</option><option>Children</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Membership Type</label>
+        <select id="m-type" onchange="syncAgeLevelWithType()">
+          <option>Professing Member</option><option>Baptized Member</option><option>Pastor</option><option>Deaconess</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Age-Level</label>
+        <select id="m-agelevel">
+          <option>Adult</option><option>Young Adult</option><option>Youth</option><option>Child</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Status</label>
+        <select id="m-status"><option>Active</option><option>Inactive</option><option>Overseas</option></select>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-modal-save" id="btn-save-member" onclick="saveMember()">💾 Save Member</button>
+      <button class="btn-modal-delete" id="btn-delete-member" style="display:none;" onclick="confirmDelete()">🗑️ Delete Member</button>
+      <button class="btn-modal-cancel" onclick="closeModal('member-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="csv-modal">
+    <div class="modal-box">
+        <h3>📂 Upload CSV</h3>
+        <div class="csv-drop" onclick="document.getElementById('csv-file-input').click()">
+            Click to select CSV File
+            <input type="file" id="csv-file-input" accept=".csv" style="display:none;" onchange="handleCsvFile(event)" />
+        </div>
+        <div id="csv-preview" style="display:none; font-size:12px; background:#f9f9f9; padding:10px; border-radius:5px; margin-bottom:10px;"></div>
+        <button class="btn-import" id="btn-import" style="display:none; width:100%; background:#1e8449; color:white; padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;" onclick="importCsv()">✅ Import Members</button>
+        <button class="btn-modal-cancel" style="width:100%; margin-top:5px;" onclick="closeModal('csv-modal')">Cancel</button>
+    </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const VIEW_ROLES = ['Treasurer', 'Membership Secretary'];
+  const EDIT_ROLES = ['Treasurer', 'Membership Secretary'];
+
+  let activeUserProfile = null;
+  let canEdit = false;
+  let members = [];
+  let csvParsed = [];
+  let editingId = null;
+
+  window.graceBooksAuthReady.then(profile => {
+    activeUserProfile = profile;
+    if (!VIEW_ROLES.includes(profile.role)) {
+      document.getElementById('not-allowed-card').style.display = 'block';
+      return;
+    }
+    canEdit = EDIT_ROLES.includes(profile.role);
+    document.getElementById('members-page').style.display = 'block';
+    document.getElementById('role-label').textContent = profile.role;
+    document.getElementById('edit-controls').style.display = canEdit ? 'flex' : 'none';
+    loadMembers();
+  });
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function badgeClass(value) {
+    return String(value || '').toLowerCase().replace(/\s+/g, '-');
+  }
+
+  async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: 'membershipRoll',
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '',
+      actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  // ── LOAD DATA ────────────────────────────────────
+  async function loadMembers() {
+    const snapshot = await db.collection('membershipRoll').get();
+    members = snapshot.docs.map(doc => ({ memberId: doc.id, ...doc.data() }));
+    handleSearchSort();
+  }
+
+  // ── SEARCH & SORT LOGIC ───────────────────────────
+  window.handleSearchSort = function() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const sortBy = document.getElementById('sort-select').value;
+
+    let filtered = members.filter(m =>
+      (m.memberId || '').toLowerCase().includes(q) ||
+      (m.lastName || '').toLowerCase().includes(q) ||
+      (m.firstName || '').toLowerCase().includes(q)
+    );
+
+    filtered.sort((a, b) => {
+      let valA = (a[sortBy] || '').toLowerCase();
+      let valB = (b[sortBy] || '').toLowerCase();
+      return valA.localeCompare(valB);
+    });
+
+    renderTable(filtered);
+  };
+
+  window.renderTable = function(list) {
+    const tbody = document.getElementById('members-body');
+    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:20px;">No members found.</td></tr>' :
+      list.map(m => `
+        <tr>
+          <td><strong>${escapeHtml(m.memberId)}</strong></td>
+          <td>${escapeHtml(m.lastName)}</td><td>${escapeHtml(m.firstName)}</td>
+          <td>${escapeHtml(m.layOrg || '—')}</td>
+          <td><span class="badge badge-${badgeClass(m.membershipType)}">${escapeHtml(m.membershipType)}</span></td>
+          <td>${escapeHtml(m.ageLevel)}</td>
+          <td><span class="badge badge-${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
+          <td>${canEdit ? `<button class="action-btn btn-edit" onclick="editMember('${escapeHtml(m.memberId)}')">✏️ Edit</button>` : ''}</td>
+        </tr>`).join('');
+    updateStats();
+  };
+
+  function updateStats() {
+    document.getElementById('stat-total').textContent = members.length;
+    document.getElementById('stat-active').textContent = members.filter(m => m.status === 'Active').length;
+    document.getElementById('stat-inactive').textContent = members.filter(m => m.status === 'Inactive').length;
+    document.getElementById('stat-overseas').textContent = members.filter(m => m.status === 'Overseas').length;
+    document.getElementById('stat-professing').textContent = members.filter(m => m.membershipType === 'Professing Member').length;
+    document.getElementById('stat-baptized').textContent = members.filter(m => m.membershipType === 'Baptized Member').length;
+    document.getElementById('stat-clergy').textContent = members.filter(m => m.membershipType === 'Pastor' || m.membershipType === 'Deaconess').length;
+
+    document.getElementById('org-umm').textContent = members.filter(m => m.layOrg === 'UMM').length;
+    document.getElementById('org-wscs').textContent = members.filter(m => m.layOrg === 'WSCS').length;
+    document.getElementById('org-myaf').textContent = members.filter(m => m.layOrg === 'MYAF').length;
+    document.getElementById('org-umyf').textContent = members.filter(m => m.layOrg === 'UMYF').length;
+    document.getElementById('org-children').textContent = members.filter(m => m.layOrg === 'Children').length;
+  }
+
+  // ── MODAL LOGIC ──────────────────────────────────────
+  window.openModal = (id) => document.getElementById(id).classList.add('active');
+  window.closeModal = (id) => document.getElementById(id).classList.remove('active');
+
+  window.syncAgeLevelWithType = function() {
+    const type = document.getElementById('m-type').value;
+    const ageSelect = document.getElementById('m-agelevel');
+    if (type === 'Pastor' || type === 'Deaconess') {
+      ageSelect.value = type;
+      ageSelect.disabled = true;
+    } else {
+      ageSelect.disabled = false;
+      if (ageSelect.value === 'Pastor' || ageSelect.value === 'Deaconess') ageSelect.value = 'Adult';
+    }
+  };
+
+  function ensureAgeLevelOption(value) {
+    const ageSelect = document.getElementById('m-agelevel');
+    if (value && !['Adult', 'Young Adult', 'Youth', 'Child'].includes(value) && !ageSelect.querySelector(`option[value="${value}"]`)) {
+      const opt = document.createElement('option');
+      opt.textContent = value;
+      ageSelect.appendChild(opt);
+    }
+  }
+
+  window.openAddModal = () => {
+    if (!canEdit) return;
+    editingId = null;
+    document.getElementById('modal-title').textContent = '➕ Add New Member';
+    document.getElementById('btn-delete-member').style.display = 'none';
+    document.getElementById('m-id').disabled = false;
+    ['m-id', 'm-lastname', 'm-firstname'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-layorg').value = '';
+    document.getElementById('m-type').value = 'Professing Member';
+    document.getElementById('m-agelevel').disabled = false;
+    document.getElementById('m-agelevel').value = 'Adult';
+    document.getElementById('m-status').value = 'Active';
+    openModal('member-modal');
+  };
+
+  window.editMember = (id) => {
+    if (!canEdit) return;
+    const m = members.find(x => x.memberId === id);
+    if (!m) return;
+    editingId = id;
+    document.getElementById('modal-title').textContent = '✏️ Edit Member';
+    document.getElementById('btn-delete-member').style.display = 'block';
+
+    document.getElementById('m-id').value = m.memberId;
+    document.getElementById('m-id').disabled = true;
+    document.getElementById('m-lastname').value = m.lastName || '';
+    document.getElementById('m-firstname').value = m.firstName || '';
+    document.getElementById('m-layorg').value = m.layOrg || '';
+    ensureAgeLevelOption(m.ageLevel);
+    document.getElementById('m-type').value = m.membershipType || 'Professing Member';
+    document.getElementById('m-agelevel').value = m.ageLevel || 'Adult';
+    document.getElementById('m-status').value = m.status || 'Active';
+    syncAgeLevelWithType();
+    openModal('member-modal');
+  };
+
+  // ── SAVE & DELETE ────────────────────────────────────
+  window.saveMember = async () => {
+    if (!canEdit) return;
+    const id = document.getElementById('m-id').value.trim();
+    if (!id) return alert('Member ID Required');
+
+    const data = {
+      memberId: id,
+      lastName: document.getElementById('m-lastname').value.trim(),
+      firstName: document.getElementById('m-firstname').value.trim(),
+      layOrg: document.getElementById('m-layorg').value,
+      membershipType: document.getElementById('m-type').value,
+      ageLevel: document.getElementById('m-agelevel').value,
+      status: document.getElementById('m-status').value
+    };
+
+    try {
+      const before = editingId ? (members.find(x => x.memberId === editingId) || null) : null;
+      await db.collection('membershipRoll').doc(id).set(data);
+      await writeAuditLog(before ? 'member_updated' : 'member_created', id, before, data, `${before ? 'Updated' : 'Added'} member ${data.lastName}, ${data.firstName}`);
+      await loadMembers();
+      closeModal('member-modal');
+      showSuccess('Member saved successfully!');
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
+  window.confirmDelete = async () => {
+    if (!canEdit || !editingId) return;
+    const before = members.find(x => x.memberId === editingId);
+    if (confirm(`Are you sure you want to delete ${editingId}? This cannot be undone.`)) {
+      try {
+        await db.collection('membershipRoll').doc(editingId).delete();
+        await writeAuditLog('member_deleted', editingId, before || null, null, `Deleted member ${editingId}`);
+        await loadMembers();
+        closeModal('member-modal');
+        showSuccess('Member deleted.');
+      } catch (e) { alert('Error deleting: ' + e.message); }
+    }
+  };
+
+  // ── CSV & UTILS ──────────────────────────────────────
+  window.openCsvModal = () => {
+    if (!canEdit) return;
+    document.getElementById('csv-preview').style.display = 'none';
+    document.getElementById('btn-import').style.display = 'none';
+    openModal('csv-modal');
+  };
+
+  window.handleCsvFile = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const lines = e.target.result.split('\n');
+      csvParsed = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length < 2 || !cols[1]) continue;
+        csvParsed.push({
+          memberId: cols[0] || `M${Date.now()}${i}`,
+          lastName: cols[1], firstName: cols[2] || '',
+          layOrg: cols[3] || '', membershipType: cols[4] || 'Professing Member',
+          ageLevel: cols[5] || 'Adult', status: cols[6] || 'Active'
+        });
+      }
+      document.getElementById('csv-preview').style.display = 'block';
+      document.getElementById('csv-preview').innerText = `Found ${csvParsed.length} members in file.`;
+      document.getElementById('btn-import').style.display = 'block';
+    };
+    reader.readAsText(file);
+  };
+
+  window.importCsv = async () => {
+    if (!canEdit) return;
+    for (const m of csvParsed) {
+      await db.collection('membershipRoll').doc(m.memberId).set(m);
+    }
+    await writeAuditLog('members_imported', null, null, { count: csvParsed.length }, `Imported ${csvParsed.length} members via CSV`);
+    await loadMembers();
+    closeModal('csv-modal');
+    showSuccess(`Imported ${csvParsed.length} members!`);
+  };
+
+  function showSuccess(msg) {
+    const el = document.getElementById('success-msg');
+    el.textContent = msg; el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+  }
+
+  window.downloadTemplate = () => {
+    const csv = `MemberID,LastName,FirstName,LayOrg,MembershipType,AgeLevel,Status\nM0001,Delacruz,Juan,UMM,Professing Member,Adult,Active`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'membership-template.csv'; a.click();
+  };
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
+</body>
+</html>

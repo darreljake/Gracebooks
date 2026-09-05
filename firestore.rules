@@ -65,6 +65,16 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
     }
 
+    match /membershipRoll/{docId} {
+      // The actual official church membership roll (members.html) - distinct
+      // from the `members` collection above, which despite its name is the
+      // tither roster used by tithers.html/attendance/member-report and is
+      // left untouched. Not yet wired into attendance; that switch is
+      // deliberately deferred to a later, explicitly-requested change.
+      allow read: if hasRole(['Treasurer', 'Membership Secretary']);
+      allow create, update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
+    }
+
     match /churchObligations/{docId} {
       allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer']);
