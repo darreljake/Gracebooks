@@ -60,6 +60,8 @@
     .badge-deaconess { background: #e8daef; color: #7d3c98; }
     .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; }
     .btn-edit { background: #d6eaf8; color: #1a5276; }
+    @keyframes row-highlight-fade { from { background: #fdf3c8; } to { background: transparent; } }
+    tr.row-highlight { animation: row-highlight-fade 2.5s ease-out; }
 
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
     .modal-overlay.active { display: flex; }
@@ -174,7 +176,7 @@
   <div class="modal-box">
     <h3 id="modal-title">➕ Add New Member</h3>
     <br>
-    <div class="form-group"><label>Member ID</label><input type="text" id="m-id" /></div>
+    <div class="form-group"><label>Member ID (auto-generated)</label><input type="text" id="m-id" /></div>
     <div style="display:flex; gap:10px;">
       <div class="form-group" style="flex:1;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
       <div class="form-group" style="flex:1;"><label>First Name</label><input type="text" id="m-firstname" /></div>
@@ -365,7 +367,7 @@
     const tbody = document.getElementById('members-body');
     tbody.innerHTML = list.length === 0 ? '<tr><td colspan="9" style="text-align:center; padding:20px;">No members found.</td></tr>' :
       list.map(m => `
-        <tr>
+        <tr data-member-id="${escapeHtml(m.memberId)}">
           <td class="select-col"><input type="checkbox" ${selectedProfileIds.has(m.memberId) ? 'checked' : ''} onchange="toggleMemberSelection('${escapeHtml(m.memberId)}', this.checked)" /></td>
           <td><strong>${escapeHtml(m.memberId)}</strong></td>
           <td>${escapeHtml(m.lastName)}</td><td>${escapeHtml(m.firstName)}</td>
@@ -502,13 +504,38 @@
     }
   }
 
+  // Next sequential ID after the highest "M####"-style ID currently in use.
+  // Caps at 6 digits so a stray non-sequential ID (e.g. a CSV-imported
+  // timestamp fallback) can't inflate the sequence.
+  function nextMemberId() {
+    let maxNum = 0;
+    members.forEach(m => {
+      const match = /^M(\d{1,6})$/i.exec(m.memberId || '');
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+    });
+    return 'M' + String(maxNum + 1).padStart(4, '0');
+  }
+
+  function highlightMember(id) {
+    document.getElementById('search-input').value = '';
+    handleSearchSort();
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`#members-body tr[data-member-id="${CSS.escape(id)}"]`);
+      if (!row) return;
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('row-highlight');
+      setTimeout(() => row.classList.remove('row-highlight'), 2500);
+    });
+  }
+
   window.openAddModal = () => {
     if (!canEdit) return;
     editingId = null;
     document.getElementById('modal-title').textContent = '➕ Add New Member';
     document.getElementById('btn-delete-member').style.display = 'none';
-    document.getElementById('m-id').disabled = false;
-    ['m-id', 'm-lastname', 'm-firstname'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-id').value = nextMemberId();
+    document.getElementById('m-id').disabled = true;
+    ['m-lastname', 'm-firstname'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('m-layorg').value = '';
     document.getElementById('m-type').value = 'Professing Member';
     document.getElementById('m-agelevel').disabled = false;
@@ -556,11 +583,13 @@
 
     try {
       const before = editingId ? (members.find(x => x.memberId === editingId) || null) : null;
+      const isNew = !editingId;
       await db.collection('membershipRoll').doc(id).set(data);
       await writeAuditLog(before ? 'member_updated' : 'member_created', id, before, data, `${before ? 'Updated' : 'Added'} member ${data.lastName}, ${data.firstName}`);
       await loadMembers();
       closeModal('member-modal');
       showSuccess('Member saved successfully!');
+      if (isNew) highlightMember(id);
     } catch (e) { alert('Error: ' + e.message); }
   };
 
