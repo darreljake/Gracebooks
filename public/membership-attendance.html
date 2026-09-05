@@ -203,6 +203,52 @@
       </div>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Monthly Summary</h3>
+      <span class="muted">All recorded months, most recent first</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Weeks Recorded</th>
+            <th>Total Attendance</th>
+            <th>Avg Attendance / Week</th>
+            <th>Total Guests</th>
+          </tr>
+        </thead>
+        <tbody id="monthly-summary-body">
+          <tr><td colspan="5" class="empty">Loading monthly summary...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Yearly Summary</h3>
+      <span class="muted">All recorded years, most recent first</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th>Weeks Recorded</th>
+            <th>Total Attendance</th>
+            <th>Avg Attendance / Week</th>
+            <th>Total Guests</th>
+          </tr>
+        </thead>
+        <tbody id="yearly-summary-body">
+          <tr><td colspan="5" class="empty">Loading yearly summary...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -218,6 +264,7 @@
   const db = firebase.firestore();
   let activeUserProfile = null;
   let attendanceRecords = [];
+  let recentAttendanceRecords = [];
   let members = [];
   let selectedMemberIds = new Set();
 
@@ -326,12 +373,15 @@
   }
 
   async function loadAttendance() {
-    const snap = await db.collection('attendance').orderBy('serviceDate', 'desc').limit(24).get();
+    const snap = await db.collection('attendance').orderBy('serviceDate', 'desc').get();
     attendanceRecords = snap.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(row => row.entryType === 'weekly' || row.serviceDate);
+    recentAttendanceRecords = attendanceRecords.slice(0, 24);
     renderAttendanceChart();
     renderAttendance();
+    renderMonthlySummary();
+    renderYearlySummary();
   }
 
   async function loadMembers() {
@@ -419,7 +469,7 @@
 
   function renderAttendanceChart() {
     const chart = document.getElementById('attendance-chart');
-    const rows = attendanceRecords
+    const rows = recentAttendanceRecords
       .filter(row => row.serviceDate)
       .slice()
       .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
@@ -478,11 +528,11 @@
 
   function renderAttendance() {
     const body = document.getElementById('attendance-body');
-    if (!attendanceRecords.length) {
+    if (!recentAttendanceRecords.length) {
       body.innerHTML = '<tr><td colspan="6" class="empty">No weekly attendance records yet.</td></tr>';
       return;
     }
-    body.innerHTML = attendanceRecords.map(row => `
+    body.innerHTML = recentAttendanceRecords.map(row => `
       <tr>
         <td>${escapeHtml(row.serviceDate || row.monthKey || '-')}</td>
         <td><strong>${Number(row.attendance || 0).toLocaleString('en-PH')}</strong></td>
@@ -490,6 +540,66 @@
         <td>${Number(row.guests || 0).toLocaleString('en-PH')}</td>
         <td>${escapeHtml(row.notes || '-')}</td>
         <td class="muted">${escapeHtml(row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function monthLabel(monthKey) {
+    if (!monthKey) return '-';
+    const [year, month] = monthKey.split('-');
+    const date = new Date(Number(year), Number(month) - 1, 1);
+    if (Number.isNaN(date.getTime())) return monthKey;
+    return date.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+  }
+
+  function summarizeBy(keyFn, labelFn) {
+    const groups = new Map();
+    attendanceRecords.filter(row => row.serviceDate).forEach(row => {
+      const key = keyFn(row);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, { key, weeks: 0, totalAttendance: 0, totalGuests: 0 });
+      const group = groups.get(key);
+      group.weeks += 1;
+      group.totalAttendance += Number(row.attendance || 0);
+      group.totalGuests += Number(row.guests || 0);
+    });
+    return Array.from(groups.values())
+      .map(group => ({ ...group, label: labelFn(group.key), avgAttendance: group.weeks ? Math.round(group.totalAttendance / group.weeks) : 0 }))
+      .sort((a, b) => String(b.key).localeCompare(String(a.key)));
+  }
+
+  function renderMonthlySummary() {
+    const body = document.getElementById('monthly-summary-body');
+    const rows = summarizeBy(row => row.monthKey, monthLabel);
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No weekly attendance records yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(row => `
+      <tr>
+        <td><strong>${escapeHtml(row.label)}</strong></td>
+        <td>${row.weeks.toLocaleString('en-PH')}</td>
+        <td>${row.totalAttendance.toLocaleString('en-PH')}</td>
+        <td>${row.avgAttendance.toLocaleString('en-PH')}</td>
+        <td>${row.totalGuests.toLocaleString('en-PH')}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderYearlySummary() {
+    const body = document.getElementById('yearly-summary-body');
+    const rows = summarizeBy(row => (row.year ? String(row.year) : ''), key => key || '-');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No weekly attendance records yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(row => `
+      <tr>
+        <td><strong>${escapeHtml(row.label)}</strong></td>
+        <td>${row.weeks.toLocaleString('en-PH')}</td>
+        <td>${row.totalAttendance.toLocaleString('en-PH')}</td>
+        <td>${row.avgAttendance.toLocaleString('en-PH')}</td>
+        <td>${row.totalGuests.toLocaleString('en-PH')}</td>
       </tr>
     `).join('');
   }
