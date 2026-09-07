@@ -393,6 +393,7 @@
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+<script src="receipt-annotator.js"></script>
 
 <script>
   const firebaseConfig = {
@@ -588,18 +589,30 @@
           docRef.id,
           oldReceiptPath ? { receiptPath: oldReceiptPath } : null,
           { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
-          oldReceiptPath ? `Replaced receipt for expense ${docRef.id}` : `Uploaded receipt for expense ${docRef.id}`
+          oldReceiptPath
+              ? `Replaced receipt for expense ${docRef.id} (previous highlights cleared)`
+              : `Uploaded receipt for expense ${docRef.id}`
       );
       const receiptUrl = await receiptRef.getDownloadURL();
       if (oldReceiptPath) {
           try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }
       }
-      return {
+      const payload = {
           receiptName: receiptFile.name,
           receiptPath,
           receiptUrl,
           receiptUploadedAt: new Date().toISOString()
       };
+      if (oldReceiptPath) {
+          // Highlights drawn on the old receipt image are meaningless once
+          // it's replaced with a different image - clear them along with
+          // the now-stale sharing flag from a copied liquidation receipt.
+          payload.receiptAnnotations = [];
+          payload.receiptAnnotationsUpdatedAt = firebase.firestore.FieldValue.delete();
+          payload.receiptAnnotationsUpdatedBy = firebase.firestore.FieldValue.delete();
+          payload.receiptSharedFromLiquidation = firebase.firestore.FieldValue.delete();
+      }
+      return payload;
   }
 
   function getReceiptContentType(receiptFile) {
@@ -720,15 +733,27 @@
   function openReceiptViewer(docId) {
       const record = allExpenseRecords.find(e => e.id === docId);
       if (!record || !record.receiptUrl) return;
-      document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt / Voucher';
-      const isPdf = (record.receiptName || '').toLowerCase().endsWith('.pdf');
-      document.getElementById('receipt-viewer-body').innerHTML = isPdf
-          ? `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
-               <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
-               <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger view">Open PDF in New Tab</a>
-             </div>`
-          : `<img class="receipt-frame" src="${escapeHtml(record.receiptUrl)}" alt="Receipt image">`;
-      document.getElementById('receiptViewerModal').style.display = 'flex';
+      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(record.receiptName, record.receiptUrl);
+      if (isPdf) {
+          document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt / Voucher';
+          document.getElementById('receipt-viewer-body').innerHTML =
+              `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+                 <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+                 <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger view">Open PDF in New Tab</a>
+                 <p class="muted" style="margin:0; color:#999; font-size:12px;">Highlighting is available for image receipts (JPG/PNG). Open the PDF to review it.</p>
+               </div>`;
+          document.getElementById('receiptViewerModal').style.display = 'flex';
+          return;
+      }
+      window.GraceBooksAnnotator.open({
+          title: record.receiptName || 'Receipt / Voucher',
+          imageUrl: record.receiptUrl,
+          fileName: record.receiptName || '',
+          subtitle: `${record.category || record.sub || 'Expense'} — ₱${Number(record.amount || 0).toLocaleString('en-PH')}`,
+          annotations: record.receiptAnnotations || [],
+          editable: canManageExpenses(),
+          onSave: (annotations) => saveReceiptAnnotations(docId, annotations)
+      });
   }
 
   function closeReceiptViewer() {
@@ -736,21 +761,57 @@
       document.getElementById('receiptViewerModal').style.display = 'none';
   }
 
+  async function saveReceiptAnnotations(docId, annotations) {
+      if (!canManageExpenses()) throw new Error('Only the Treasurer can highlight receipts.');
+      const record = allExpenseRecords.find(e => e.id === docId);
+      const nowIso = new Date().toISOString();
+      const actorName = activeUserProfile ? activeUserProfile.name : '';
+      await db.collection('expenses').doc(docId).update({
+          receiptAnnotations: annotations,
+          receiptAnnotationsUpdatedAt: nowIso,
+          receiptAnnotationsUpdatedBy: actorName
+      });
+      await writeAuditLog(
+          'receipt_annotations_updated',
+          docId,
+          { receiptAnnotations: (record && record.receiptAnnotations) || [] },
+          { receiptAnnotations: annotations },
+          `Updated ${annotations.length} receipt highlight(s) on ${(record && record.category) || 'expense'}`
+      );
+      if (record) {
+          record.receiptAnnotations = annotations;
+          record.receiptAnnotationsUpdatedAt = nowIso;
+          record.receiptAnnotationsUpdatedBy = actorName;
+      }
+      listenToLedger();
+  }
+
   async function removeExpenseReceipt(docId) {
       if (!canManageExpenses()) return alert('Only the Treasurer can remove receipts.');
       const record = allExpenseRecords.find(e => e.id === docId);
       if (!record || !record.receiptPath) return alert('No receipt is attached to this expense.');
       if (!confirm('Remove this receipt/voucher from the expense?')) return;
-      try {
-          await storage.ref(record.receiptPath).delete();
-      } catch (error) {
-          console.warn(error);
+      // The file physically lives under liquidation-receipts/... and is
+      // still owned by the originating liquidation request when this
+      // expense's receipt was copied over during reconciliation - never
+      // delete the underlying Storage object in that case, only clear the
+      // Firestore fields on this expense.
+      if (!record.receiptSharedFromLiquidation) {
+          try {
+              await storage.ref(record.receiptPath).delete();
+          } catch (error) {
+              console.warn(error);
+          }
       }
       await db.collection('expenses').doc(docId).update({
           receiptName: firebase.firestore.FieldValue.delete(),
           receiptPath: firebase.firestore.FieldValue.delete(),
           receiptUrl: firebase.firestore.FieldValue.delete(),
-          receiptUploadedAt: firebase.firestore.FieldValue.delete()
+          receiptUploadedAt: firebase.firestore.FieldValue.delete(),
+          receiptSharedFromLiquidation: firebase.firestore.FieldValue.delete(),
+          receiptAnnotations: firebase.firestore.FieldValue.delete(),
+          receiptAnnotationsUpdatedAt: firebase.firestore.FieldValue.delete(),
+          receiptAnnotationsUpdatedBy: firebase.firestore.FieldValue.delete()
       });
       await writeAuditLog('receipt_removed', docId, record, null, `Removed receipt from ${record.category || 'expense'}`);
       listenToLedger();
@@ -761,7 +822,11 @@
       const record = allExpenseRecords.find(e => e.id === docId);
       if (!record) return alert('Expense record not found.');
       if (!confirm('Delete this expense record? This cannot be undone.')) return;
-      if (record.receiptPath) {
+      // Same safety rule as removeExpenseReceipt(): a receipt copied over
+      // from a liquidation reconciliation is still owned by that request's
+      // receipt pool - deleting this expense must not destroy that evidence
+      // file out from under it.
+      if (record.receiptPath && !record.receiptSharedFromLiquidation) {
           try { await storage.ref(record.receiptPath).delete(); } catch (error) { console.warn(error); }
       }
       await db.collection('expenses').doc(docId).delete();
@@ -1183,8 +1248,11 @@
 
           let accText = e.payment === 'cash-bank' ? 'Bank' : e.payment === 'petty-cash' ? 'Petty Cash' : e.payment === 'building' ? 'Building' : e.payment === 'mission' ? 'Mission' : e.payment === 'investment' ? 'Investment' : 'Cash Hand';
           let receiptName = escapeHtml(e.receiptName || 'Receipt/Voucher');
+          let annotationCount = (e.receiptAnnotations || []).length;
+          let highlightBadge = annotationCount ? `<span style="background:#8B0000; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:6px;">🖍 ${annotationCount}</span>` : '';
+          let receiptViewLabel = canManageExpenses() ? 'View / Highlight' : 'View';
           let receiptHTML = e.receiptUrl
-              ? `<button type="button" class="btn-ledger view" onclick="openReceiptViewer('${e.id}')">View</button><div style="font-size:10px; color:#999; margin-top:4px;">${receiptName}</div>`
+              ? `<button type="button" class="btn-ledger view" onclick="openReceiptViewer('${e.id}')">${receiptViewLabel}</button>${highlightBadge}<div style="font-size:10px; color:#999; margin-top:4px;">${receiptName}</div>`
               : '<span style="color:#aaa;">None</span>';
           let receiptRemoveButton = e.receiptUrl
               ? `<button class="btn-ledger danger" onclick="removeExpenseReceipt('${e.id}')" ${canManageExpenses() ? '' : 'disabled'}>Remove Receipt</button>`

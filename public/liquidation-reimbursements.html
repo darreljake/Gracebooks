@@ -113,6 +113,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
+  <script src="receipt-annotator.js"></script>
 </head>
 <body>
   <div class="topbar">
@@ -320,17 +321,17 @@
       <div class="table-wrap">
         <table class="inner-table">
           <thead>
-            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Suggested Category</th><th></th></tr>
+            <tr><th>Date</th><th>Description</th><th>Amount</th><th>Suggested Category</th><th>Receipts</th><th></th></tr>
           </thead>
           <tbody id="liq-items"></tbody>
         </table>
       </div>
       <button class="btn btn-secondary btn-small" style="margin-top:8px;" onclick="addLiqItem()">+ Add Item</button>
-      <div class="muted" style="margin-top:6px;">Category is a suggestion for the Treasurer's review — the Treasurer has final say when reconciling.</div>
+      <div class="muted" style="margin-top:6px;">Category is a suggestion for the Treasurer's review — the Treasurer has final say when reconciling. Link each item to the receipt(s) that cover it, and highlight the part of a mixed receipt that belongs to it.</div>
       <div class="liq-balance" id="liq-balance"></div>
       <div class="section-label">Receipts / Proof</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple onchange="renderLiqReceiptsPreview()" style="flex:1; min-width:200px;" />
+        <input type="file" id="liq-receipts" accept="image/*,.pdf" multiple onchange="handleLiqReceiptInputChange()" style="flex:1; min-width:200px;" />
         <button type="button" class="btn btn-secondary btn-small" onclick="openLiqCameraModal()">📷 Take Photo</button>
       </div>
       <div class="muted">Attach the official receipts covering the items above (images or PDF, max 5 MB each). Attach as many as you need, or take photos directly with your camera.</div>
@@ -340,6 +341,23 @@
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeLiquidationModal()">Cancel</button>
         <button class="btn" id="liq-submit-btn" onclick="submitLiquidation()">Submit Liquidation</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="receiptPickerModal">
+    <div class="modal-box">
+      <h3>Link Receipts to This Item</h3>
+      <div class="muted" id="receipt-picker-context"></div>
+      <div id="receipt-picker-list" style="margin-top:10px; max-height:260px; overflow-y:auto;"></div>
+      <div class="section-label">Add a New Receipt for This Item</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input type="file" id="receipt-picker-upload" accept="image/*,.pdf" onchange="handleReceiptPickerUpload()" style="flex:1; min-width:180px;" />
+        <button type="button" class="btn btn-secondary btn-small" onclick="openReceiptPickerCamera()">📷 Take Photo</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeReceiptPickerModal()">Cancel</button>
+        <button class="btn" onclick="confirmReceiptPicker()">Link Selected</button>
       </div>
     </div>
   </div>
@@ -400,6 +418,22 @@
     let requestRows = [];
     let staffProfiles = [];
     let dynamicCategories = {};
+
+    // Receipts staged for the currently-open Submit Liquidation modal, not
+    // yet uploaded to Storage. Each entry: { tempId, file, name, objectUrl }.
+    // tempId is always prefixed "tmp-" so submitLiquidation() can tell a
+    // staged file's id apart from a real, already-uploaded receiptId.
+    let stagedReceipts = [];
+    // Per-item receipt links for the currently-open Submit Liquidation
+    // modal, keyed by each <tr>'s data-row-id (readLiqItems() can't recover
+    // this from DOM text alone). Value: { receiptIds: [string], annotations: [{receiptId, ...}] }.
+    let liqItemLinks = new Map();
+    // When set, the next camera capture is linked to this liquidation-item
+    // row (opened via the receipt picker's "Take Photo"); null means a
+    // plain, unlinked capture into the general receipts pool.
+    let liqCameraLinkRowId = null;
+    // The liquidation-item row currently open in the receipt picker modal.
+    let receiptPickerRowId = null;
 
     const PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
 
@@ -547,19 +581,93 @@
       // requester, since any Pastor/Deaconess/Admin Assistant can now
       // complete liquidation for a request in their group.
       const uid = firebase.auth().currentUser.uid;
-      const receiptPath = `liquidation-receipts/${requestId}/${uid}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
+      // The generated token doubles as this receipt's stable receiptId, so
+      // per-item linking (liquidationItems[].receiptIds) and annotations
+      // have something durable to reference even though the file name/path
+      // could theoretically collide across uploads.
+      const receiptId = generateStorageToken();
+      const receiptPath = `liquidation-receipts/${requestId}/${uid}/${receiptId}${safeFileExtension(receiptFile.name)}`;
       const receiptRef = storage.ref(receiptPath);
       await receiptRef.put(receiptFile);
       await writeAuditLog('receipt_uploaded', 'liquidationRequests', requestId, null,
-        { receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
+        { receiptId, receiptName: receiptFile.name, receiptPath, fileSize: receiptFile.size, fileType: receiptFile.type },
         `Uploaded receipt for liquidation request ${requestId}`);
       const receiptUrl = await receiptRef.getDownloadURL();
       return {
+        receiptId,
         receiptName: receiptFile.name,
         receiptPath,
         receiptUrl,
         receiptUploadedAt: new Date().toISOString()
       };
+    }
+
+    // Every uploaded receipt attached anywhere on a request (initial
+    // submission + every liquidation cycle), keyed by receiptId with the
+    // legacy receiptPath fallback for entries saved before this field
+    // existed. Used by the Reconcile and Details modals to resolve a
+    // liquidation item's linked receiptIds into viewable/annotatable files.
+    function receiptPoolFromRow(row) {
+      const existing = (row.liquidationReceipts || []).concat(row.supportingReceipts || []);
+      const seen = new Set();
+      const pool = [];
+      existing.forEach(receipt => {
+        const receiptId = receipt.receiptId || receipt.receiptPath;
+        if (!receiptId || seen.has(receiptId)) return;
+        seen.add(receiptId);
+        pool.push({ receiptId, name: receipt.receiptName || 'Receipt', url: receipt.receiptUrl });
+      });
+      return pool;
+    }
+
+    // Opens the shared annotator against one (liquidation item, receipt)
+    // pair. `editable` is only honored for the Treasurer - everyone else
+    // (Details modal, or a non-Treasurer somehow reaching this) gets a
+    // read-only view, matching the read-only default everywhere else this
+    // annotator is used.
+    function openItemReceiptHighlights(requestId, itemIndex, receiptId, editable) {
+      const row = requestRows.find(item => item.id === requestId);
+      if (!row) return;
+      const items = row.liquidationItems || [];
+      const item = items[itemIndex];
+      if (!item) return;
+      const pool = receiptPoolFromRow(row);
+      const entry = pool.find(p => p.receiptId === receiptId);
+      if (!entry || !entry.url) return alert('Receipt file not available.');
+      const canEdit = !!editable && roleIs('Treasurer');
+      window.GraceBooksAnnotator.open({
+        title: entry.name,
+        imageUrl: entry.url,
+        fileName: entry.name,
+        subtitle: `${item.description || 'Liquidation item'} — ₱${fmt(item.amount)}`,
+        annotations: (item.annotations || []).filter(a => a.receiptId === receiptId),
+        editable: canEdit,
+        onSave: canEdit ? (annotations) => saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations) : undefined
+      });
+    }
+
+    // Treasurer-only: persists highlights drawn from the Reconcile modal
+    // straight back onto liquidationRequests/{id}.liquidationItems, scoped
+    // to the one receipt they were drawn on.
+    async function saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations) {
+      if (!roleIs('Treasurer')) throw new Error('Only the Treasurer can save receipt highlights here.');
+      const row = requestRows.find(item => item.id === requestId);
+      if (!row) throw new Error('Request not found.');
+      const beforeItems = row.liquidationItems || [];
+      const items = beforeItems.map(item => ({ ...item, annotations: (item.annotations || []).slice() }));
+      const item = items[itemIndex];
+      if (!item) throw new Error('Liquidation item not found.');
+      item.annotations = (item.annotations || []).filter(a => a.receiptId !== receiptId)
+        .concat(annotations.map(a => ({ ...a, receiptId })));
+      await db.collection('liquidationRequests').doc(requestId).update({
+        liquidationItems: items,
+        updatedAt: new Date().toISOString()
+      });
+      await writeAuditLog('liquidation_item_receipt_annotations_updated', 'liquidationRequests', requestId,
+        { liquidationItems: beforeItems }, { liquidationItems: items },
+        `Updated ${annotations.length} receipt highlight(s) on item "${item.description || ''}" for request ${requestId}`);
+      row.liquidationItems = items;
+      await loadRequests();
     }
 
     function onRequestTypeChange() {
@@ -902,6 +1010,7 @@
       const row = requestRows.find(item => item.id === id);
       if (!row || !canSelfManageLiquidation() || row.status !== 'Released' || !isCashAdvance(row)) return;
       liquidationTargetId = id;
+      resetLiqStagingState();
       const returnNotice = row.liquidationReturnedNotes
         ? `<div class="liq-balance" style="border-left-color:#a93226; margin-top:10px;"><strong>Returned for correction${row.liquidationReturnedBy ? ' by ' + escapeHtml(row.liquidationReturnedBy) : ''}:</strong> ${escapeHtml(row.liquidationReturnedNotes)}</div>`
         : '';
@@ -911,7 +1020,8 @@
       document.getElementById('liq-receipts').value = '';
       document.getElementById('liq-notes').value = '';
       // If this is a resubmission after being returned, restore the
-      // previous entries so she can fix mistakes instead of starting over.
+      // previous entries (including their receipt links/highlights) so she
+      // can fix mistakes instead of starting over.
       if (row.liquidationItems && row.liquidationItems.length) {
         row.liquidationItems.forEach(item => addLiqItem(item));
       } else {
@@ -924,51 +1034,105 @@
 
     function closeLiquidationModal() {
       liquidationTargetId = null;
+      resetLiqStagingState();
       document.getElementById('liquidationModal').classList.remove('open');
+    }
+
+    // Discards every staged (not-yet-uploaded) receipt for the Submit
+    // Liquidation modal and its per-item links, revoking their object URLs
+    // so we don't leak memory across repeated open/close cycles.
+    function resetLiqStagingState() {
+      stagedReceipts.forEach(staged => { try { URL.revokeObjectURL(staged.objectUrl); } catch (error) {} });
+      stagedReceipts = [];
+      liqItemLinks = new Map();
+    }
+
+    function getItemLink(rowId) {
+      if (!liqItemLinks.has(rowId)) liqItemLinks.set(rowId, { receiptIds: [], annotations: [] });
+      return liqItemLinks.get(rowId);
     }
 
     function addLiqItem(prefill) {
       const item = prefill || {};
+      const rowId = 'liqrow-' + generateStorageToken();
       const tr = document.createElement('tr');
+      tr.dataset.rowId = rowId;
       tr.innerHTML = `
         <td><input type="date" class="liq-date" value="${escapeHtml(item.date || new Date().toISOString().slice(0, 10))}" /></td>
         <td><input type="text" class="liq-desc" placeholder="e.g. Bus fare, meals, supplies" value="${escapeHtml(item.description || '')}" /></td>
         <td><input type="number" class="liq-amt" min="0" step="0.01" placeholder="0.00" value="${item.amount || ''}" oninput="updateLiqBalance()" /></td>
         <td><select class="liq-cat">${categoryDropdownHTML(item.suggestedCategory || '')}</select></td>
-        <td><button class="btn btn-ghost btn-small" onclick="this.closest('tr').remove(); updateLiqBalance();">✕</button></td>`;
+        <td class="liq-receipts-cell"></td>
+        <td><button class="btn btn-ghost btn-small" onclick="removeLiqItemRow(this)">✕</button></td>`;
       document.getElementById('liq-items').appendChild(tr);
+      liqItemLinks.set(rowId, {
+        receiptIds: (item.receiptIds || []).slice(),
+        annotations: (item.annotations || []).map(a => ({ ...a }))
+      });
+      renderItemReceiptsCell(rowId);
+    }
+
+    function removeLiqItemRow(button) {
+      const tr = button.closest('tr');
+      if (tr && tr.dataset.rowId) liqItemLinks.delete(tr.dataset.rowId);
+      if (tr) tr.remove();
+      updateLiqBalance();
     }
 
     /* ---------- Receipt attachments: multi-file preview + camera capture ---------- */
 
-    function getLiqReceiptFiles() {
-      return Array.from(document.getElementById('liq-receipts').files || []);
+    // Stages a File into the shared receipts pool (as a "tmp-" id with an
+    // object URL preview so it can be viewed/annotated before it's ever
+    // uploaded), optionally auto-linking it to one liquidation-item row.
+    function addStagedReceipt(file, linkRowId) {
+      const tempId = 'tmp-' + generateStorageToken();
+      const objectUrl = URL.createObjectURL(file);
+      stagedReceipts.push({ tempId, file, name: file.name, objectUrl });
+      if (linkRowId) {
+        const link = getItemLink(linkRowId);
+        link.receiptIds.push(tempId);
+        renderItemReceiptsCell(linkRowId);
+      }
+      renderLiqReceiptsPreview();
+      return tempId;
     }
 
-    function setLiqReceiptFiles(files) {
-      const dataTransfer = new DataTransfer();
-      files.forEach(file => dataTransfer.items.add(file));
-      document.getElementById('liq-receipts').files = dataTransfer.files;
+    function handleLiqReceiptInputChange() {
+      const input = document.getElementById('liq-receipts');
+      const files = Array.from(input.files || []);
+      input.value = '';
+      for (const file of files) {
+        if (!validateReceiptFile(file)) continue;
+        addStagedReceipt(file, null);
+      }
     }
 
     function renderLiqReceiptsPreview() {
-      const files = getLiqReceiptFiles();
       const wrap = document.getElementById('liq-receipts-preview');
-      if (!files.length) {
+      if (!stagedReceipts.length) {
         wrap.innerHTML = '<div class="muted">No files attached yet.</div>';
         return;
       }
-      wrap.innerHTML = files.map((file, index) => `
+      wrap.innerHTML = stagedReceipts.map(staged => `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; background:#f7f9fb; border:1px solid #edf2f5; border-radius:6px; margin-bottom:4px; font-size:12px;">
-          <span>📎 ${escapeHtml(file.name)} <span class="muted">(${Math.max(1, Math.round(file.size / 1024))} KB)</span></span>
-          <button type="button" class="btn btn-ghost btn-small" onclick="removeLiqReceiptFile(${index})">Remove</button>
+          <span>📎 ${escapeHtml(staged.name)} <span class="muted">(${Math.max(1, Math.round(staged.file.size / 1024))} KB)</span></span>
+          <button type="button" class="btn btn-ghost btn-small" onclick="removeLiqReceiptFile('${staged.tempId}')">Remove</button>
         </div>`).join('');
     }
 
-    function removeLiqReceiptFile(index) {
-      const files = getLiqReceiptFiles();
-      files.splice(index, 1);
-      setLiqReceiptFiles(files);
+    function removeLiqReceiptFile(tempId) {
+      const index = stagedReceipts.findIndex(staged => staged.tempId === tempId);
+      if (index === -1) return;
+      const [removed] = stagedReceipts.splice(index, 1);
+      try { URL.revokeObjectURL(removed.objectUrl); } catch (error) {}
+      // Unlink this staged file (and its highlights) from every item that
+      // referenced it, since the underlying file is gone.
+      liqItemLinks.forEach((link, rowId) => {
+        const wasLinked = link.receiptIds.includes(tempId);
+        link.receiptIds = link.receiptIds.filter(id => id !== tempId);
+        link.annotations = link.annotations.filter(a => a.receiptId !== tempId);
+        if (wasLinked) renderItemReceiptsCell(rowId);
+      });
       renderLiqReceiptsPreview();
     }
 
@@ -1003,6 +1167,7 @@
       }
       document.getElementById('liq-camera-video').srcObject = null;
       document.getElementById('liqCameraModal').classList.remove('open');
+      liqCameraLinkRowId = null;
     }
 
     function captureLiqReceiptPhoto() {
@@ -1019,22 +1184,153 @@
       canvas.toBlob(blob => {
         if (!blob) return alert('Unable to capture photo. Please try again.');
         const file = new File([blob], `receipt-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`, { type: 'image/jpeg' });
-        const files = getLiqReceiptFiles();
-        files.push(file);
-        setLiqReceiptFiles(files);
-        renderLiqReceiptsPreview();
+        addStagedReceipt(file, liqCameraLinkRowId);
         liqCapturedCount++;
         document.getElementById('liq-camera-count').textContent = `${liqCapturedCount} photo(s) captured this session.`;
       }, 'image/jpeg', 0.82);
     }
 
+    /* ---------- Per-item receipt linking + highlighting (Submit Liquidation modal) ---------- */
+
+    // Every receipt available to link into this liquidation: already-
+    // uploaded ones from a prior submission cycle (receiptId falls back to
+    // receiptPath for legacy entries with no receiptId) plus files staged
+    // in this session but not yet uploaded.
+    function getReceiptPoolEntries() {
+      const row = requestRows.find(item => item.id === liquidationTargetId) || {};
+      const existing = (row.liquidationReceipts || []).concat(row.supportingReceipts || []);
+      const seen = new Set();
+      const pool = [];
+      existing.forEach(receipt => {
+        const receiptId = receipt.receiptId || receipt.receiptPath;
+        if (!receiptId || seen.has(receiptId)) return;
+        seen.add(receiptId);
+        pool.push({ receiptId, name: receipt.receiptName || 'Receipt', url: receipt.receiptUrl, staged: false });
+      });
+      stagedReceipts.forEach(staged => {
+        if (seen.has(staged.tempId)) return;
+        seen.add(staged.tempId);
+        pool.push({ receiptId: staged.tempId, name: staged.name, url: staged.objectUrl, staged: true });
+      });
+      return pool;
+    }
+
+    function renderItemReceiptsCell(rowId) {
+      const tr = document.querySelector(`#liq-items tr[data-row-id="${rowId}"]`);
+      if (!tr) return;
+      const cell = tr.querySelector('.liq-receipts-cell');
+      if (!cell) return;
+      const link = getItemLink(rowId);
+      const pool = getReceiptPoolEntries();
+      const chips = link.receiptIds.map(receiptId => {
+        const entry = pool.find(p => p.receiptId === receiptId);
+        const name = entry ? entry.name : '(receipt removed)';
+        const count = link.annotations.filter(a => a.receiptId === receiptId).length;
+        const isImage = entry && entry.url && window.GraceBooksAnnotator.isAnnotatableUrl(entry.name, entry.url);
+        return `<div style="display:flex; align-items:center; gap:4px; font-size:11px; margin-bottom:3px; flex-wrap:wrap;">
+          <span>📎 ${escapeHtml(name)}</span>
+          ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+          ${isImage ? `<button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptAnnotator('${rowId}', '${escapeHtml(receiptId)}')">Highlight</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-small" style="padding:2px 6px;" onclick="unlinkItemReceipt('${rowId}', '${escapeHtml(receiptId)}')">✕</button>
+        </div>`;
+      }).join('');
+      cell.innerHTML = `${chips}<button type="button" class="btn btn-secondary btn-small" onclick="openReceiptPicker('${rowId}')">🔗 Link Receipt</button>`;
+    }
+
+    function unlinkItemReceipt(rowId, receiptId) {
+      const link = getItemLink(rowId);
+      link.receiptIds = link.receiptIds.filter(id => id !== receiptId);
+      link.annotations = link.annotations.filter(a => a.receiptId !== receiptId);
+      renderItemReceiptsCell(rowId);
+    }
+
+    function openItemReceiptAnnotator(rowId, receiptId) {
+      const link = getItemLink(rowId);
+      const pool = getReceiptPoolEntries();
+      const entry = pool.find(p => p.receiptId === receiptId);
+      if (!entry || !entry.url) return alert('Receipt file not available.');
+      const tr = document.querySelector(`#liq-items tr[data-row-id="${rowId}"]`);
+      const itemDesc = tr ? tr.querySelector('.liq-desc').value : '';
+      window.GraceBooksAnnotator.open({
+        title: entry.name,
+        imageUrl: entry.url,
+        fileName: entry.name,
+        subtitle: itemDesc || 'Liquidation item',
+        annotations: link.annotations.filter(a => a.receiptId === receiptId),
+        editable: true,
+        onSave: async (annotations) => {
+          link.annotations = link.annotations.filter(a => a.receiptId !== receiptId)
+            .concat(annotations.map(a => ({ ...a, receiptId })));
+          renderItemReceiptsCell(rowId);
+        }
+      });
+    }
+
+    function openReceiptPicker(rowId) {
+      receiptPickerRowId = rowId;
+      const link = getItemLink(rowId);
+      const pool = getReceiptPoolEntries();
+      document.getElementById('receipt-picker-context').textContent = pool.length
+        ? 'Select the receipt(s) that cover this item, or add a new one below.'
+        : 'No receipts yet — upload or take a photo below.';
+      document.getElementById('receipt-picker-list').innerHTML = pool.length
+        ? pool.map(entry => `
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px solid #edf2f5; font-size:12px;">
+              <input type="checkbox" class="receipt-picker-chk" value="${escapeHtml(entry.receiptId)}" ${link.receiptIds.includes(entry.receiptId) ? 'checked' : ''} />
+              <span>📎 ${escapeHtml(entry.name)}${entry.staged ? ' <span class="muted">(not yet uploaded)</span>' : ''}</span>
+            </label>`).join('')
+        : '<div class="muted">No receipts in the pool yet.</div>';
+      document.getElementById('receipt-picker-upload').value = '';
+      document.getElementById('receiptPickerModal').classList.add('open');
+    }
+
+    function closeReceiptPickerModal() {
+      receiptPickerRowId = null;
+      document.getElementById('receiptPickerModal').classList.remove('open');
+    }
+
+    function confirmReceiptPicker() {
+      if (!receiptPickerRowId) return;
+      const checked = Array.from(document.querySelectorAll('.receipt-picker-chk:checked')).map(chk => chk.value);
+      const link = getItemLink(receiptPickerRowId);
+      link.receiptIds = checked;
+      link.annotations = link.annotations.filter(a => checked.includes(a.receiptId));
+      renderItemReceiptsCell(receiptPickerRowId);
+      closeReceiptPickerModal();
+    }
+
+    function handleReceiptPickerUpload() {
+      const input = document.getElementById('receipt-picker-upload');
+      const file = input.files[0];
+      input.value = '';
+      if (!file || !receiptPickerRowId) return;
+      if (!validateReceiptFile(file)) return;
+      addStagedReceipt(file, receiptPickerRowId);
+      openReceiptPicker(receiptPickerRowId);
+    }
+
+    function openReceiptPickerCamera() {
+      if (!receiptPickerRowId) return;
+      liqCameraLinkRowId = receiptPickerRowId;
+      closeReceiptPickerModal();
+      openLiqCameraModal();
+    }
+
     function readLiqItems() {
-      return Array.from(document.querySelectorAll('#liq-items tr')).map(tr => ({
-        date: tr.querySelector('.liq-date').value,
-        description: tr.querySelector('.liq-desc').value.trim(),
-        amount: parseFloat(tr.querySelector('.liq-amt').value) || 0,
-        suggestedCategory: tr.querySelector('.liq-cat').value
-      })).filter(item => item.description || item.amount > 0);
+      // receiptIds/annotations live in liqItemLinks (keyed by each row's
+      // data-row-id), not in the DOM text, so they're pulled from there
+      // rather than re-parsed out of the table.
+      return Array.from(document.querySelectorAll('#liq-items tr')).map(tr => {
+        const link = liqItemLinks.get(tr.dataset.rowId) || { receiptIds: [], annotations: [] };
+        return {
+          date: tr.querySelector('.liq-date').value,
+          description: tr.querySelector('.liq-desc').value.trim(),
+          amount: parseFloat(tr.querySelector('.liq-amt').value) || 0,
+          suggestedCategory: tr.querySelector('.liq-cat').value,
+          receiptIds: link.receiptIds.slice(),
+          annotations: link.annotations.map(a => ({ ...a }))
+        };
+      }).filter(item => item.description || item.amount > 0);
     }
 
     function updateLiqBalance() {
@@ -1059,26 +1355,39 @@
       if (items.some(item => !item.description || item.amount <= 0)) {
         return alert('Every item needs a description and an amount greater than zero.');
       }
-      const files = Array.from(document.getElementById('liq-receipts').files || []);
-      for (const file of files) {
-        if (!validateReceiptFile(file)) return;
-      }
+      const staged = stagedReceipts.slice();
       const notes = document.getElementById('liq-notes').value.trim();
-      if (!files.length && !confirm('No receipts attached. Submit the liquidation without receipts?')) return;
+      if (!staged.length && !confirm('No receipts attached. Submit the liquidation without receipts?')) return;
 
       const button = document.getElementById('liq-submit-btn');
       button.disabled = true;
       button.textContent = 'Submitting...';
       try {
         const uploads = [];
-        for (const file of files) {
-          uploads.push(await uploadReceiptForRequest(row.id, file));
+        const tempIdToReceiptId = {};
+        for (const stagedReceipt of staged) {
+          const uploaded = await uploadReceiptForRequest(row.id, stagedReceipt.file);
+          tempIdToReceiptId[stagedReceipt.tempId] = uploaded.receiptId;
+          uploads.push(uploaded);
         }
-        const total = items.reduce((sum, item) => sum + item.amount, 0);
+        // Every item's receiptIds/annotations may still reference "tmp-"
+        // ids for files that were just uploaded above - remap them to the
+        // real receiptId now, and drop any temp id that has no mapping
+        // (e.g. the file was removed from the pool after being linked).
+        const remappedItems = items.map(item => {
+          const receiptIds = item.receiptIds
+            .map(id => (id.indexOf('tmp-') === 0 ? tempIdToReceiptId[id] : id))
+            .filter(Boolean);
+          const annotations = item.annotations
+            .filter(a => a.receiptId.indexOf('tmp-') !== 0 || tempIdToReceiptId[a.receiptId])
+            .map(a => (a.receiptId.indexOf('tmp-') === 0 ? { ...a, receiptId: tempIdToReceiptId[a.receiptId] } : a));
+          return { ...item, receiptIds, annotations };
+        });
+        const total = remappedItems.reduce((sum, item) => sum + item.amount, 0);
         const now = new Date().toISOString();
         const after = {
           status: 'Liquidation Submitted',
-          liquidationItems: items,
+          liquidationItems: remappedItems,
           liquidationTotal: total,
           liquidationBalance: Number(row.amount || 0) - total,
           liquidationNotes: notes,
@@ -1134,14 +1443,26 @@
       const itemsWrap = document.getElementById('reconcile-items-wrap');
       const items = row.liquidationItems || [];
       if (items.length) {
+        const pool = receiptPoolFromRow(row);
         itemsWrap.innerHTML = `
           <div class="section-label">Classify Each Item Into an Expense Category</div>
-          <div class="muted">Dropdowns are pre-filled with the staff member's suggested category where given — this is only a suggestion; adjust any of them before confirming.</div>
+          <div class="muted">Dropdowns are pre-filled with the staff member's suggested category where given — this is only a suggestion; adjust any of them before confirming. Use "View Highlights" to see which part of a mixed receipt the staff member meant for each item.</div>
           <div class="table-wrap">
             <table class="inner-table">
-              <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Expense Category</th></tr></thead>
+              <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Expense Category</th><th>Receipts</th></tr></thead>
               <tbody>
-                ${items.map((item, index) => `
+                ${items.map((item, index) => {
+                  const linked = pool.filter(p => (item.receiptIds || []).includes(p.receiptId));
+                  const receiptsCell = linked.length
+                    ? linked.map(p => {
+                        const count = (item.annotations || []).filter(a => a.receiptId === p.receiptId).length;
+                        return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
+                          ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+                          <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', true)">View Highlights</button>
+                        </div>`;
+                      }).join('')
+                    : '<span class="muted">No receipts linked</span>';
+                  return `
                   <tr>
                     <td>${escapeHtml(item.date || '')}</td>
                     <td>${escapeHtml(item.description || '')}</td>
@@ -1150,7 +1471,9 @@
                       <select id="reconcile-cat-${index}">${categoryDropdownHTML(item.suggestedCategory || '')}</select>
                       ${item.suggestedCategory ? '<div class="muted">Suggested by staff</div>' : ''}
                     </td>
-                  </tr>`).join('')}
+                    <td>${receiptsCell}</td>
+                  </tr>`;
+                }).join('')}
               </tbody>
             </table>
           </div>`;
@@ -1245,6 +1568,29 @@
               createdAt: now,
               updatedAt: now
             };
+            // Carry the item's first linked receipt (and only the
+            // highlights drawn on that specific receipt) onto the
+            // generated expense, so the Expenses ledger's receipt viewer
+            // shows exactly what the staff member pointed to. The file
+            // itself still lives under liquidation-receipts/... and is
+            // still owned by this liquidation request - receiptSharedFromLiquidation
+            // tells expenses.html's removeExpenseReceipt()/deleteExpense()
+            // to skip deleting the underlying Storage object.
+            const linkedReceiptIds = item.receiptIds || [];
+            if (linkedReceiptIds.length) {
+              const firstReceiptId = linkedReceiptIds[0];
+              const receiptPool = (row.liquidationReceipts || []).concat(row.supportingReceipts || []);
+              const firstReceipt = receiptPool.find(r => (r.receiptId || r.receiptPath) === firstReceiptId);
+              if (firstReceipt) {
+                payload.receiptName = firstReceipt.receiptName || '';
+                payload.receiptPath = firstReceipt.receiptPath || '';
+                payload.receiptUrl = firstReceipt.receiptUrl || '';
+                payload.receiptSharedFromLiquidation = true;
+                payload.receiptAnnotations = (item.annotations || [])
+                  .filter(a => a.receiptId === firstReceiptId)
+                  .map(({ receiptId, ...rest }) => rest);
+              }
+            }
             const itemRef = await db.collection('expenses').add(payload);
             classifiedExpenseIds.push(itemRef.id);
             await writeAuditLog('expense_created_from_liquidation_item', 'expenses', itemRef.id, null, payload,
@@ -1412,21 +1758,38 @@
       const isClassified = row.status === 'Reconciled' && (row.classifiedExpenseIds || []).length;
       const hasSuggestions = !isClassified && (row.liquidationItems || []).some(item => item.suggestedCategory);
       const categoryColLabel = isClassified ? 'Expense Category' : 'Staff-Suggested Category';
+      const itemReceiptPool = receiptPoolFromRow(row);
+      const hasReceiptLinks = (row.liquidationItems || []).some(item => (item.receiptIds || []).length);
+      const extraCols = (isClassified || hasSuggestions ? 1 : 0) + (hasReceiptLinks ? 1 : 0);
       const itemsHtml = (row.liquidationItems || []).length ? `
         <div class="section-label">Liquidation Items</div>
         <div class="table-wrap">
           <table class="inner-table">
-            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th>${(isClassified || hasSuggestions) ? `<th>${categoryColLabel}</th>` : ''}</tr></thead>
+            <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th>${(isClassified || hasSuggestions) ? `<th>${categoryColLabel}</th>` : ''}${hasReceiptLinks ? '<th>Receipts</th>' : ''}</tr></thead>
             <tbody>
-              ${row.liquidationItems.map(item => `
+              ${row.liquidationItems.map((item, index) => {
+                let receiptsCell = '';
+                if (hasReceiptLinks) {
+                  const linked = itemReceiptPool.filter(p => (item.receiptIds || []).includes(p.receiptId));
+                  receiptsCell = `<td>${linked.length ? linked.map(p => {
+                    const count = (item.annotations || []).filter(a => a.receiptId === p.receiptId).length;
+                    return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
+                      ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+                      <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', false)">View Highlights</button>
+                    </div>`;
+                  }).join('') : '<span class="muted">-</span>'}</td>`;
+                }
+                return `
                 <tr>
                   <td>${escapeHtml(item.date || '')}</td>
                   <td>${escapeHtml(item.description || '')}</td>
                   <td class="amount">₱${fmt(item.amount)}</td>
                   ${isClassified ? `<td>${escapeHtml(item.category || '-')}</td>`
                     : hasSuggestions ? `<td>${escapeHtml(item.suggestedCategory || '-')}</td>` : ''}
-                </tr>`).join('')}
-              <tr><td colspan="${(isClassified || hasSuggestions) ? 3 : 2}"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
+                  ${receiptsCell}
+                </tr>`;
+              }).join('')}
+              <tr><td colspan="${2 + extraCols}"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
             </tbody>
           </table>
         </div>` : '';
