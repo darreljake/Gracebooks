@@ -53,6 +53,8 @@ Key top-level collections: `userProfiles`, `userSignatures`, `income`, `expenses
 
 `expenses.receiptAnnotations` and `liquidationRequests.liquidationItems[].annotations` hold receipt-highlight boxes drawn with `public/receipt-annotator.js` (see below) - each an array of `{id, x, y, w, h, label, color, createdAt}` objects, with `x`/`y`/`w`/`h` as `0..1` fractions of the receipt image's width/height (never pixels), so the highlight overlay stays correctly positioned at any render size or device.
 
+Highlights can be **locked** once finalized, so finished evidence can be reviewed without a stray drag altering it: `expenses.receiptAnnotationsLocked` (boolean, per expense) and `liquidationRequests.liquidationItems[].annotationsLocked` (boolean, per liquidation item - an item's highlights lock as a set across whichever receipts cover it). A locked set opens read-only even for a user with edit rights; they must click "Unlock to Edit" first, which persists the unlock immediately. The annotator takes `locked` as an option and reports it back as the second argument of `onSave(annotations, locked)`, so the highlights and their locked state are always written together and can never drift apart.
+
 Rules currently include a `testingAccessOpen()` time-bomb (`request.time < timestamp.date(2027, 1, 1)`) that gates `signedIn()` — after that date all client access fails closed. The same expiry date is mirrored client-side in `index.html` (`TESTING_END_DATE`) to show a pre-expiry warning and block login.
 
 ### Audit logging

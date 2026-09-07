@@ -642,14 +642,15 @@
         subtitle: `${item.description || 'Liquidation item'} — ₱${fmt(item.amount)}`,
         annotations: (item.annotations || []).filter(a => a.receiptId === receiptId),
         editable: canEdit,
-        onSave: canEdit ? (annotations) => saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations) : undefined
+        locked: !!item.annotationsLocked,
+        onSave: canEdit ? (annotations, locked) => saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations, locked) : undefined
       });
     }
 
     // Treasurer-only: persists highlights drawn from the Reconcile modal
     // straight back onto liquidationRequests/{id}.liquidationItems, scoped
     // to the one receipt they were drawn on.
-    async function saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations) {
+    async function saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations, locked) {
       if (!roleIs('Treasurer')) throw new Error('Only the Treasurer can save receipt highlights here.');
       const row = requestRows.find(item => item.id === requestId);
       if (!row) throw new Error('Request not found.');
@@ -659,13 +660,18 @@
       if (!item) throw new Error('Liquidation item not found.');
       item.annotations = (item.annotations || []).filter(a => a.receiptId !== receiptId)
         .concat(annotations.map(a => ({ ...a, receiptId })));
+      // Locking is per liquidation item, not per receipt: an item's
+      // highlights are finalised as a set once its evidence has been
+      // reviewed, across whichever receipts cover it.
+      const wasLocked = !!item.annotationsLocked;
+      item.annotationsLocked = !!locked;
       await db.collection('liquidationRequests').doc(requestId).update({
         liquidationItems: items,
         updatedAt: new Date().toISOString()
       });
       await writeAuditLog('liquidation_item_receipt_annotations_updated', 'liquidationRequests', requestId,
         { liquidationItems: beforeItems }, { liquidationItems: items },
-        `Updated ${annotations.length} receipt highlight(s) on item "${item.description || ''}" for request ${requestId}`);
+        `Updated ${annotations.length} receipt highlight(s)${item.annotationsLocked !== wasLocked ? (item.annotationsLocked ? ' and locked them' : ' and unlocked them') : ''} on item "${item.description || ''}" for request ${requestId}`);
       row.liquidationItems = items;
       // loadRequests() only re-renders the background requests table, not
       // an already-open Reconcile modal - patch this one badge in place
@@ -675,7 +681,7 @@
       const badge = document.getElementById(`recon-badge-${itemIndex}-${receiptId}`);
       if (badge) {
         const newCount = item.annotations.filter(a => a.receiptId === receiptId).length;
-        badge.textContent = `🖍 ${newCount}`;
+        badge.textContent = `${item.annotationsLocked ? '🔒' : '🖍'} ${newCount}`;
         badge.style.display = newCount ? '' : 'none';
       }
       await loadRequests();
@@ -1059,7 +1065,7 @@
     }
 
     function getItemLink(rowId) {
-      if (!liqItemLinks.has(rowId)) liqItemLinks.set(rowId, { receiptIds: [], annotations: [] });
+      if (!liqItemLinks.has(rowId)) liqItemLinks.set(rowId, { receiptIds: [], annotations: [], annotationsLocked: false });
       return liqItemLinks.get(rowId);
     }
 
@@ -1078,7 +1084,8 @@
       document.getElementById('liq-items').appendChild(tr);
       liqItemLinks.set(rowId, {
         receiptIds: (item.receiptIds || []).slice(),
-        annotations: (item.annotations || []).map(a => ({ ...a }))
+        annotations: (item.annotations || []).map(a => ({ ...a })),
+        annotationsLocked: !!item.annotationsLocked
       });
       renderItemReceiptsCell(rowId);
     }
@@ -1250,10 +1257,11 @@
         const entry = pool.find(p => p.receiptId === receiptId);
         const name = entry ? entry.name : '(receipt removed)';
         const count = link.annotations.filter(a => a.receiptId === receiptId).length;
+        const lockIcon = link.annotationsLocked ? '🔒' : '🖍';
         const isImage = entry && entry.url && window.GraceBooksAnnotator.isAnnotatableUrl(entry.name, entry.url);
         return `<div style="display:flex; align-items:center; gap:4px; font-size:11px; margin-bottom:3px; flex-wrap:wrap;">
           <span>📎 ${escapeHtml(name)}</span>
-          ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+          ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">${lockIcon} ${count}</span>` : ''}
           ${isImage ? `<button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptAnnotator('${rowId}', '${escapeHtml(receiptId)}')">Highlight</button>` : ''}
           <button type="button" class="btn btn-ghost btn-small" style="padding:2px 6px;" onclick="unlinkItemReceipt('${rowId}', '${escapeHtml(receiptId)}')">✕</button>
         </div>`;
@@ -1282,9 +1290,11 @@
         subtitle: itemDesc || 'Liquidation item',
         annotations: link.annotations.filter(a => a.receiptId === receiptId),
         editable: true,
-        onSave: async (annotations) => {
+        locked: !!link.annotationsLocked,
+        onSave: async (annotations, locked) => {
           link.annotations = link.annotations.filter(a => a.receiptId !== receiptId)
             .concat(annotations.map(a => ({ ...a, receiptId })));
+          link.annotationsLocked = !!locked;
           renderItemReceiptsCell(rowId);
         }
       });
@@ -1344,14 +1354,15 @@
       // data-row-id), not in the DOM text, so they're pulled from there
       // rather than re-parsed out of the table.
       return Array.from(document.querySelectorAll('#liq-items tr')).map(tr => {
-        const link = liqItemLinks.get(tr.dataset.rowId) || { receiptIds: [], annotations: [] };
+        const link = liqItemLinks.get(tr.dataset.rowId) || { receiptIds: [], annotations: [], annotationsLocked: false };
         return {
           date: tr.querySelector('.liq-date').value,
           description: tr.querySelector('.liq-desc').value.trim(),
           amount: parseFloat(tr.querySelector('.liq-amt').value) || 0,
           suggestedCategory: tr.querySelector('.liq-cat').value,
           receiptIds: link.receiptIds.slice(),
-          annotations: link.annotations.map(a => ({ ...a }))
+          annotations: link.annotations.map(a => ({ ...a })),
+          annotationsLocked: !!link.annotationsLocked
         };
       }).filter(item => item.description || item.amount > 0);
     }
@@ -1499,7 +1510,7 @@
                         // choices the Treasurer already made on other rows).
                         const badgeId = `recon-badge-${index}-${p.receiptId}`;
                         return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
-                          <span id="${escapeHtml(badgeId)}" style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px; ${count ? '' : 'display:none;'}">🖍 ${count}</span>
+                          <span id="${escapeHtml(badgeId)}" style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px; ${count ? '' : 'display:none;'}">${item.annotationsLocked ? '🔒' : '🖍'} ${count}</span>
                           <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', true)">View Highlights</button>
                         </div>`;
                       }).join('')
@@ -1816,7 +1827,7 @@
                   receiptsCell = `<td>${linked.length ? linked.map(p => {
                     const count = (item.annotations || []).filter(a => a.receiptId === p.receiptId).length;
                     return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
-                      ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+                      ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">${item.annotationsLocked ? '🔒' : '🖍'} ${count}</span>` : ''}
                       <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', false)">View Highlights</button>
                     </div>`;
                   }).join('') : '<span class="muted">-</span>'}</td>`;

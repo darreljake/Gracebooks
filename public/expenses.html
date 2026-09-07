@@ -609,6 +609,7 @@
           // it's replaced with a different image - clear them along with
           // the now-stale sharing flag from a copied liquidation receipt.
           payload.receiptAnnotations = [];
+          payload.receiptAnnotationsLocked = firebase.firestore.FieldValue.delete();
           payload.receiptAnnotationsUpdatedAt = firebase.firestore.FieldValue.delete();
           payload.receiptAnnotationsUpdatedBy = firebase.firestore.FieldValue.delete();
           payload.receiptSharedFromLiquidation = firebase.firestore.FieldValue.delete();
@@ -753,7 +754,8 @@
           subtitle: `${record.category || record.sub || 'Expense'} — ₱${Number(record.amount || 0).toLocaleString('en-PH')}`,
           annotations: record.receiptAnnotations || [],
           editable: canManageExpenses(),
-          onSave: (annotations) => saveReceiptAnnotations(docId, annotations)
+          locked: !!record.receiptAnnotationsLocked,
+          onSave: (annotations, locked) => saveReceiptAnnotations(docId, annotations, locked)
       });
   }
 
@@ -762,25 +764,32 @@
       document.getElementById('receiptViewerModal').style.display = 'none';
   }
 
-  async function saveReceiptAnnotations(docId, annotations) {
+  async function saveReceiptAnnotations(docId, annotations, locked) {
       if (!canManageExpenses()) throw new Error('Only the Treasurer can highlight receipts.');
       const record = allExpenseRecords.find(e => e.id === docId);
       const nowIso = new Date().toISOString();
       const actorName = activeUserProfile ? activeUserProfile.name : '';
+      const isLocked = !!locked;
+      const wasLocked = !!(record && record.receiptAnnotationsLocked);
       await db.collection('expenses').doc(docId).update({
           receiptAnnotations: annotations,
+          receiptAnnotationsLocked: isLocked,
           receiptAnnotationsUpdatedAt: nowIso,
           receiptAnnotationsUpdatedBy: actorName
       });
+      // Lock/unlock is a review-integrity action, so say so explicitly in
+      // the audit trail rather than burying it in a highlight-count summary.
+      const lockNote = isLocked !== wasLocked ? (isLocked ? ' and locked them' : ' and unlocked them') : '';
       await writeAuditLog(
           'receipt_annotations_updated',
           docId,
-          { receiptAnnotations: (record && record.receiptAnnotations) || [] },
-          { receiptAnnotations: annotations },
-          `Updated ${annotations.length} receipt highlight(s) on ${(record && record.category) || 'expense'}`
+          { receiptAnnotations: (record && record.receiptAnnotations) || [], receiptAnnotationsLocked: wasLocked },
+          { receiptAnnotations: annotations, receiptAnnotationsLocked: isLocked },
+          `Updated ${annotations.length} receipt highlight(s)${lockNote} on ${(record && record.category) || 'expense'}`
       );
       if (record) {
           record.receiptAnnotations = annotations;
+          record.receiptAnnotationsLocked = isLocked;
           record.receiptAnnotationsUpdatedAt = nowIso;
           record.receiptAnnotationsUpdatedBy = actorName;
       }
@@ -811,6 +820,7 @@
           receiptUploadedAt: firebase.firestore.FieldValue.delete(),
           receiptSharedFromLiquidation: firebase.firestore.FieldValue.delete(),
           receiptAnnotations: firebase.firestore.FieldValue.delete(),
+          receiptAnnotationsLocked: firebase.firestore.FieldValue.delete(),
           receiptAnnotationsUpdatedAt: firebase.firestore.FieldValue.delete(),
           receiptAnnotationsUpdatedBy: firebase.firestore.FieldValue.delete()
       });
@@ -1271,7 +1281,7 @@
           let accText = e.payment === 'cash-bank' ? 'Bank' : e.payment === 'petty-cash' ? 'Petty Cash' : e.payment === 'building' ? 'Building' : e.payment === 'mission' ? 'Mission' : e.payment === 'investment' ? 'Investment' : 'Cash Hand';
           let receiptName = escapeHtml(e.receiptName || 'Receipt/Voucher');
           let annotationCount = (e.receiptAnnotations || []).length;
-          let highlightBadge = annotationCount ? `<span style="background:#8B0000; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:6px;">🖍 ${annotationCount}</span>` : '';
+          let highlightBadge = annotationCount ? `<span style="background:#8B0000; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:6px;" title="${e.receiptAnnotationsLocked ? 'Highlights locked' : 'Highlights'}">${e.receiptAnnotationsLocked ? '🔒' : '🖍'} ${annotationCount}</span>` : '';
           let receiptViewLabel = canManageExpenses() ? 'View / Highlight' : 'View';
           let receiptHTML = e.receiptUrl
               ? `<button type="button" class="btn-ledger view" onclick="openReceiptViewer('${e.id}')">${receiptViewLabel}</button>${highlightBadge}<div style="font-size:10px; color:#999; margin-top:4px;">${receiptName}</div>`
