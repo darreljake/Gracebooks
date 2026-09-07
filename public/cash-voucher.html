@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Cash Vouchers - GraceBooks</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Poppins', sans-serif; background: #fdf2f2; min-height: 100vh; color: #333; }
+
+    .topbar { background: #c0392b; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+    .topbar h2 { font-size: 20px; font-weight: 600; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: 'Poppins', sans-serif; }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+
+    .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
+
+    .card { background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 24px; border: 1px solid #fadbd8; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #fadbd8; }
+    .card-header h3 { color: #c0392b; font-size: 18px; font-weight: 600; }
+    .muted { color: #777; font-size: 12px; }
+
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
+    .form-group { flex: 1; min-width: 180px; }
+    .form-group label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; margin-bottom: 6px; font-weight: 600; }
+    .form-group input[type="text"], .form-group input[type="date"], .form-group input[type="number"], .form-group select {
+      width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white; font-family: 'Poppins', sans-serif;
+    }
+    .form-group input[type="file"] {
+      width: 100%; padding: 9px 10px; border: 1px dashed #c0392b; border-radius: 6px; font-size: 13px; background: #fff8f8; font-family: 'Poppins', sans-serif;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: #c0392b; }
+
+    .btn-save { padding: 12px 18px; background: #c0392b; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif; }
+    .btn-save:hover { background: #a93226; }
+    .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-save.secondary { background: #1a5276; }
+    .btn-save.secondary:hover { background: #154360; }
+
+    .btn-receipt {
+      background: #1a5276; color: white; border: none; border-radius: 6px;
+      padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+    }
+    .btn-receipt.secondary { background: #fdf2f2; color: #c0392b; border: 1px solid #fadbd8; }
+    .btn-receipt.ghost { background: #eee; color: #555; }
+
+    .success { background: #d5f5e3; color: #1e8449; padding: 12px; border-radius: 6px; text-align: center; font-size: 13px; display: none; margin-bottom: 16px; font-weight: 600; }
+
+    .sig-preview { max-width: 220px; height: 70px; object-fit: contain; display: none; border: 1px dashed #cbd5df; border-radius: 7px; background: #fff; margin: 10px 0; }
+    .pad { width: 100%; max-width: 420px; height: 140px; border: 1px solid #cbd5df; border-radius: 7px; background: white; touch-action: none; }
+    .sig-thumb { height: 44px; max-width: 130px; object-fit: contain; vertical-align: middle; margin-right: 8px; border: 1px dashed #cbd5df; border-radius: 4px; background: #fff; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 14px 0; }
+    .checkbox-row input { width: 16px; height: 16px; cursor: pointer; accent-color: #c0392b; }
+    .checkbox-row label { font-size: 13px; font-weight: 600; color: #555; cursor: pointer; }
+
+    .edit-banner {
+      display: none; align-items: center; justify-content: space-between; gap: 10px;
+      background: #fef5e7; border: 1px solid #f5cba7; color: #935116;
+      padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;
+    }
+    .edit-banner button {
+      background: transparent; border: 1px solid #d68910; color: #935116;
+      border-radius: 5px; padding: 6px 10px; cursor: pointer; font-weight: 600;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .particulars-editor { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    .particulars-editor th { background: #f8f9fa; color: #555; padding: 8px 10px; text-align: left; font-size: 12px; border-bottom: 2px solid #ddd; }
+    .particulars-editor td { padding: 6px 8px; border-bottom: 1px solid #eee; }
+    .particulars-editor input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; font-family: 'Poppins', sans-serif; }
+    .particulars-editor input.part-amt { text-align: right; }
+    .total-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-bottom: 18px; font-size: 15px; font-weight: 700; color: #c0392b; }
+
+    .signer-block { background: #fdf8f8; border: 1px solid #fadbd8; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+    .signer-block h4 { font-size: 13px; color: #c0392b; margin-bottom: 10px; }
+    .signer-status { font-size: 12px; color: #555; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .sig-status-ok { color: #1e8449; font-weight: 700; }
+    .sig-status-manual { color: #935116; font-weight: 700; }
+
+    .btn-ledger {
+      border: none; border-radius: 5px; padding: 6px 10px; font-size: 11px;
+      font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .btn-ledger.view { background: #eaf2f8; color: #1a5276; }
+    .btn-ledger.edit { background: #fef5e7; color: #b7950b; }
+    .btn-ledger.danger { background: #f9ebeb; color: #c0392b; }
+    .ledger-actions { display: flex; flex-direction: column; gap: 5px; min-width: 100px; }
+
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 15px; background: #fdf8f8; padding: 15px; border-radius: 6px; border: 1px solid #fadbd8; flex-wrap: wrap; align-items: flex-end; }
+    .filter-bar .filter-group { flex: 1; min-width: 140px; display: flex; flex-direction: column; gap: 5px; }
+    .filter-bar label { font-size: 11px; font-weight: 600; color: #555; text-transform: uppercase; }
+    .filter-bar input, .filter-bar select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 13px; font-family: 'Poppins', sans-serif; }
+
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table.reg-table { width: 100%; border-collapse: collapse; background: white; min-width: 800px; }
+    table.reg-table th { background: #f8f9fa; color: #555; padding: 12px 10px; text-align: left; font-size: 12px; border-bottom: 2px solid #ddd; font-weight: 600; }
+    table.reg-table td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+
+    .badge-status { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .badge-draft { background: #eef3f7; color: #51616d; }
+    .badge-released { background: #d6eaf8; color: #1a5276; }
+    .badge-acknowledged { background: #d5f5e3; color: #1e8449; }
+
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 22px; border-radius: 12px; width: 95%; max-width: 480px; max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; }
+    .modal-content.print-modal-content { max-width: 900px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+    .modal-header h3 { color: #27ae60; font-weight: 600; font-size: 18px; }
+    .close-modal { background: none; border: none; font-size: 24px; cursor: pointer; color: #777; }
+
+    /* --- Voucher visual (paper form replica) --- */
+    .voucher-block {
+      background: white; border: 1.5px solid #333; border-radius: 3px; padding: 10px 14px;
+      font-family: 'Poppins', sans-serif; color: #111; width: 100%; max-width: 520px;
+    }
+    .voucher-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .voucher-logo { width: 42px; height: 42px; object-fit: contain; flex-shrink: 0; }
+    .voucher-head-text { flex: 1; text-align: center; }
+    .voucher-church-name { font-weight: 700; font-size: 13px; letter-spacing: 0.3px; }
+    .voucher-address { font-size: 9.5px; color: #333; margin-top: 1px; }
+    .voucher-title { font-weight: 700; font-size: 12px; letter-spacing: 4px; text-decoration: underline; margin-top: 5px; }
+    .voucher-meta-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; font-size: 11px; flex-wrap: wrap; }
+    .voucher-field .label { font-weight: 600; margin-right: 4px; }
+    .voucher-field .value { border-bottom: 1px solid #333; display: inline-block; min-width: 130px; padding-bottom: 1px; }
+    .voucher-table { width: 100%; border-collapse: collapse; border: 1.5px solid #333; margin-bottom: 14px; }
+    .voucher-table th { border: 1px solid #333; padding: 4px; font-size: 10px; letter-spacing: 1.5px; font-weight: 700; text-align: center; background: #f7f7f7; text-transform: uppercase; }
+    .voucher-table td { border-left: 1px solid #333; border-right: 1px solid #333; padding: 3px 7px; font-size: 11px; height: 20px; vertical-align: top; }
+    .voucher-table td.amt { text-align: right; }
+    .voucher-table tbody tr:last-child td { border-bottom: 1px solid #333; }
+    .voucher-table tfoot .total-label { text-align: right; font-weight: 700; border: 1px solid #333; padding: 4px 7px; }
+    .voucher-table tfoot .total-amt { font-weight: 700; border: 1px solid #333; padding: 4px 7px; }
+    .voucher-sign-row { display: flex; justify-content: space-between; gap: 20px; margin-top: 6px; }
+    .voucher-sign-col { flex: 1; text-align: center; }
+    .sign-label { text-align: left; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    .sign-img { height: 46px; max-width: 140px; object-fit: contain; mix-blend-mode: multiply; display: block; margin: 0 auto; }
+    .sign-manual-note { font-size: 9px; color: #888; font-style: italic; height: 46px; display: flex; align-items: flex-end; justify-content: center; }
+    .sign-line { border-top: 1px solid #333; margin-top: 2px; width: 85%; margin-left: auto; margin-right: auto; }
+    .sign-caption { font-size: 10px; margin-top: 2px; }
+
+    #voucher-preview { display: flex; justify-content: center; padding: 10px 0; background: #f4f4f4; border-radius: 8px; }
+
+    .print-container { display: flex; flex-direction: column; gap: 6mm; align-items: center; }
+    .voucher-print-slot { width: 100%; max-width: 190mm; }
+    .voucher-print-slot .voucher-block { max-width: 100%; height: 89mm; overflow: hidden; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #printModal, #printModal * { visibility: visible; }
+      #printModal { position: absolute; top: 0; left: 0; width: 100%; background: white; display: block !important; z-index: auto; }
+      #printModal .modal-content { max-width: 100%; box-shadow: none; padding: 0; max-height: none; overflow: visible; }
+      .no-print { display: none !important; }
+      .voucher-print-slot { break-inside: avoid; page-break-inside: avoid; margin-bottom: 3mm; }
+      @page { size: A4; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+  <h2>🧾 Cash Vouchers</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+</div>
+
+<div class="container">
+  <div class="success" id="success-msg">✅ Saved!</div>
+
+  <!-- ============ CARD 1: My Signature & Voucher Defaults ============ -->
+  <div class="card treasurer-only-voucher" id="signature-card">
+    <div class="card-header"><h3>✍️ My Signature &amp; Voucher Defaults</h3></div>
+    <div class="muted">Upload a transparent PNG/JPG or draw in the pad. This is the same electronic signature used on Report Workflow — saving it here also updates it there.</div>
+    <img id="stored-signature-preview" class="sig-preview" alt="Stored signature preview">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Upload Signature Image</label>
+        <input type="file" id="signature-file" accept="image/png,image/jpeg,image/webp">
+        <div class="muted" style="margin-top:6px;">Choose an image file, then save it below.</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="max-width:420px;">
+        <label>Signature Pad</label>
+        <canvas id="signature-pad" class="pad"></canvas>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+      <button class="btn-receipt ghost" onclick="clearPad()">Clear Pad</button>
+      <button class="btn-receipt secondary" onclick="saveUploadedSignature()">Save Selected Image</button>
+      <button class="btn-receipt" onclick="savePadSignature()">Save Pad</button>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="auto-embed-checkbox" onchange="toggleAutoEmbed()">
+      <label for="auto-embed-checkbox">Always embed my signature on new vouchers as Released by</label>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name on the "Released by" line</label>
+        <input type="text" id="treasurer-name-input" placeholder="Church Treasurer's name">
+      </div>
+      <div class="form-group" style="flex:0.6; display:flex; align-items:flex-end;">
+        <button class="btn-save secondary" style="width:100%;" onclick="saveTreasurerName()">Save Name</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CARD 2: Create / Edit Cash Voucher ============ -->
+  <div class="card treasurer-only-voucher" id="voucher-card">
+    <div class="card-header"><h3>🧾 Create / Edit Cash Voucher</h3></div>
+
+    <div class="edit-banner" id="edit-voucher-banner">
+      <span id="edit-voucher-banner-text">Editing voucher</span>
+      <button type="button" onclick="cancelVoucherEdit()">Cancel Edit / Start New</button>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Account</label>
+        <input type="text" id="voucher-account" list="account-suggestions" placeholder="e.g. Utilities" oninput="renderVoucherPreview()">
+        <datalist id="account-suggestions"></datalist>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="voucher-date" oninput="renderVoucherPreview()" onchange="renderVoucherPreview()">
+      </div>
+      <div class="form-group">
+        <label>Source of Fund (optional)</label>
+        <select id="voucher-fund">
+          <option value="">-- Not specified --</option>
+          <option value="cash-hand">💵 Cash on Hand</option>
+          <option value="cash-bank">🏦 Cash in Bank</option>
+          <option value="petty-cash">💰 Petty Cash Fund</option>
+          <option value="building">⛪ Building Fund</option>
+          <option value="mission">✈️ Mission Fund</option>
+          <option value="investment">📈 Investments/TD</option>
+        </select>
+      </div>
+    </div>
+
+    <table class="particulars-editor">
+      <thead><tr><th>Particulars</th><th style="width:160px;">Amount (₱)</th><th style="width:40px;"></th></tr></thead>
+      <tbody id="particulars-body"></tbody>
+    </table>
+    <div style="margin-bottom:14px;">
+      <button type="button" class="btn-receipt secondary" onclick="addParticularRow()">+ Add Line</button>
+    </div>
+    <div class="total-row"><span>Total:</span><span id="voucher-total-display">₱0.00</span></div>
+
+    <div class="signer-block">
+      <h4>Released by</h4>
+      <div class="form-row" style="margin-bottom:8px;">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="released-by-name" placeholder="Church Treasurer's name" oninput="renderVoucherPreview()">
+        </div>
+      </div>
+      <div class="signer-status" id="released-by-status"></div>
+    </div>
+
+    <div class="signer-block">
+      <h4>Received by</h4>
+      <div class="form-row" style="margin-bottom:8px;">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" id="received-by-name" placeholder="Name of person receiving cash" oninput="renderVoucherPreview()">
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+        <button type="button" class="btn-receipt" onclick="openReceiverPadModal()">✍️ Capture Signature</button>
+        <input type="file" id="received-signature-file" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="saveReceivedUploadedSignature()">
+        <button type="button" class="btn-receipt secondary" onclick="document.getElementById('received-signature-file').click()">📁 Upload Signature Image</button>
+        <button type="button" class="btn-receipt ghost" onclick="markReceivedManual()">Mark as manual</button>
+      </div>
+      <div class="signer-status" id="received-by-status"></div>
+    </div>
+
+    <div class="card-header" style="margin-top:10px;"><h3 style="font-size:15px;">Live Preview</h3></div>
+    <div id="voucher-preview"></div>
+
+    <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+      <button class="btn-save" id="save-voucher-btn" onclick="saveVoucher(false)">💾 Save Voucher</button>
+      <button class="btn-save secondary" onclick="saveVoucher(true)">🖨️ Save &amp; Print</button>
+    </div>
+  </div>
+
+  <!-- ============ CARD 3: Voucher Register ============ -->
+  <div class="card" id="register-card">
+    <div class="card-header"><h3>📋 Voucher Register</h3></div>
+
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label>Year</label>
+        <select id="reg-year-filter" onchange="applyRegisterFilters()"><option value="">All Years</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Month</label>
+        <select id="reg-month-filter" onchange="applyRegisterFilters()">
+          <option value="">All Months</option>
+          <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+          <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+          <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Status</label>
+        <select id="reg-status-filter" onchange="applyRegisterFilters()">
+          <option value="">All Statuses</option>
+          <option value="Draft">Draft</option>
+          <option value="Released">Released</option>
+          <option value="Acknowledged">Acknowledged</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Search</label>
+        <input type="text" id="reg-search" placeholder="Voucher No / Account / Receiver" oninput="applyRegisterFilters()">
+      </div>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <button class="btn-receipt" onclick="printSelected()">🖨️ Print Selected</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="reg-table">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th>
+            <th>Voucher No</th>
+            <th>Date</th>
+            <th>Account</th>
+            <th>Received by</th>
+            <th style="text-align:right;">Amount</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="register-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Receiver signature capture modal -->
+<div class="modal-overlay" id="receiverPadModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Capture Receiver's Signature</h3>
+      <button class="close-modal" onclick="closeReceiverPadModal()">×</button>
+    </div>
+    <div class="muted" style="margin-bottom:10px;">Hand the device to the receiver to sign below.</div>
+    <canvas id="receiver-signature-pad" class="pad"></canvas>
+    <div style="display:flex; gap:10px; margin-top:12px;">
+      <button class="btn-receipt ghost" style="flex:1;" onclick="clearReceiverPad()">Clear</button>
+      <button class="btn-receipt" style="flex:1;" onclick="saveReceiverPadSignature()">Save Signature</button>
+    </div>
+  </div>
+</div>
+
+<!-- Print modal -->
+<div class="modal-overlay" id="printModal">
+  <div class="modal-content print-modal-content">
+    <div class="modal-header no-print">
+      <h3>🖨️ Print Cash Voucher(s)</h3>
+      <button class="close-modal" onclick="closePrintModal()">×</button>
+    </div>
+    <div class="no-print" style="margin-bottom:12px;">
+      <button class="btn-save" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    </div>
+    <div id="print-container" class="print-container"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+<script src="auth.js"></script>
+<script>requireGraceBooksAuth();</script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app"
+  };
+  if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  // Only the Treasurer creates/edits/deletes vouchers (she releases the
+  // funds); the Auditor gets a read-only register + view/print, matching
+  // financial-overview.html's role-gate pattern. Any other role bounces to
+  // the dashboard.
+  const CASH_VOUCHER_ALLOWED_ROLES = ['Treasurer', 'Auditor'];
+
+  let activeProfile = null;
+  let canManageVouchersFlag = false;
+  let signatureProfile = null;
+  let voucherSettings = {};
+  let allVouchers = [];
+
+  // The voucher's Firestore document id is generated client-side up front
+  // (a standard random Firestore auto-id, negligible collision risk) so the
+  // receiver can sign - and that signature upload to
+  // voucher-signatures/{voucherId}/... - before the voucher document has
+  // ever been saved. The human-readable voucherNo ("CV-2026-0001") is the
+  // part that must never collide, so THAT is the one allocated inside a
+  // db.runTransaction() against settings/voucherSettings, never a
+  // client-side count+1.
+  let currentVoucherId = null;
+  let editingVoucherId = null;
+  let editingVoucher = null;
+  let prefillExpenseId = null;
+  let prefillLiquidationId = null;
+
+  let particularsRows = [{ description: '', amount: '' }];
+  let releasedByState = { mode: null, name: '', signatureUrl: '', signaturePath: '', signedAt: null };
+  let receivedByState = { mode: null, name: '', signatureUrl: '', signaturePath: '', signedAt: null };
+
+  // Treasurer's own signature pad (Card 1) - drawing state
+  let drawing = false;
+  let padReady = false;
+  // Receiver's signature pad (in the modal) - kept separate so the two pads
+  // never fight over shared drawing/ready flags.
+  let receiverDrawing = false;
+  let receiverPadListenersAttached = false;
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  function fmt(n) {
+    return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function todayStr() { return new Date().toISOString().split('T')[0]; }
+
+  function getQueryParam(name) { return new URLSearchParams(window.location.search).get(name); }
+
+  function generateStorageToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function treasurerNameValue() {
+    const el = document.getElementById('treasurer-name-input');
+    return (el && el.value.trim()) || voucherSettings.treasurerName || (activeProfile && activeProfile.name) || 'Church Treasurer';
+  }
+
+  function formatVoucherDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return escapeHtml(dateStr);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function showSuccess(msg) {
+    const el = document.getElementById('success-msg');
+    el.textContent = '✅ ' + msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2500);
+  }
+
+  // Same defensive helper as expenses.html: writeAuditLog() writes via
+  // .add(), which rejects FieldValue sentinels - strip them to null so a
+  // stray sentinel in a before/after payload never breaks a create.
+  function sanitizeAuditValue(value) {
+    if (!value || typeof value !== 'object') return value;
+    const isFieldValueSentinel = v =>
+      typeof firebase !== 'undefined' &&
+      firebase.firestore && typeof firebase.firestore.FieldValue === 'function' &&
+      v instanceof firebase.firestore.FieldValue;
+    const clean = {};
+    Object.keys(value).forEach(key => {
+      clean[key] = isFieldValueSentinel(value[key]) ? null : value[key];
+    });
+    return clean;
+  }
+
+  async function writeAuditLog(action, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: 'cashVouchers',
+      docId,
+      summary,
+      before: sanitizeAuditValue(beforeData) || null,
+      after: sanitizeAuditValue(afterData) || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeProfile ? activeProfile.name : '',
+      actorRole: activeProfile ? activeProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  function applyVoucherRoleAccess() {
+    document.querySelectorAll('.treasurer-only-voucher').forEach(el => {
+      el.style.display = canManageVouchersFlag ? '' : 'none';
+    });
+  }
+
+  /* ================= CARD 1: Signature & Defaults ================= */
+  // Ported near-verbatim from report-workflow.html (initSignaturePad,
+  // savePadSignature, saveUploadedSignature, canvasToPngBlob,
+  // uploadSignatureBlob) - same userSignatures/{uid} doc and
+  // signatures/{uid}/... Storage path, so one saved signature works on both
+  // pages with no rules change needed.
+
+  async function loadSignatureProfile() {
+    const doc = await db.collection('userSignatures').doc(activeProfile.uid).get();
+    signatureProfile = doc.exists ? doc.data() : null;
+    const img = document.getElementById('stored-signature-preview');
+    if (signatureProfile && signatureProfile.imageUrl) {
+      img.src = signatureProfile.imageUrl;
+      img.style.display = 'block';
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+    }
+  }
+
+  async function saveUploadedSignature() {
+    const file = document.getElementById('signature-file').files[0];
+    if (!file) return alert('Choose a signature image first.');
+    if (!file.type.startsWith('image/')) return alert('Signature must be an image file.');
+    if (file.size > 2 * 1024 * 1024) return alert('Signature image must be 2 MB or smaller.');
+    await uploadSignatureBlob(file, file.type);
+  }
+
+  async function savePadSignature() {
+    try {
+      const canvas = document.getElementById('signature-pad');
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        return alert('Draw your signature before saving the pad.');
+      }
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const exportCtx = exportCanvas.getContext('2d');
+      exportCtx.drawImage(canvas, 0, 0);
+      const pixels = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        if (pixels.data[i + 3] > 0) {
+          pixels.data[i] = 17;
+          pixels.data[i + 1] = 17;
+          pixels.data[i + 2] = 17;
+        }
+      }
+      exportCtx.putImageData(pixels, 0, 0);
+      const blob = await canvasToPngBlob(exportCanvas);
+      await uploadSignatureBlob(blob, 'image/png');
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to save signature from pad.');
+    }
+  }
+
+  function canvasToPngBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      if (canvas.toBlob) {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Unable to export signature image.'));
+        }, 'image/png');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      const parts = dataUrl.split(',');
+      const bytes = atob(parts[1]);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      resolve(new Blob([arr], { type: 'image/png' }));
+    });
+  }
+
+  async function uploadSignatureBlob(blob, contentType) {
+    try {
+      const path = `signatures/${activeProfile.uid}/signature-${Date.now()}.png`;
+      const ref = storage.ref(path);
+      await ref.put(blob, { contentType });
+      const imageUrl = await ref.getDownloadURL();
+      await db.collection('userSignatures').doc(activeProfile.uid).set({
+        uid: activeProfile.uid,
+        name: activeProfile.name,
+        role: activeProfile.role,
+        imageUrl,
+        storagePath: path,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      const hadPriorSignature = !!(signatureProfile && signatureProfile.imageUrl);
+      await loadSignatureProfile();
+      // Owner's explicit requirement: "always embed my signature" defaults
+      // ON the first time a signature is ever saved, unless the Treasurer
+      // has already made an explicit choice (voucherSettings.autoEmbed... is
+      // still undefined - never touched before).
+      if (!hadPriorSignature && voucherSettings.autoEmbedTreasurerSignature === undefined) {
+        voucherSettings.autoEmbedTreasurerSignature = true;
+        const chk = document.getElementById('auto-embed-checkbox');
+        if (chk) chk.checked = true;
+        await db.collection('settings').doc('voucherSettings').set({ autoEmbedTreasurerSignature: true }, { merge: true });
+        await writeAuditLog('voucher_settings_updated', 'voucherSettings', null, { autoEmbedTreasurerSignature: true },
+          'Defaulted "always embed signature as Released by" to ON after first signature save');
+      }
+      updateReleasedByUI();
+      alert('Electronic signature saved.');
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to save signature.');
+    }
+  }
+
+  function initSignaturePad() {
+    if (padReady) return;
+    const canvas = document.getElementById('signature-pad');
+    const ctx = canvas.getContext('2d');
+    const resize = () => {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#111';
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    const point = event => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = event.touches && event.touches[0];
+      const source = touch || event;
+      return { x: source.clientX - rect.left, y: source.clientY - rect.top };
+    };
+    const start = event => {
+      event.preventDefault();
+      drawing = true;
+      const p = point(event);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    };
+    const move = event => {
+      if (!drawing) return;
+      event.preventDefault();
+      const p = point(event);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    };
+    const stop = () => { drawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', stop);
+    canvas.addEventListener('mouseleave', stop);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', stop);
+    padReady = true;
+  }
+
+  function clearPad() {
+    const canvas = document.getElementById('signature-pad');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  async function toggleAutoEmbed() {
+    if (!canManageVouchersFlag) return;
+    const checked = document.getElementById('auto-embed-checkbox').checked;
+    const before = { autoEmbedTreasurerSignature: voucherSettings.autoEmbedTreasurerSignature };
+    voucherSettings.autoEmbedTreasurerSignature = checked;
+    await db.collection('settings').doc('voucherSettings').set({ autoEmbedTreasurerSignature: checked }, { merge: true });
+    await writeAuditLog('voucher_settings_updated', 'voucherSettings', before, { autoEmbedTreasurerSignature: checked },
+      `Set "always embed signature as Released by" to ${checked}`);
+  }
+
+  async function saveTreasurerName() {
+    if (!canManageVouchersFlag) return;
+    const name = document.getElementById('treasurer-name-input').value.trim();
+    if (!name) return alert('Enter a name.');
+    const before = { treasurerName: voucherSettings.treasurerName || '' };
+    voucherSettings.treasurerName = name;
+    await db.collection('settings').doc('voucherSettings').set({ treasurerName: name }, { merge: true });
+    await writeAuditLog('voucher_settings_updated', 'voucherSettings', before, { treasurerName: name }, `Updated Released-by name to "${name}"`);
+    showSuccess('Name saved.');
+  }
+
+  /* ================= CARD 2: Create / Edit Voucher ================= */
+
+  function readParticularsRows() {
+    return particularsRows
+      .map(r => ({ description: (r.description || '').toString().trim(), amount: parseFloat(r.amount) || 0 }))
+      .filter(r => r.description || r.amount);
+  }
+
+  function renderParticularsRows() {
+    const tbody = document.getElementById('particulars-body');
+    tbody.innerHTML = particularsRows.map((row, idx) => `
+      <tr>
+        <td><input type="text" value="${escapeHtml(row.description)}" placeholder="e.g. Water Bill" oninput="updateParticularField(${idx}, 'description', this.value)"></td>
+        <td><input type="number" class="part-amt" value="${row.amount}" step="0.01" placeholder="0.00" oninput="updateParticularField(${idx}, 'amount', this.value)"></td>
+        <td><button type="button" class="btn-ledger danger" onclick="removeParticularRow(${idx})" ${particularsRows.length <= 1 ? 'disabled' : ''}>✕</button></td>
+      </tr>`).join('');
+    updateVoucherTotal();
+  }
+
+  function updateParticularField(idx, field, value) {
+    particularsRows[idx][field] = value;
+    updateVoucherTotal();
+    renderVoucherPreview();
+  }
+
+  function addParticularRow() {
+    particularsRows.push({ description: '', amount: '' });
+    renderParticularsRows();
+    renderVoucherPreview();
+  }
+
+  function removeParticularRow(idx) {
+    if (particularsRows.length <= 1) return;
+    particularsRows.splice(idx, 1);
+    renderParticularsRows();
+    renderVoucherPreview();
+  }
+
+  function updateVoucherTotal() {
+    const total = particularsRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    document.getElementById('voucher-total-display').textContent = `₱${fmt(total)}`;
+  }
+
+  function setParticularsRows(rows) {
+    particularsRows = (rows || []).map(r => ({ description: r.description || '', amount: r.amount != null && r.amount !== '' ? r.amount : '' }));
+    if (!particularsRows.length) particularsRows = [{ description: '', amount: '' }];
+    renderParticularsRows();
+    renderVoucherPreview();
+  }
+
+  function computeVoucherStatus(releasedBy, receivedBy) {
+    if (receivedBy && receivedBy.signedAt) return 'Acknowledged';
+    if (releasedBy && releasedBy.signedAt) return 'Released';
+    return 'Draft';
+  }
+
+  function updateReleasedByUI() {
+    const box = document.getElementById('released-by-status');
+    const hasSig = signatureProfile && signatureProfile.imageUrl;
+    let html = '';
+    if (releasedByState.mode === 'electronic') {
+      html = `<span class="sig-status-ok">Auto-embedded ✓</span>
+        <button type="button" class="btn-receipt ghost" onclick="markReleasedManual()">Mark as manual instead</button>`;
+    } else if (releasedByState.mode === 'manual') {
+      html = `<span class="sig-status-manual">Marked for manual signature.</span>
+        ${hasSig ? `<button type="button" class="btn-receipt secondary" onclick="embedReleasedSignature()">Sign now</button>` : ''}`;
+    } else {
+      html = hasSig
+        ? `<button type="button" class="btn-receipt secondary" onclick="embedReleasedSignature()">Sign now</button>
+           <button type="button" class="btn-receipt ghost" onclick="markReleasedManual()">Mark as manual</button>`
+        : `<span class="muted">No signature saved above yet.</span>
+           <button type="button" class="btn-receipt ghost" onclick="markReleasedManual()">Mark as manual</button>`;
+    }
+    box.innerHTML = html;
+  }
+
+  function embedReleasedSignature() {
+    if (!signatureProfile || !signatureProfile.imageUrl) return alert('Save your electronic signature in the card above first.');
+    releasedByState = {
+      mode: 'electronic',
+      name: document.getElementById('released-by-name').value.trim() || treasurerNameValue(),
+      signatureUrl: signatureProfile.imageUrl,
+      signaturePath: signatureProfile.storagePath || '',
+      signedAt: new Date().toISOString()
+    };
+    updateReleasedByUI();
+    renderVoucherPreview();
+  }
+
+  function markReleasedManual() {
+    releasedByState = {
+      mode: 'manual',
+      name: document.getElementById('released-by-name').value.trim() || treasurerNameValue(),
+      signatureUrl: '', signaturePath: '',
+      signedAt: new Date().toISOString()
+    };
+    updateReleasedByUI();
+    renderVoucherPreview();
+  }
+
+  function updateReceivedByUI() {
+    const box = document.getElementById('received-by-status');
+    if (receivedByState.mode === 'electronic') {
+      box.innerHTML = `<img class="sig-thumb" src="${escapeHtml(receivedByState.signatureUrl)}" alt="Receiver signature">
+        <span class="sig-status-ok">Signed ✓</span>
+        <button type="button" class="btn-receipt ghost" onclick="clearReceivedSignature()">Clear</button>`;
+    } else if (receivedByState.mode === 'manual') {
+      box.innerHTML = `<span class="sig-status-manual">Marked for manual signature.</span>
+        <button type="button" class="btn-receipt ghost" onclick="clearReceivedSignature()">Clear</button>`;
+    } else {
+      box.innerHTML = `<span class="muted">Not yet signed.</span>`;
+    }
+  }
+
+  function markReceivedManual() {
+    receivedByState = {
+      mode: 'manual',
+      name: document.getElementById('received-by-name').value.trim(),
+      signatureUrl: '', signaturePath: '',
+      signedAt: new Date().toISOString()
+    };
+    updateReceivedByUI();
+    renderVoucherPreview();
+  }
+
+  function clearReceivedSignature() {
+    receivedByState = { mode: null, name: document.getElementById('received-by-name').value.trim(), signatureUrl: '', signaturePath: '', signedAt: null };
+    updateReceivedByUI();
+    renderVoucherPreview();
+  }
+
+  async function saveReceivedUploadedSignature() {
+    const file = document.getElementById('received-signature-file').files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Signature must be an image file.'); return; }
+    if (file.size > 2 * 1024 * 1024) { alert('Signature image must be 2 MB or smaller.'); return; }
+    await uploadReceiverSignatureBlob(file, file.type);
+    document.getElementById('received-signature-file').value = '';
+  }
+
+  // Receiver signature pad - separate canvas/state from the Treasurer's own
+  // pad above. Uploads to voucher-signatures/{voucherId}/{token}.png (a
+  // path this voucher owns outright, distinct from the Treasurer's
+  // reusable signatures/{uid}/... path), so storage.rules needs its own
+  // block for it.
+  function initReceiverPad() {
+    const canvas = document.getElementById('receiver-signature-pad');
+    const ctx = canvas.getContext('2d');
+    const resize = () => {
+      const ratio = Math.max(window.devicePixelRatio || 1, 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#111';
+    };
+    resize();
+    if (receiverPadListenersAttached) return;
+    const point = event => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = event.touches && event.touches[0];
+      const source = touch || event;
+      return { x: source.clientX - rect.left, y: source.clientY - rect.top };
+    };
+    const start = event => {
+      event.preventDefault();
+      receiverDrawing = true;
+      const p = point(event);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    };
+    const move = event => {
+      if (!receiverDrawing) return;
+      event.preventDefault();
+      const p = point(event);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    };
+    const stop = () => { receiverDrawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup', stop);
+    canvas.addEventListener('mouseleave', stop);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove', move, { passive: false });
+    canvas.addEventListener('touchend', stop);
+    receiverPadListenersAttached = true;
+  }
+
+  function clearReceiverPad() {
+    const canvas = document.getElementById('receiver-signature-pad');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function openReceiverPadModal() {
+    document.getElementById('receiverPadModal').style.display = 'flex';
+    // The canvas starts hidden (display:none on the modal), so it has zero
+    // size until the modal is actually shown - (re)size it every time the
+    // modal opens rather than once at load.
+    setTimeout(() => { initReceiverPad(); clearReceiverPad(); }, 30);
+  }
+
+  function closeReceiverPadModal() {
+    document.getElementById('receiverPadModal').style.display = 'none';
+  }
+
+  async function saveReceiverPadSignature() {
+    try {
+      const canvas = document.getElementById('receiver-signature-pad');
+      const blank = document.createElement('canvas');
+      blank.width = canvas.width;
+      blank.height = canvas.height;
+      if (canvas.toDataURL() === blank.toDataURL()) {
+        return alert("Draw the receiver's signature before saving.");
+      }
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = canvas.width;
+      exportCanvas.height = canvas.height;
+      const exportCtx = exportCanvas.getContext('2d');
+      exportCtx.drawImage(canvas, 0, 0);
+      const pixels = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        if (pixels.data[i + 3] > 0) {
+          pixels.data[i] = 17;
+          pixels.data[i + 1] = 17;
+          pixels.data[i + 2] = 17;
+        }
+      }
+      exportCtx.putImageData(pixels, 0, 0);
+      const blob = await canvasToPngBlob(exportCanvas);
+      await uploadReceiverSignatureBlob(blob, 'image/png');
+      closeReceiverPadModal();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to save receiver signature.');
+    }
+  }
+
+  async function uploadReceiverSignatureBlob(blob, contentType) {
+    if (!currentVoucherId) currentVoucherId = db.collection('cashVouchers').doc().id;
+    try {
+      const token = generateStorageToken();
+      const path = `voucher-signatures/${currentVoucherId}/${token}.png`;
+      const ref = storage.ref(path);
+      await ref.put(blob, { contentType });
+      const url = await ref.getDownloadURL();
+      receivedByState = {
+        mode: 'electronic',
+        name: document.getElementById('received-by-name').value.trim() || receivedByState.name || '',
+        signatureUrl: url,
+        signaturePath: path,
+        signedAt: new Date().toISOString()
+      };
+      updateReceivedByUI();
+      renderVoucherPreview();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to upload receiver signature.');
+    }
+  }
+
+  function voucherMarkup(v) {
+    const rows = (v.particulars || []).filter(p => (p.description && String(p.description).trim()) || Number(p.amount));
+    const minRows = 3;
+    let rowsHtml = rows.map(p => `<tr><td>${escapeHtml(p.description)}</td><td class="amt">${Number(p.amount) ? fmt(p.amount) : ''}</td></tr>`).join('');
+    for (let i = rows.length; i < minRows; i++) rowsHtml += `<tr><td>&nbsp;</td><td>&nbsp;</td></tr>`;
+    const releasedBy = v.releasedBy || {};
+    const receivedBy = v.receivedBy || {};
+    const releasedSigHtml = releasedBy.mode === 'electronic' && releasedBy.signatureUrl
+      ? `<img class="sign-img" src="${escapeHtml(releasedBy.signatureUrl)}" alt="Released by signature">`
+      : releasedBy.mode === 'manual'
+        ? `<div class="sign-manual-note">(to be signed manually)</div>`
+        : `<div class="sign-manual-note">&nbsp;</div>`;
+    const receivedSigHtml = receivedBy.mode === 'electronic' && receivedBy.signatureUrl
+      ? `<img class="sign-img" src="${escapeHtml(receivedBy.signatureUrl)}" alt="Received by signature">`
+      : receivedBy.mode === 'manual'
+        ? `<div class="sign-manual-note">(to be signed manually)</div>`
+        : `<div class="sign-manual-note">&nbsp;</div>`;
+    const totalAmount = v.totalAmount != null ? v.totalAmount : rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    return `
+      <div class="voucher-block">
+        <div class="voucher-head">
+          <img src="umc-logo.png" class="voucher-logo" alt="UMC logo">
+          <div class="voucher-head-text">
+            <div class="voucher-church-name">TAGAYTAY UNITED METHODIST CHURCH</div>
+            <div class="voucher-address">4120 Maglabe Drive, Brgy. Asisan, Tagaytay City</div>
+            <div class="voucher-title">C A S H&nbsp;&nbsp;V O U C H E R</div>
+          </div>
+        </div>
+        <div class="voucher-meta-row">
+          <div class="voucher-field"><span class="label">Account:</span><span class="value">${escapeHtml(v.account || '')}</span></div>
+          <div class="voucher-field"><span class="label">Date:</span><span class="value">${formatVoucherDate(v.date)}</span></div>
+        </div>
+        <table class="voucher-table">
+          <thead><tr><th>Particulars</th><th style="width:110px;">Amount</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot><tr><td class="total-label">Total</td><td class="amt total-amt">${fmt(totalAmount)}</td></tr></tfoot>
+        </table>
+        <div class="voucher-sign-row">
+          <div class="voucher-sign-col">
+            <div class="sign-label">Released by:</div>
+            ${releasedSigHtml}
+            <div class="sign-line"></div>
+            <div class="sign-caption">${escapeHtml(releasedBy.title || 'Church Treasurer')}</div>
+          </div>
+          <div class="voucher-sign-col">
+            <div class="sign-label">Received by:</div>
+            ${receivedSigHtml}
+            <div class="sign-line"></div>
+            <div class="sign-caption">${escapeHtml(receivedBy.name) || 'Signature'}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderVoucherPreview() {
+    const draft = {
+      account: document.getElementById('voucher-account').value,
+      date: document.getElementById('voucher-date').value,
+      particulars: particularsRows,
+      totalAmount: particularsRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0),
+      releasedBy: releasedByState,
+      receivedBy: receivedByState
+    };
+    document.getElementById('voucher-preview').innerHTML = voucherMarkup(draft);
+  }
+
+  function buildReleasedByPayload() {
+    const name = document.getElementById('released-by-name').value.trim() || treasurerNameValue();
+    return {
+      name,
+      title: 'Church Treasurer',
+      uid: activeProfile.uid,
+      mode: releasedByState.mode || null,
+      signatureUrl: releasedByState.mode === 'electronic' ? releasedByState.signatureUrl : '',
+      signaturePath: releasedByState.mode === 'electronic' ? releasedByState.signaturePath : '',
+      signedAt: releasedByState.signedAt || null
+    };
+  }
+
+  function buildReceivedByPayload() {
+    const name = document.getElementById('received-by-name').value.trim();
+    return {
+      name,
+      mode: receivedByState.mode || null,
+      signatureUrl: receivedByState.mode === 'electronic' ? receivedByState.signatureUrl : '',
+      signaturePath: receivedByState.mode === 'electronic' ? receivedByState.signaturePath : '',
+      signedAt: receivedByState.signedAt || null
+    };
+  }
+
+  async function allocateVoucherNumber(year) {
+    const settingsRef = db.collection('settings').doc('voucherSettings');
+    return db.runTransaction(async tx => {
+      const snap = await tx.get(settingsRef);
+      const data = snap.exists ? snap.data() : {};
+      // Fully replace the voucherSeq map with a client-merged copy (rather
+      // than relying on Firestore's own nested-field merge semantics),
+      // so the write is unambiguous regardless of merge-option quirks.
+      const seqMap = Object.assign({}, data.voucherSeq || {});
+      const nextSeq = (Number(seqMap[year]) || 0) + 1;
+      seqMap[year] = nextSeq;
+      tx.set(settingsRef, { voucherSeq: seqMap }, { merge: true });
+      return `CV-${year}-${String(nextSeq).padStart(4, '0')}`;
+    });
+  }
+
+  function startNewVoucherDraft() {
+    editingVoucherId = null;
+    editingVoucher = null;
+    currentVoucherId = db.collection('cashVouchers').doc().id;
+    prefillExpenseId = null;
+    prefillLiquidationId = null;
+    particularsRows = [{ description: '', amount: '' }];
+    document.getElementById('voucher-account').value = '';
+    document.getElementById('voucher-date').value = todayStr();
+    document.getElementById('voucher-fund').value = '';
+    document.getElementById('received-by-name').value = '';
+    document.getElementById('released-by-name').value = treasurerNameValue();
+
+    const hasSig = signatureProfile && signatureProfile.imageUrl;
+    if (voucherSettings.autoEmbedTreasurerSignature && hasSig) {
+      releasedByState = {
+        mode: 'electronic', name: treasurerNameValue(),
+        signatureUrl: signatureProfile.imageUrl, signaturePath: signatureProfile.storagePath || '',
+        signedAt: new Date().toISOString()
+      };
+    } else {
+      releasedByState = { mode: null, name: treasurerNameValue(), signatureUrl: '', signaturePath: '', signedAt: null };
+    }
+    receivedByState = { mode: null, name: '', signatureUrl: '', signaturePath: '', signedAt: null };
+
+    renderParticularsRows();
+    updateReleasedByUI();
+    updateReceivedByUI();
+    document.getElementById('edit-voucher-banner').style.display = 'none';
+    document.getElementById('save-voucher-btn').textContent = '💾 Save Voucher';
+    renderVoucherPreview();
+  }
+
+  function cancelVoucherEdit() { startNewVoucherDraft(); }
+
+  async function loadVoucherForEdit(id) {
+    if (!canManageVouchersFlag) return;
+    let voucher = allVouchers.find(v => v.id === id);
+    if (!voucher) {
+      const doc = await db.collection('cashVouchers').doc(id).get();
+      if (!doc.exists) return alert('Voucher not found.');
+      voucher = { id: doc.id, ...doc.data() };
+    }
+    editingVoucherId = id;
+    editingVoucher = voucher;
+    currentVoucherId = id;
+    prefillExpenseId = null;
+    prefillLiquidationId = null;
+
+    document.getElementById('voucher-account').value = voucher.account || '';
+    document.getElementById('voucher-date').value = voucher.date || todayStr();
+    document.getElementById('voucher-fund').value = voucher.fund || '';
+    setParticularsRows(voucher.particulars || []);
+
+    releasedByState = voucher.releasedBy ? { ...voucher.releasedBy } : { mode: null, name: '', signatureUrl: '', signaturePath: '', signedAt: null };
+    receivedByState = voucher.receivedBy ? { ...voucher.receivedBy } : { mode: null, name: '', signatureUrl: '', signaturePath: '', signedAt: null };
+    document.getElementById('released-by-name').value = releasedByState.name || treasurerNameValue();
+    document.getElementById('received-by-name').value = receivedByState.name || '';
+
+    updateReleasedByUI();
+    updateReceivedByUI();
+    document.getElementById('edit-voucher-banner').style.display = 'flex';
+    document.getElementById('edit-voucher-banner-text').textContent = `Editing voucher ${voucher.voucherNo || ''}`;
+    document.getElementById('save-voucher-btn').textContent = 'Update Voucher';
+    renderVoucherPreview();
+    window.scrollTo({ top: document.getElementById('voucher-card').offsetTop - 20, behavior: 'smooth' });
+  }
+
+  async function saveVoucher(thenPrint) {
+    if (!canManageVouchersFlag) return alert('Only the Treasurer can save vouchers.');
+    const btn = document.getElementById('save-voucher-btn');
+    const account = document.getElementById('voucher-account').value.trim();
+    const date = document.getElementById('voucher-date').value;
+    const fund = document.getElementById('voucher-fund').value;
+    const rows = readParticularsRows();
+
+    if (!account) return alert('Enter an account.');
+    if (!date) return alert('Select a date.');
+    if (!rows.length) return alert('Add at least one particular line with a description and amount.');
+    const totalAmount = rows.reduce((s, r) => s + r.amount, 0);
+    if (!totalAmount) return alert('Total amount must be greater than zero.');
+
+    const wasEditing = !!editingVoucherId;
+    btn.disabled = true;
+    btn.textContent = wasEditing ? 'Updating...' : 'Saving...';
+    try {
+      if (!currentVoucherId) currentVoucherId = db.collection('cashVouchers').doc().id;
+      const docRef = db.collection('cashVouchers').doc(currentVoucherId);
+
+      let voucherNo = editingVoucher ? editingVoucher.voucherNo : null;
+      if (!voucherNo) voucherNo = await allocateVoucherNumber(date.slice(0, 4));
+
+      const releasedByPayload = buildReleasedByPayload();
+      const receivedByPayload = buildReceivedByPayload();
+      const status = computeVoucherStatus(releasedByPayload, receivedByPayload);
+      const nowIso = new Date().toISOString();
+
+      const payload = {
+        voucherNo, account, date,
+        particulars: rows, totalAmount, fund,
+        releasedBy: releasedByPayload, receivedBy: receivedByPayload, status,
+        linkedExpenseId: prefillExpenseId || (editingVoucher && editingVoucher.linkedExpenseId) || null,
+        linkedLiquidationRequestId: prefillLiquidationId || (editingVoucher && editingVoucher.linkedLiquidationRequestId) || null,
+        createdBy: editingVoucher ? editingVoucher.createdBy : { uid: activeProfile.uid, name: activeProfile.name, role: activeProfile.role },
+        createdAt: editingVoucher ? editingVoucher.createdAt : nowIso,
+        updatedAt: nowIso
+      };
+
+      await docRef.set(payload);
+
+      const wasReleased = !!(editingVoucher && editingVoucher.releasedBy && editingVoucher.releasedBy.signedAt);
+      const wasReceived = !!(editingVoucher && editingVoucher.receivedBy && editingVoucher.receivedBy.signedAt);
+
+      await writeAuditLog(
+        wasEditing ? 'voucher_updated' : 'voucher_created',
+        docRef.id, editingVoucher || null, payload,
+        `${wasEditing ? 'Updated' : 'Created'} cash voucher ${voucherNo} (${account}) - ₱${fmt(totalAmount)}`
+      );
+      if (!wasReleased && releasedByPayload.signedAt) {
+        await writeAuditLog('voucher_signed_released', docRef.id, null, releasedByPayload,
+          `Released-by signed on voucher ${voucherNo} (${releasedByPayload.mode})`);
+      }
+      if (!wasReceived && receivedByPayload.signedAt) {
+        await writeAuditLog('voucher_signed_received', docRef.id, null, receivedByPayload,
+          `Received-by signed on voucher ${voucherNo} (${receivedByPayload.mode})`);
+      }
+
+      if (payload.linkedExpenseId) {
+        db.collection('expenses').doc(payload.linkedExpenseId).update({ voucherId: docRef.id, voucherNo }).catch(err => console.warn(err));
+      }
+      if (payload.linkedLiquidationRequestId) {
+        db.collection('liquidationRequests').doc(payload.linkedLiquidationRequestId).update({ voucherId: docRef.id, voucherNo }).catch(err => console.warn(err));
+      }
+
+      editingVoucherId = docRef.id;
+      editingVoucher = { id: docRef.id, ...payload };
+      currentVoucherId = docRef.id;
+
+      await loadVoucherRegister();
+      showSuccess(`Voucher ${voucherNo} saved.`);
+      document.getElementById('save-voucher-btn').textContent = 'Update Voucher';
+      document.getElementById('edit-voucher-banner').style.display = 'flex';
+      document.getElementById('edit-voucher-banner-text').textContent = `Editing voucher ${voucherNo}`;
+
+      if (thenPrint) openPrintModal([docRef.id]);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to save voucher.');
+    }
+    btn.disabled = false;
+    if (btn.textContent.indexOf('...') !== -1) btn.textContent = editingVoucherId ? 'Update Voucher' : '💾 Save Voucher';
+  }
+
+  /* ================= CARD 3: Voucher Register ================= */
+
+  async function loadVoucherRegister() {
+    try {
+      const snap = await db.collection('cashVouchers').orderBy('createdAt', 'desc').get();
+      allVouchers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (error) {
+      console.error(error);
+      allVouchers = [];
+    }
+    populateYearFilter();
+    applyRegisterFilters();
+  }
+
+  function populateYearFilter() {
+    const sel = document.getElementById('reg-year-filter');
+    const years = [...new Set(allVouchers.map(v => (v.date || '').slice(0, 4)).filter(Boolean))].sort((a, b) => b - a);
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+    sel.value = current;
+  }
+
+  function applyRegisterFilters() {
+    const year = document.getElementById('reg-year-filter').value;
+    const month = document.getElementById('reg-month-filter').value;
+    const status = document.getElementById('reg-status-filter').value;
+    const search = document.getElementById('reg-search').value.trim().toLowerCase();
+    let filtered = allVouchers;
+    if (year) filtered = filtered.filter(v => (v.date || '').slice(0, 4) === year);
+    if (month) filtered = filtered.filter(v => (v.date || '').slice(5, 7) === month);
+    if (status) filtered = filtered.filter(v => (v.status || 'Draft') === status);
+    if (search) {
+      filtered = filtered.filter(v =>
+        (v.voucherNo || '').toLowerCase().includes(search) ||
+        (v.account || '').toLowerCase().includes(search) ||
+        ((v.receivedBy && v.receivedBy.name) || '').toLowerCase().includes(search)
+      );
+    }
+    renderRegisterTable(filtered);
+  }
+
+  function renderRegisterTable(data) {
+    document.getElementById('register-body').innerHTML = data.map(v => `
+      <tr>
+        <td><input type="checkbox" class="voucher-select" value="${v.id}"></td>
+        <td>${escapeHtml(v.voucherNo || '')}</td>
+        <td>${formatVoucherDate(v.date)}</td>
+        <td>${escapeHtml(v.account || '')}</td>
+        <td>${escapeHtml((v.receivedBy && v.receivedBy.name) || '-')}</td>
+        <td style="text-align:right;">₱${fmt(v.totalAmount)}</td>
+        <td><span class="badge-status badge-${(v.status || 'Draft').toLowerCase()}">${escapeHtml(v.status || 'Draft')}</span></td>
+        <td>
+          <div class="ledger-actions">
+            <button class="btn-ledger view" onclick="openPrintModal(['${v.id}'])">View / Print</button>
+            ${canManageVouchersFlag ? `<button class="btn-ledger edit" onclick="loadVoucherForEdit('${v.id}')">Edit</button>` : ''}
+            ${canManageVouchersFlag ? `<button class="btn-ledger danger" onclick="deleteVoucher('${v.id}')">Delete</button>` : ''}
+          </div>
+        </td>
+      </tr>`).join('') || '<tr><td colspan="8" style="text-align:center; color:#999; padding:20px;">No vouchers found.</td></tr>';
+  }
+
+  async function deleteVoucher(id) {
+    if (!canManageVouchersFlag) return alert('Only the Treasurer can delete vouchers.');
+    const voucher = allVouchers.find(v => v.id === id);
+    if (!voucher) return alert('Voucher not found.');
+    if (!confirm(`Delete voucher ${voucher.voucherNo || id}? This cannot be undone.`)) return;
+    try {
+      await db.collection('cashVouchers').doc(id).delete();
+      if (voucher.linkedExpenseId) {
+        db.collection('expenses').doc(voucher.linkedExpenseId)
+          .update({ voucherId: firebase.firestore.FieldValue.delete(), voucherNo: firebase.firestore.FieldValue.delete() })
+          .catch(err => console.warn(err));
+      }
+      if (voucher.linkedLiquidationRequestId) {
+        db.collection('liquidationRequests').doc(voucher.linkedLiquidationRequestId)
+          .update({ voucherId: firebase.firestore.FieldValue.delete(), voucherNo: firebase.firestore.FieldValue.delete() })
+          .catch(err => console.warn(err));
+      }
+      await writeAuditLog('voucher_deleted', id, voucher, null, `Deleted cash voucher ${voucher.voucherNo || id}`);
+      if (editingVoucherId === id) startNewVoucherDraft();
+      await loadVoucherRegister();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Unable to delete voucher.');
+    }
+  }
+
+  function getSelectedVoucherIds() {
+    return [...document.querySelectorAll('.voucher-select:checked')].map(el => el.value);
+  }
+
+  function printSelected() {
+    const ids = getSelectedVoucherIds();
+    if (!ids.length) return alert('Select at least one voucher to print.');
+    openPrintModal(ids);
+  }
+
+  function openPrintModal(ids) {
+    const vouchers = ids
+      .map(id => allVouchers.find(v => v.id === id) || (editingVoucher && editingVoucher.id === id ? editingVoucher : null))
+      .filter(Boolean);
+    if (!vouchers.length) return alert('Voucher not found in the register yet - save it first.');
+    document.getElementById('print-container').innerHTML = vouchers.map(v => `<div class="voucher-print-slot">${voucherMarkup(v)}</div>`).join('');
+    document.getElementById('printModal').style.display = 'flex';
+  }
+
+  function closePrintModal() { document.getElementById('printModal').style.display = 'none'; }
+
+  /* ================= Prefill from Expenses / Liquidation ================= */
+
+  async function loadAccountSuggestions() {
+    try {
+      const year = new Date().getFullYear();
+      const doc = await db.collection('budgets').doc(String(year)).get();
+      const names = new Set();
+      if (doc.exists && doc.data().expense) {
+        Object.keys(doc.data().expense).forEach(k => { names.add(k.includes(' - ') ? k.split(' - ')[0] : k); });
+      }
+      document.getElementById('account-suggestions').innerHTML = [...names].sort().map(n => `<option value="${escapeHtml(n)}">`).join('');
+    } catch (error) {
+      console.warn('Account suggestions unavailable', error);
+    }
+  }
+
+  async function applyQueryPrefill() {
+    const qpExpenseId = getQueryParam('expenseId');
+    const qpLiquidationId = getQueryParam('liquidationId');
+    try {
+      if (qpExpenseId) {
+        const doc = await db.collection('expenses').doc(qpExpenseId).get();
+        if (doc.exists) {
+          const exp = doc.data();
+          if (exp.voucherId) { await loadVoucherForEdit(exp.voucherId); return; }
+          prefillExpenseId = qpExpenseId;
+          document.getElementById('voucher-account').value = exp.category || exp.sub || '';
+          document.getElementById('voucher-date').value = exp.date || todayStr();
+          document.getElementById('voucher-fund').value = exp.payment || '';
+          setParticularsRows([{ description: exp.sub || exp.category || 'Expense', amount: Number(exp.amount || 0) }]);
+          document.getElementById('received-by-name').value = exp.payee || '';
+          receivedByState.name = exp.payee || '';
+          updateReceivedByUI();
+          renderVoucherPreview();
+        }
+      } else if (qpLiquidationId) {
+        const doc = await db.collection('liquidationRequests').doc(qpLiquidationId).get();
+        if (doc.exists) {
+          const row = { id: doc.id, ...doc.data() };
+          if (row.voucherId) { await loadVoucherForEdit(row.voucherId); return; }
+          prefillLiquidationId = qpLiquidationId;
+          let account = row.presetCategory || '';
+          if (!account && row.linkedExpenseId) {
+            try {
+              const expSnap = await db.collection('expenses').doc(row.linkedExpenseId).get();
+              if (expSnap.exists) account = expSnap.data().category || '';
+            } catch (e) { /* best-effort only */ }
+          }
+          document.getElementById('voucher-account').value = account;
+          document.getElementById('voucher-date').value = (row.releasedAt || '').slice(0, 10) || todayStr();
+          document.getElementById('voucher-fund').value = row.releasedFund || '';
+          setParticularsRows([{ description: row.title || '', amount: Number(row.amount || 0) }]);
+          const receiverName = row.requesterName || row.requesterRole || '';
+          document.getElementById('received-by-name').value = receiverName;
+          receivedByState.name = receiverName;
+          updateReceivedByUI();
+          renderVoucherPreview();
+        }
+      }
+    } catch (error) {
+      console.warn('Prefill failed', error);
+    }
+  }
+
+  /* ================= Init ================= */
+
+  async function loadVoucherSettings() {
+    try {
+      const doc = await db.collection('settings').doc('voucherSettings').get();
+      voucherSettings = doc.exists ? doc.data() : {};
+    } catch (error) {
+      voucherSettings = {};
+      console.warn(error);
+    }
+  }
+
+  async function initApp() {
+    activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
+    if (!CASH_VOUCHER_ALLOWED_ROLES.includes(activeProfile.role)) {
+      window.location.href = 'index.html';
+      return;
+    }
+    canManageVouchersFlag = activeProfile.role === 'Treasurer';
+    applyVoucherRoleAccess();
+
+    await loadVoucherSettings();
+
+    if (canManageVouchersFlag) {
+      initSignaturePad();
+      await loadSignatureProfile();
+      document.getElementById('treasurer-name-input').value = voucherSettings.treasurerName || activeProfile.name || '';
+      document.getElementById('auto-embed-checkbox').checked = !!voucherSettings.autoEmbedTreasurerSignature;
+      startNewVoucherDraft();
+      loadAccountSuggestions();
+    }
+
+    await loadVoucherRegister();
+
+    if (canManageVouchersFlag) {
+      await applyQueryPrefill();
+    }
+  }
+
+  initApp();
+</script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+    }
+  </script>
+</body>
+</html>

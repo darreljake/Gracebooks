@@ -64,5 +64,15 @@ service firebase.storage {
         && request.resource.contentType.matches('text/html');
       allow delete: if isTreasurer();
     }
+
+    // Cash voucher "Received by" signatures (cash-voucher.html). Distinct from
+    // signatures/{uid}/... above - the receiver is usually not a system user
+    // (a vendor, a driver), so their signature is captured on the Treasurer's
+    // device and owned by the voucher itself, not by a uid.
+    match /voucher-signatures/{voucherId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if isTreasurer() && validSignatureFile();
+      allow delete: if isTreasurer();
+    }
   }
 }
