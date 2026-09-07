@@ -1205,6 +1205,27 @@
       }[char]));
   }
 
+  // writeAuditLog() writes via db.collection('auditLogs').add(), which is a
+  // create (not a merge-set) - Firestore rejects FieldValue.delete() (and
+  // any other FieldValue sentinel) inside a create with "FieldValue.delete()
+  // can only be used with update() and set() with merge:true". Several
+  // payloads passed in here (e.g. uploadReceiptForExpense()'s return value
+  // when replacing a receipt, which clears the old highlight fields) do
+  // carry those sentinels because they're built for docRef.update() - strip
+  // them down to null here instead of trusting every call site to remember.
+  function sanitizeAuditValue(value) {
+      if (!value || typeof value !== 'object') return value;
+      const isFieldValueSentinel = v =>
+          typeof firebase !== 'undefined' &&
+          firebase.firestore && typeof firebase.firestore.FieldValue === 'function' &&
+          v instanceof firebase.firestore.FieldValue;
+      const clean = {};
+      Object.keys(value).forEach(key => {
+          clean[key] = isFieldValueSentinel(value[key]) ? null : value[key];
+      });
+      return clean;
+  }
+
   async function writeAuditLog(action, docId, beforeData, afterData, summary) {
       const user = firebase.auth().currentUser;
       await db.collection('auditLogs').add({
@@ -1212,8 +1233,8 @@
           collection: 'expenses',
           docId,
           summary,
-          before: beforeData || null,
-          after: afterData || null,
+          before: sanitizeAuditValue(beforeData) || null,
+          after: sanitizeAuditValue(afterData) || null,
           actorUid: user ? user.uid : '',
           actorEmail: user ? user.email : '',
           actorName: activeUserProfile ? activeUserProfile.name : '',

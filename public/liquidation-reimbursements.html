@@ -667,6 +667,17 @@
         { liquidationItems: beforeItems }, { liquidationItems: items },
         `Updated ${annotations.length} receipt highlight(s) on item "${item.description || ''}" for request ${requestId}`);
       row.liquidationItems = items;
+      // loadRequests() only re-renders the background requests table, not
+      // an already-open Reconcile modal - patch this one badge in place
+      // instead of reopening the modal, which would rebuild every category
+      // <select> and throw away classifications the Treasurer already made
+      // on other rows.
+      const badge = document.getElementById(`recon-badge-${itemIndex}-${receiptId}`);
+      if (badge) {
+        const newCount = item.annotations.filter(a => a.receiptId === receiptId).length;
+        badge.textContent = `🖍 ${newCount}`;
+        badge.style.display = newCount ? '' : 'none';
+      }
       await loadRequests();
     }
 
@@ -1084,7 +1095,14 @@
     // Stages a File into the shared receipts pool (as a "tmp-" id with an
     // object URL preview so it can be viewed/annotated before it's ever
     // uploaded), optionally auto-linking it to one liquidation-item row.
+    // Validation lives here (not just at each caller) so every path that
+    // can produce a File - file picker, camera capture, the item picker's
+    // own upload/camera - gets the same friendly rejection instead of a
+    // raw Storage error appearing later at upload time. Returns the new
+    // tempId, or null if the file was rejected (validateReceiptFile()
+    // already alerted the user in that case).
     function addStagedReceipt(file, linkRowId) {
+      if (!validateReceiptFile(file)) return null;
       const tempId = 'tmp-' + generateStorageToken();
       const objectUrl = URL.createObjectURL(file);
       stagedReceipts.push({ tempId, file, name: file.name, objectUrl });
@@ -1101,10 +1119,7 @@
       const input = document.getElementById('liq-receipts');
       const files = Array.from(input.files || []);
       input.value = '';
-      for (const file of files) {
-        if (!validateReceiptFile(file)) continue;
-        addStagedReceipt(file, null);
-      }
+      files.forEach(file => addStagedReceipt(file, null));
     }
 
     function renderLiqReceiptsPreview() {
@@ -1142,6 +1157,12 @@
     async function openLiqCameraModal() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert('Camera capture is not available in this browser. Please use file upload instead.');
+        // openReceiptPickerCamera() may have set this before calling in -
+        // the modal never opens, so closeLiqCameraModal() (which normally
+        // clears it) never runs. Clear it here too, or the next capture
+        // from the general "Take Photo" button would silently link itself
+        // to that earlier item row.
+        liqCameraLinkRowId = null;
         return;
       }
       try {
@@ -1157,6 +1178,9 @@
       } catch (error) {
         console.error(error);
         alert('Unable to open camera. Please allow camera access or use file upload.');
+        // Same reasoning as the unsupported-browser branch above: the modal
+        // never opened, so closeLiqCameraModal() never runs to clear this.
+        liqCameraLinkRowId = null;
       }
     }
 
@@ -1184,7 +1208,7 @@
       canvas.toBlob(blob => {
         if (!blob) return alert('Unable to capture photo. Please try again.');
         const file = new File([blob], `receipt-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`, { type: 'image/jpeg' });
-        addStagedReceipt(file, liqCameraLinkRowId);
+        if (!addStagedReceipt(file, liqCameraLinkRowId)) return; // rejected - validateReceiptFile() already alerted
         liqCapturedCount++;
         document.getElementById('liq-camera-count').textContent = `${liqCapturedCount} photo(s) captured this session.`;
       }, 'image/jpeg', 0.82);
@@ -1304,7 +1328,6 @@
       const file = input.files[0];
       input.value = '';
       if (!file || !receiptPickerRowId) return;
-      if (!validateReceiptFile(file)) return;
       addStagedReceipt(file, receiptPickerRowId);
       openReceiptPicker(receiptPickerRowId);
     }
@@ -1356,8 +1379,21 @@
         return alert('Every item needs a description and an amount greater than zero.');
       }
       const staged = stagedReceipts.slice();
+      // Belt-and-braces: every path that stages a file already validates it
+      // (addStagedReceipt()), but re-check right before upload starts too,
+      // so a file that somehow ended up in the pool invalid can never
+      // trigger a half-uploaded batch.
+      for (const stagedReceipt of staged) {
+        if (!validateReceiptFile(stagedReceipt.file)) return;
+      }
       const notes = document.getElementById('liq-notes').value.trim();
-      if (!staged.length && !confirm('No receipts attached. Submit the liquidation without receipts?')) return;
+      // Base "no receipts" on the whole pool (staged files + anything
+      // already uploaded in a prior cycle), not just newly staged files -
+      // a resubmission after being returned for correction already has
+      // receipts uploaded from the first cycle and shouldn't be warned as
+      // if it has none. getReceiptPoolEntries() already merges both.
+      if (!getReceiptPoolEntries().length
+        && !confirm('No receipts attached. Submit the liquidation without receipts?')) return;
 
       const button = document.getElementById('liq-submit-btn');
       button.disabled = true;
@@ -1456,8 +1492,14 @@
                   const receiptsCell = linked.length
                     ? linked.map(p => {
                         const count = (item.annotations || []).filter(a => a.receiptId === p.receiptId).length;
+                        // Stable id so saveLiquidationItemAnnotations() can
+                        // patch just this badge's count in place after a
+                        // save, instead of reloading/rebuilding this whole
+                        // modal (which would discard any category <select>
+                        // choices the Treasurer already made on other rows).
+                        const badgeId = `recon-badge-${index}-${p.receiptId}`;
                         return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
-                          ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">🖍 ${count}</span>` : ''}
+                          <span id="${escapeHtml(badgeId)}" style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px; ${count ? '' : 'display:none;'}">🖍 ${count}</span>
                           <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', true)">View Highlights</button>
                         </div>`;
                       }).join('')

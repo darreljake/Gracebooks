@@ -27,7 +27,10 @@
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = [
-      '.gb-annot-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 5000;',
+      // Explicit top/right/bottom/left rather than the `inset` shorthand:
+      // this ships inside an Android Capacitor WebView (see android/,
+      // capacitor.config.json) which can be older than Chrome 87.
+      '.gb-annot-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.65); z-index: 5000;',
       '  display: flex; align-items: center; justify-content: center; padding: 16px; font-family: Arial, sans-serif; }',
       '.gb-annot-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 780px; max-height: 94vh;',
       '  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.35); }',
@@ -43,7 +46,7 @@
       '.gb-annot-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; touch-action: none; }',
       '.gb-annot-stage.gb-annot-editable { cursor: crosshair; }',
       '.gb-annot-img { display: block; max-width: 100%; max-height: 65vh; width: auto; height: auto; user-select: none; -webkit-user-drag: none; }',
-      '.gb-annot-boxes { position: absolute; inset: 0; }',
+      '.gb-annot-boxes { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }',
       '.gb-annot-boxes.gb-annot-hidden-boxes { display: none; }',
       '.gb-annot-box { position: absolute; border: 2px solid; box-sizing: border-box; pointer-events: none; }',
       '.gb-annot-box .gb-annot-badge { position: absolute; top: -2px; left: -2px; transform: translate(-50%, -50%);',
@@ -184,7 +187,7 @@
       '</div>' +
       '<button type="button" class="gb-annot-close" aria-label="Close">&times;</button>';
     modal.appendChild(header);
-    header.querySelector('.gb-annot-close').addEventListener('click', function () { close(); });
+    header.querySelector('.gb-annot-close').addEventListener('click', function () { requestClose(); });
 
     // ---- Body ----
     var body = document.createElement('div');
@@ -288,7 +291,7 @@
       cancelBtn.type = 'button';
       cancelBtn.className = 'gb-annot-btn gb-annot-btn-secondary';
       cancelBtn.textContent = 'Cancel';
-      cancelBtn.addEventListener('click', function () { close(); });
+      cancelBtn.addEventListener('click', function () { requestClose(); });
       footer.appendChild(cancelBtn);
 
       saveBtn = document.createElement('button');
@@ -307,8 +310,6 @@
     }
 
     // ---- Rendering ----
-    function colorForIndex(index) { return state.annotations[index] ? state.annotations[index].color : COLORS[0]; }
-
     function renderBoxes() {
       boxesLayer.innerHTML = '';
       state.annotations.forEach(function (a, index) {
@@ -532,8 +533,32 @@
     }
 
     // ---- Close handling ----
+    // Snapshot of the starting annotations (post-normalize) so Escape/×/
+    // Cancel can tell whether the user actually changed anything before
+    // discarding it - a stray Escape shouldn't silently throw away several
+    // freshly-drawn, freshly-labelled boxes.
+    function snapshotAnnotations(list) {
+      return JSON.stringify(list.map(function (a) {
+        return { x: a.x, y: a.y, w: a.w, h: a.h, label: a.label || '', color: a.color };
+      }));
+    }
+    var initialSnapshot = snapshotAnnotations(state.annotations);
+
+    function isDirty() {
+      return state.editable && snapshotAnnotations(state.annotations) !== initialSnapshot;
+    }
+
+    function confirmDiscardIfDirty() {
+      return !isDirty() || confirm('Discard unsaved highlights?');
+    }
+
+    function requestClose() {
+      if (!confirmDiscardIfDirty()) return;
+      close();
+    }
+
     function onKeyDown(e) {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') requestClose();
     }
 
     function onBackdropClick(e) {
