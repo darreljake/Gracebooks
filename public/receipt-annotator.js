@@ -81,7 +81,12 @@
       '.gb-annot-btn-primary { background: #8B0000; color: #fff; }',
       '.gb-annot-btn-secondary { background: #7d8b94; color: #fff; }',
       '.gb-annot-btn:disabled { background: #aaa; cursor: not-allowed; }',
-      '.gb-annot-pdf-note { font-size: 12px; color: #8a99a5; margin-top: 8px; }'
+      '.gb-annot-pdf-note { font-size: 12px; color: #8a99a5; margin-top: 8px; }',
+      '.gb-annot-lock-badge { font-size: 11px; font-weight: bold; color: #7d6608; background: #fcf3cf;',
+      '  border: 1px solid #f7dc6f; border-radius: 10px; padding: 2px 8px; vertical-align: middle; margin-left: 6px; }',
+      '.gb-annot-locked-note { font-size: 12px; color: #7d6608; background: #fcf3cf; border: 1px solid #f7dc6f;',
+      '  border-radius: 6px; padding: 8px 10px; margin-top: 10px; }',
+      '.gb-annot-btn-lock { background: #7d6608; color: #fff; }'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -162,7 +167,14 @@
       fileName: opts.fileName || '',
       subtitle: opts.subtitle || '',
       annotations: (opts.annotations || []).map(normalizeAnnotation),
-      editable: !!opts.editable,
+      // canEdit is the caller's permission; locked is the saved state of
+      // these particular highlights; editable is the resulting live mode.
+      // Locking exists so finished highlights can be reviewed without a
+      // stray drag altering evidence - a viewer with edit rights must
+      // deliberately unlock first.
+      canEdit: !!opts.editable,
+      locked: !!opts.locked,
+      editable: !!opts.editable && !opts.locked,
       onSave: typeof opts.onSave === 'function' ? opts.onSave : null,
       activeColor: COLORS[0],
       highlightsVisible: true,
@@ -182,7 +194,8 @@
     header.className = 'gb-annot-header';
     header.innerHTML =
       '<div>' +
-        '<h3 class="gb-annot-title">' + escapeHtml(state.title) + '</h3>' +
+        '<h3 class="gb-annot-title">' + escapeHtml(state.title) +
+          (state.locked ? ' <span class="gb-annot-lock-badge">\uD83D\uDD12 Locked</span>' : '') + '</h3>' +
         (state.subtitle ? '<div class="gb-annot-subtitle">' + escapeHtml(state.subtitle) + '</div>' : '') +
       '</div>' +
       '<button type="button" class="gb-annot-close" aria-label="Close">&times;</button>';
@@ -272,6 +285,15 @@
       body.appendChild(hint);
     }
 
+    if (state.locked) {
+      var lockedNote = document.createElement('div');
+      lockedNote.className = 'gb-annot-locked-note';
+      lockedNote.textContent = state.canEdit
+        ? 'These highlights are locked. Unlock below to change them.'
+        : 'These highlights are locked and final.';
+      body.appendChild(lockedNote);
+    }
+
     var legendWrap = document.createElement('div');
     legendWrap.className = 'gb-annot-legend';
     body.appendChild(legendWrap);
@@ -286,6 +308,8 @@
     footer.appendChild(errorEl);
 
     var saveBtn = null;
+    var lockBtn = null;
+    var unlockBtn = null;
     if (state.editable) {
       var cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
@@ -298,8 +322,30 @@
       saveBtn.type = 'button';
       saveBtn.className = 'gb-annot-btn gb-annot-btn-primary';
       saveBtn.textContent = 'Save Highlights';
-      saveBtn.addEventListener('click', handleSave);
+      saveBtn.addEventListener('click', function () { handleSave(false); });
       footer.appendChild(saveBtn);
+
+      lockBtn = document.createElement('button');
+      lockBtn.type = 'button';
+      lockBtn.className = 'gb-annot-btn gb-annot-btn-lock';
+      lockBtn.textContent = '\uD83D\uDD12 Save & Lock';
+      lockBtn.title = 'Save these highlights and lock them against further edits';
+      lockBtn.addEventListener('click', function () { handleSave(true); });
+      footer.appendChild(lockBtn);
+    } else if (state.canEdit && state.locked) {
+      var closeLockedBtn = document.createElement('button');
+      closeLockedBtn.type = 'button';
+      closeLockedBtn.className = 'gb-annot-btn gb-annot-btn-secondary';
+      closeLockedBtn.textContent = 'Close';
+      closeLockedBtn.addEventListener('click', function () { close(); });
+      footer.appendChild(closeLockedBtn);
+
+      unlockBtn = document.createElement('button');
+      unlockBtn.type = 'button';
+      unlockBtn.className = 'gb-annot-btn gb-annot-btn-primary';
+      unlockBtn.textContent = '\uD83D\uDD13 Unlock to Edit';
+      unlockBtn.addEventListener('click', handleUnlock);
+      footer.appendChild(unlockBtn);
     } else {
       var closeBtn = document.createElement('button');
       closeBtn.type = 'button';
@@ -501,8 +547,7 @@
     }
 
     // ---- Save ----
-    function handleSave() {
-      if (state.saving || !state.onSave) return;
+    function cleanedAnnotations() {
       var cleaned = [];
       state.annotations.forEach(function (a) {
         var rect = finalizeDrawnBox(a.x, a.y, a.x + a.w, a.y + a.h);
@@ -515,20 +560,61 @@
           createdAt: a.createdAt || new Date().toISOString()
         });
       });
+      return cleaned;
+    }
+
+    // lockAfter is passed through to the caller as the second onSave
+    // argument, so persisting the highlights and persisting their locked
+    // state are always one write - they can never drift apart.
+    function handleSave(lockAfter) {
+      if (state.saving || !state.onSave) return;
+      var cleaned = cleanedAnnotations();
       state.saving = true;
       errorEl.textContent = '';
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
+      if (saveBtn) saveBtn.disabled = true;
+      if (lockBtn) lockBtn.disabled = true;
+      var busyBtn = lockAfter ? lockBtn : saveBtn;
+      var busyLabel = busyBtn ? busyBtn.textContent : '';
+      if (busyBtn) busyBtn.textContent = 'Saving…';
       Promise.resolve()
-        .then(function () { return state.onSave(cleaned); })
+        .then(function () { return state.onSave(cleaned, !!lockAfter); })
         .then(function () {
           close();
         })
         .catch(function (error) {
           state.saving = false;
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save Highlights';
+          if (saveBtn) saveBtn.disabled = false;
+          if (lockBtn) lockBtn.disabled = false;
+          if (busyBtn) busyBtn.textContent = busyLabel;
           errorEl.textContent = (error && error.message) ? error.message : 'Unable to save highlights. Please try again.';
+        });
+    }
+
+    // Unlocking persists the unlock immediately (highlights unchanged) and
+    // reopens in edit mode, so the modal never sits in a half-locked state
+    // where the buttons and the saved record disagree.
+    function handleUnlock() {
+      if (state.saving || !state.onSave) return;
+      state.saving = true;
+      errorEl.textContent = '';
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = 'Unlocking…';
+      var cleaned = cleanedAnnotations();
+      Promise.resolve()
+        .then(function () { return state.onSave(cleaned, false); })
+        .then(function () {
+          close();
+          var reopened = {};
+          for (var k in opts) { if (Object.prototype.hasOwnProperty.call(opts, k)) reopened[k] = opts[k]; }
+          reopened.annotations = cleaned;
+          reopened.locked = false;
+          open(reopened);
+        })
+        .catch(function (error) {
+          state.saving = false;
+          unlockBtn.disabled = false;
+          unlockBtn.textContent = '\uD83D\uDD13 Unlock to Edit';
+          errorEl.textContent = (error && error.message) ? error.message : 'Unable to unlock highlights. Please try again.';
         });
     }
 

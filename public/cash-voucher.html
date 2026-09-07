@@ -143,7 +143,8 @@
     .sign-img { height: 46px; max-width: 140px; object-fit: contain; mix-blend-mode: multiply; display: block; margin: 0 auto; }
     .sign-manual-note { font-size: 9px; color: #888; font-style: italic; height: 46px; display: flex; align-items: flex-end; justify-content: center; }
     .sign-line { border-top: 1px solid #333; margin-top: 2px; width: 85%; margin-left: auto; margin-right: auto; }
-    .sign-caption { font-size: 10px; margin-top: 2px; }
+    .sign-caption { font-size: 10px; margin-top: 2px; font-weight: 600; min-height: 12px; }
+    .sign-subcaption { font-size: 9px; color: #555; }
 
     #voucher-preview { display: flex; justify-content: center; padding: 10px 0; background: #f4f4f4; border-radius: 8px; }
 
@@ -617,7 +618,13 @@
         await writeAuditLog('voucher_settings_updated', 'voucherSettings', null, { autoEmbedTreasurerSignature: true },
           'Defaulted "always embed signature as Released by" to ON after first signature save');
       }
+      // Saving a signature while a draft is open should take effect on that
+      // draft immediately - otherwise the Released by line stays blank until
+      // the Treasurer starts a new voucher. Only fill an untouched slot: a
+      // deliberate "Mark as manual" choice on this draft is left alone.
+      if (autoEmbedEnabled() && !releasedByState.mode) embedReleasedSignature();
       updateReleasedByUI();
+      renderVoucherPreview();
       alert('Electronic signature saved.');
     } catch (error) {
       console.error(error);
@@ -754,6 +761,17 @@
     return 'Draft';
   }
 
+  // "Always embed my signature as Released by" is ON by default whenever a
+  // signature exists: the owner asked for the Treasurer's signature to be
+  // embedded on any voucher generated. Only an explicit `false` (the
+  // Treasurer unticking the box) turns it off - an absent/undefined value
+  // means "never chosen", which must not read as off. This matters because
+  // the Treasurer's signature is shared with report-workflow.html, so it can
+  // already exist without this page's save flow ever having run.
+  function autoEmbedEnabled() {
+    return voucherSettings.autoEmbedTreasurerSignature !== false;
+  }
+
   function updateReleasedByUI() {
     const box = document.getElementById('released-by-status');
     const hasSig = signatureProfile && signatureProfile.imageUrl;
@@ -768,7 +786,7 @@
       html = hasSig
         ? `<button type="button" class="btn-receipt secondary" onclick="embedReleasedSignature()">Sign now</button>
            <button type="button" class="btn-receipt ghost" onclick="markReleasedManual()">Mark as manual</button>`
-        : `<span class="muted">No signature saved above yet.</span>
+        : `<span class="sig-status-manual">No signature saved yet — save one in the card above and it will be embedded automatically.</span>
            <button type="button" class="btn-receipt ghost" onclick="markReleasedManual()">Mark as manual</button>`;
     }
     box.innerHTML = html;
@@ -1003,13 +1021,15 @@
             <div class="sign-label">Released by:</div>
             ${releasedSigHtml}
             <div class="sign-line"></div>
-            <div class="sign-caption">${escapeHtml(releasedBy.title || 'Church Treasurer')}</div>
+            <div class="sign-caption">${escapeHtml(releasedBy.name || voucherSettings.treasurerName || '')}</div>
+            <div class="sign-subcaption">${escapeHtml(releasedBy.title || 'Church Treasurer')}</div>
           </div>
           <div class="voucher-sign-col">
             <div class="sign-label">Received by:</div>
             ${receivedSigHtml}
             <div class="sign-line"></div>
-            <div class="sign-caption">${escapeHtml(receivedBy.name) || 'Signature'}</div>
+            <div class="sign-caption">${escapeHtml(receivedBy.name || '')}</div>
+            <div class="sign-subcaption">Signature</div>
           </div>
         </div>
       </div>`;
@@ -1081,7 +1101,7 @@
     document.getElementById('released-by-name').value = treasurerNameValue();
 
     const hasSig = signatureProfile && signatureProfile.imageUrl;
-    if (voucherSettings.autoEmbedTreasurerSignature && hasSig) {
+    if (autoEmbedEnabled() && hasSig) {
       releasedByState = {
         mode: 'electronic', name: treasurerNameValue(),
         signatureUrl: signatureProfile.imageUrl, signaturePath: signatureProfile.storagePath || '',
@@ -1419,7 +1439,7 @@
       initSignaturePad();
       await loadSignatureProfile();
       document.getElementById('treasurer-name-input').value = voucherSettings.treasurerName || activeProfile.name || '';
-      document.getElementById('auto-embed-checkbox').checked = !!voucherSettings.autoEmbedTreasurerSignature;
+      document.getElementById('auto-embed-checkbox').checked = autoEmbedEnabled();
       startNewVoucherDraft();
       loadAccountSuggestions();
     }
