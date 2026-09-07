@@ -1909,6 +1909,10 @@
         if (row.status === 'Liquidation Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="openReturnModal('${row.id}')">Return for Correction</button>`);
         }
+        if (row.releasedAt) {
+          const voucherLabel = row.voucherNo ? `🧾 ${row.voucherNo}` : '🧾 Cash Voucher';
+          actions.push(`<a class="btn btn-secondary btn-small" style="text-decoration:none; display:inline-block;" href="cash-voucher.html?liquidationId=${row.id}">${escapeHtml(voucherLabel)}</a>`);
+        }
         actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
       } else if (canSelfManageLiquidation()) {
         if (row.status === 'Submitted') {

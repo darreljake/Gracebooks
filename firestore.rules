@@ -180,6 +180,14 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
+    match /cashVouchers/{docId} {
+      // Digital cash vouchers (cash-voucher.html) - the electronic counterpart of
+      // the church's paper cash voucher form. Only the Treasurer releases funds, so
+      // only the Treasurer can create or amend one; the reviewing roles read them.
+      allow read: if hasRole(['Treasurer', 'Auditor', 'Pastor', 'Finance Chair', 'Chairperson', 'District', 'Finance Committee']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -376,6 +376,7 @@
             <th>Payee</th>
             <th>Source Account</th>
             <th>Receipt</th>
+            <th>Voucher</th>
             <th style="text-align:right;">Net Amount (₱)</th>
             <th>Actions</th>
           </tr>
@@ -1281,6 +1282,17 @@
           let payrollTypeLabel = e.isPayrollGenerated && e.payrollParticulars
               ? `<div style="font-size:10px; color:#bbb; margin-top:2px; font-style:italic;">${escapeHtml(e.payrollParticulars)}</div>`
               : '';
+          // The cash voucher and the receipt are both optional and fully
+          // independent per expense - a Treasurer may attach both, either
+          // one alone, or neither, and saving an expense is never gated on
+          // either one existing. Mirror the Receipt column's muted "None"
+          // convention when a voucher is absent instead of inventing a
+          // different empty state or styling it as a warning.
+          let voucherHTML = e.voucherNo
+              ? `<a href="cash-voucher.html?expenseId=${e.id}" class="btn-ledger view" style="text-decoration:none; display:inline-block;">🧾 ${escapeHtml(e.voucherNo)}</a>`
+              : (canManageExpenses()
+                  ? `<span style="color:#aaa;">None</span><div style="margin-top:4px;"><a href="cash-voucher.html?expenseId=${e.id}" style="font-size:11px; color:#1a5276; text-decoration:none;">+ Create Voucher</a></div>`
+                  : '<span style="color:#aaa;">None</span>');
           let primaryText = escapeHtml(noteText || e.payrollParticulars || 'Expense');
           let categoryText = escapeHtml(e.category || 'Uncategorized');
           let payeeText = escapeHtml(e.payee || '-');
@@ -1298,6 +1310,7 @@
     <td>${payeeText}</td>
     <td>${accText}</td>
     <td>${receiptHTML}</td>
+    <td>${voucherHTML}</td>
     <td style="text-align: right;"><strong style="color: ${currentStatus === 'Paid' ? '#c0392b' : '#b7950b'}; font-size: 15px;">₱${amountText}</strong>${dedsHTML}</td>
     <td>
       <div class="ledger-actions">
