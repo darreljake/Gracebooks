@@ -698,6 +698,21 @@
     generateReport();
   };
 
+  // Special Project spending only belongs in the church's regular reports when the
+  // money actually left the General Fund - Cash on Hand or Cash in Bank. Project
+  // costs paid out of the Building/Mission/Petty Cash/Investment funds, or out of
+  // the pledges and donations raised for the project itself, are accounted for in
+  // the project ledger on special-projects.html and must not be double-reported as
+  // church expenses here. Legacy rows stored a payment mode instead of an account
+  // id, so both shapes are recognised; a blank account falls back to Cash on Hand
+  // the same way the cash-balance code does.
+  const GENERAL_FUND_EXPENSE_ACCOUNTS = ['cash-hand', 'cash-bank', 'cash', 'cash on hand', 'cash in bank', 'bank transfer', 'bank'];
+  function isReportableSpecialProjectExpense(d) {
+    if (!d || !d.isSpecialProject) return true;
+    const account = (d.targetAccId || d.payment || 'cash-hand').toString().trim().toLowerCase();
+    return GENERAL_FUND_EXPENSE_ACCOUNTS.includes(account);
+  }
+
   const loadExpenses = () => {
     db.collection("expenses").orderBy("date", "desc").limit(1000).get().then(snap => {
         if (snap.empty) {
@@ -719,6 +734,9 @@
         // expensed at gross when the payroll record was created, so counting the
         // remittance again here would double-count the same expense.
         if (d.type === 'deduction-payment') return null;
+        // Special Project expenses are only church expenses when they were paid
+        // out of Cash on Hand / Cash in Bank (see helper above).
+        if (!isReportableSpecialProjectExpense(d)) return null;
         return {
             id: doc.id,
             date: d.date || d.Date || "",

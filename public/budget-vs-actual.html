@@ -577,6 +577,21 @@
   }
   let accountOrder = { expense: [], income: [] };
   let availableYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026]; 
+  // Special Project spending only belongs in the church's regular reports when the
+  // money actually left the General Fund - Cash on Hand or Cash in Bank. Project
+  // costs paid out of the Building/Mission/Petty Cash/Investment funds, or out of
+  // the pledges and donations raised for the project itself, are accounted for in
+  // the project ledger on special-projects.html and must not be double-reported as
+  // church expenses here. Legacy rows stored a payment mode instead of an account
+  // id, so both shapes are recognised; a blank account falls back to Cash on Hand
+  // the same way the cash-balance code does.
+  const GENERAL_FUND_EXPENSE_ACCOUNTS = ['cash-hand', 'cash-bank', 'cash', 'cash on hand', 'cash in bank', 'bank transfer', 'bank'];
+  function isReportableSpecialProjectExpense(d) {
+    if (!d || !d.isSpecialProject) return true;
+    const account = (d.targetAccId || d.payment || 'cash-hand').toString().trim().toLowerCase();
+    return GENERAL_FUND_EXPENSE_ACCOUNTS.includes(account);
+  }
+
   let actualIncome = [];
   let actualExpense = [];
   let currentPeriod = 'monthly';
@@ -623,7 +638,11 @@
       // Deduction-payment settlements are excluded alongside transfers: the withheld
       // amount is already expensed at gross on the originating payroll record, so
       // counting the remittance again here would double-count the same expense.
-      actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment');
+      // Special Project expenses are only church expenses when they were paid out
+      // of Cash on Hand / Cash in Bank (see helper above). The live-cash figures
+      // below read the raw expenses collection, so real cash movement out of any
+      // fund still shows there.
+      actualExpense = s.docs.map(d=>d.data()).filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment' && isReportableSpecialProjectExpense(d));
       renderAll();
     });
 
