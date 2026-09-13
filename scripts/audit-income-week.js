@@ -38,6 +38,11 @@ const INCOME_CREATE_ACTIONS = [
   'special_project_income_posted'
 ];
 
+// Written by scripts/restore-income-from-audit.js when the Treasurer puts a row
+// back after a cleanup deleted it. Attribution-wise it supersedes the original
+// creation entry: the row exists because the Treasurer said so.
+const RESTORE_ACTION = 'income_restored_from_audit';
+
 function parseDate(value) {
   if (!value) return null;
   if (value.seconds) return new Date(value.seconds * 1000);
@@ -97,9 +102,30 @@ async function loadIncomeAttribution(db) {
   // (same approach as scripts/backfill-decker-deduction.js).
   const snap = await db.collection('auditLogs').where('collection', '==', 'income').get();
   const byDocId = new Map();
+  const restored = new Map();
   snap.forEach((doc) => {
     const a = doc.data();
     if (!a.docId) return;
+    // A restore supersedes the original creation entry - the row is there
+    // because the Treasurer put it back. Matches the prune script, so both
+    // report the same attribution for a restored row.
+    if (a.action === RESTORE_ACTION) {
+      const seen = restored.get(a.docId);
+      if (seen && String(seen.createdAt || '') >= String(a.createdAt || '')) return;
+      restored.set(a.docId, {
+        auditId: doc.id,
+        action: a.action,
+        actorUid: a.actorUid || '',
+        actorName: a.actorName || '',
+        actorRole: a.actorRole || '',
+        actorEmail: a.actorEmail || '',
+        createdAt: a.createdAt || '',
+        restored: true,
+        originalActorName: a.originalActorName || '',
+        originalActorRole: a.originalActorRole || ''
+      });
+      return;
+    }
     if (!INCOME_CREATE_ACTIONS.includes(a.action)) return;
     const existing = byDocId.get(a.docId);
     // Keep the earliest creation entry if somehow more than one exists.
@@ -114,6 +140,7 @@ async function loadIncomeAttribution(db) {
       createdAt: a.createdAt || ''
     });
   });
+  restored.forEach((entry, docId) => byDocId.set(docId, entry));
   return byDocId;
 }
 

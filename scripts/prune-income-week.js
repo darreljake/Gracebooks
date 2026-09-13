@@ -18,7 +18,11 @@
 //     row, a project's linkedIncomeId) and deleting one side corrupts both.
 //  4. Every deletion writes an `auditLogs` entry containing the FULL deleted
 //     document under `before`, so any row removed here can be reconstructed
-//     from the audit log.
+//     from the audit log (scripts/restore-income-from-audit.js does that).
+//  5. A row that has since been RESTORED by that script counts as
+//     Treasurer-attributed however old its original creation entry is, so a
+//     second run of this script can't delete a row the Treasurer deliberately
+//     put back.
 //
 // Week selection is identical to reports.html's Weekly Collection tab - see
 // scripts/audit-income-week.js for the ported logic and the rationale.
@@ -40,6 +44,11 @@ const INCOME_CREATE_ACTIONS = [
   'income_created_from_liquidation_return',
   'special_project_income_posted'
 ];
+
+// Written by scripts/restore-income-from-audit.js when the Treasurer puts a row
+// back after a cleanup deleted it. Attribution-wise it supersedes the original
+// creation entry: the row exists because the Treasurer said so.
+const RESTORE_ACTION = 'income_restored_from_audit';
 
 function parseDate(value) {
   if (!value) return null;
@@ -91,9 +100,29 @@ function systemGeneratedReason(d) {
 async function loadIncomeAttribution(db) {
   const snap = await db.collection('auditLogs').where('collection', '==', 'income').get();
   const byDocId = new Map();
+  const restored = new Map();
   snap.forEach((doc) => {
     const a = doc.data();
-    if (!a.docId || !INCOME_CREATE_ACTIONS.includes(a.action)) return;
+    if (!a.docId) return;
+    // A restore (scripts/restore-income-from-audit.js) is the Treasurer
+    // deliberately putting a row back after a cleanup removed it, so it
+    // outranks the original creation entry however old that is - otherwise the
+    // next run of this script would delete the restored row all over again.
+    if (a.action === RESTORE_ACTION) {
+      const seen = restored.get(a.docId);
+      if (seen && String(seen.createdAt || '') >= String(a.createdAt || '')) return;
+      restored.set(a.docId, {
+        action: a.action,
+        actorUid: a.actorUid || '',
+        actorName: a.actorName || '',
+        actorRole: a.actorRole || '',
+        actorEmail: a.actorEmail || '',
+        createdAt: a.createdAt || '',
+        restored: true
+      });
+      return;
+    }
+    if (!INCOME_CREATE_ACTIONS.includes(a.action)) return;
     const existing = byDocId.get(a.docId);
     if (existing && String(existing.createdAt || '') <= String(a.createdAt || '')) return;
     byDocId.set(a.docId, {
@@ -105,6 +134,7 @@ async function loadIncomeAttribution(db) {
       createdAt: a.createdAt || ''
     });
   });
+  restored.forEach((entry, docId) => byDocId.set(docId, entry));
   return byDocId;
 }
 
