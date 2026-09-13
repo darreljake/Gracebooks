@@ -8,6 +8,10 @@ name: Income Week Audit / Cleanup
 #   prune_dry_run - shows exactly which rows a prune would delete. Writes nothing.
 #   prune_apply   - deletes those rows. Every deletion writes an auditLogs entry
 #                   holding the full document, so it stays recoverable.
+#   restore_dry_run / restore_apply
+#                 - the undo: rebuild income documents named in `doc_ids` from
+#                   those audit entries. Writes with .create(), so it can never
+#                   overwrite a live row.
 #
 # Always run `audit` (and then `prune_dry_run`) before `prune_apply`.
 
@@ -23,6 +27,8 @@ on:
           - audit
           - prune_dry_run
           - prune_apply
+          - restore_dry_run
+          - restore_apply
       year:
         description: 'Year'
         required: false
@@ -39,6 +45,10 @@ on:
         description: 'Role whose entries are kept when pruning'
         required: false
         default: 'Treasurer'
+      doc_ids:
+        description: 'Restore modes only: comma-separated income document ids to rebuild from their deletion audit entries'
+        required: false
+        default: ''
 
 jobs:
   income-week:
@@ -63,7 +73,7 @@ jobs:
         run: node scripts/audit-income-week.js
 
       - name: Prune
-        if: inputs.mode != 'audit'
+        if: inputs.mode == 'prune_dry_run' || inputs.mode == 'prune_apply'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           GB_YEAR: ${{ inputs.year }}
@@ -72,3 +82,11 @@ jobs:
           GB_KEEP_ROLE: ${{ inputs.keep_role }}
           GB_APPLY: ${{ inputs.mode == 'prune_apply' && 'true' || 'false' }}
         run: node scripts/prune-income-week.js
+
+      - name: Restore from audit log
+        if: inputs.mode == 'restore_dry_run' || inputs.mode == 'restore_apply'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_DOC_IDS: ${{ inputs.doc_ids }}
+          GB_APPLY: ${{ inputs.mode == 'restore_apply' && 'true' || 'false' }}
+        run: node scripts/restore-income-from-audit.js
