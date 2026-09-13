@@ -1,0 +1,40 @@
+name: Test Role Permissions
+
+# End-to-end permission test against the LIVE security rules: signs in as the
+# account provisioned with a given role (custom token, no password needed) and
+# performs the Firestore calls the income-entry flow makes, so every call is
+# evaluated by the deployed rules exactly as it would be in that person's
+# browser.
+#
+# Writes two obviously-named test documents and deletes them again in the same
+# run; the test income row is written with amount 0 so it cannot move a total.
+#
+# Run it after any change to firestore.rules, to tithe-entry.html's write path,
+# or whenever someone reports "I don't have permission".
+
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: 'Role to test as (must match the userProfiles role string exactly)'
+        required: false
+        default: 'Money Counter'
+
+jobs:
+  test-permissions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Test role permissions
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_ROLE: ${{ inputs.role }}
+        run: node scripts/test-money-counter-permissions.js

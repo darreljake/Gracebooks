@@ -150,7 +150,19 @@
 
     .print-container { display: flex; flex-direction: column; gap: 6mm; align-items: center; }
     .voucher-print-slot { width: 100%; max-width: 190mm; }
-    .voucher-print-slot .voucher-block { max-width: 100%; height: 89mm; overflow: hidden; }
+    /* min-height, never a fixed height. 89mm is half of A4's printable height,
+       so two vouchers still fill a sheet - but a voucher with several
+       particulars lines, or with embedded signature images, is taller than
+       that, and `height: 89mm; overflow: hidden` silently cut its bottom off.
+       The signature row is the last thing in the block, so it was the first
+       thing to disappear from the View / Print preview. A voucher that needs
+       more room now grows and (thanks to break-inside: avoid below) takes its
+       own page rather than losing its signatures. */
+    .voucher-print-slot .voucher-block { max-width: 100%; min-height: 89mm; display: flex; flex-direction: column; }
+    /* Push the signature row to the bottom of the block so a short voucher
+       still looks like the paper form instead of leaving a gap under the
+       signatures. */
+    .voucher-print-slot .voucher-sign-row { margin-top: auto; }
 
     @media print {
       body * { visibility: hidden; }
