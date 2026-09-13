@@ -819,8 +819,8 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
-    getFirestore, collection, addDoc, setDoc, doc, getDoc,
-    query, orderBy, where, getDocs, limit
+    getFirestore, collection, addDoc, doc, getDoc,
+    query, where, getDocs, limit, runTransaction
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
   import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
@@ -927,6 +927,34 @@
 
   function isMoneyCounter() {
     return currentRole === 'money counter' || currentRole === 'counter';
+  }
+
+  // Roles `firestore.rules` lets read the `income` collection - used so we
+  // never redirect a role that can save income but not read it back into
+  // income-log.html, which would fail with a permissions error.
+  const INCOME_READ_ROLES = [
+    'treasurer', 'pastor', 'deaconess', 'auditor', 'district',
+    'finance chair', 'chairperson', 'finance committee'
+  ];
+
+  function canViewIncomeLog() {
+    return INCOME_READ_ROLES.includes(currentRole);
+  }
+
+  // Firestore denials arrive as an opaque "Missing or insufficient
+  // permissions." - spell out which role is actually configured so a counter
+  // can tell the Treasurer what to fix instead of just seeing "access denied".
+  function describeSaveError(error) {
+    const code = error && error.code ? String(error.code) : '';
+    if (code.includes('permission-denied') || /insufficient permissions/i.test(error?.message || '')) {
+      return 'Permission denied while saving.\n\n'
+        + `Your account role is "${activeUserProfile?.role || '(none)'}".`
+        + ' Income entry requires the role "Treasurer" or "Money Counter",'
+        + ' spelled exactly that way in your user profile.\n\n'
+        + 'Nothing was lost - your entries are still in the draft list. Please'
+        + ' send this message to the Treasurer so the role can be corrected.';
+    }
+    return 'Error saving entries: ' + (error?.message || error);
   }
 
   function applyRoleAccessControls() {
@@ -1236,6 +1264,121 @@
     }
   }
 
+  // ── New-member ID allocation ─────────────────────────────────────────────
+  // A Money Counter may only *create* `members` docs (firestore.rules), never
+  // update one, so the ID picked for a brand-new member must be guaranteed
+  // free or the save dies with "Missing or insufficient permissions" - which
+  // reads to the counter as "I'm not allowed to enter income at all".
+  //
+  // The old logic took `orderBy('memberId','desc') limit(1)` and
+  // `parseInt(...)` on it. That breaks in two ways that both end in a write to
+  // an ID that already exists:
+  //   1. `memberId` is a string field, so descending order returns the highest
+  //      *lexicographic* value. Bulk-imported tithers use IDs like
+  //      `M1730900000000` (see tithers.html), which sort above every '0xx'
+  //      code, and `parseInt('M17309...')` is NaN -> every new member is
+  //      written to the document literally named "NaN": the first one creates
+  //      it, the second one is an update.
+  //   2. The ID was allocated when the draft was added, from the database
+  //      only, so two new members keyed into the same batch both got the same
+  //      ID; the second save overwrote/updated the first.
+  // Both are now avoided by scanning every known code for the real numeric
+  // maximum and by treating IDs already taken by pending drafts as used.
+  const MEMBER_ID_PAD = 3;
+
+  // Only codes that are *entirely* digits ('001', '120') count towards the
+  // running sequence. Bulk-imported tithers carry codes like
+  // `M1730900000000` (a timestamp, see tithers.html) and legacy damage from
+  // the old logic left a member literally named 'NaN' - letting either of
+  // those set the sequence would hand the next walk-in a 13-digit ID. They
+  // still count as *taken* codes, they just don't define the maximum.
+  function sequentialMemberIdValue(value) {
+    const raw = String(value == null ? '' : value).trim();
+    if (!/^\d+$/.test(raw)) return null;
+    const parsed = parseInt(raw, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  function knownMemberCodes() {
+    const codes = new Set();
+    allMembersCache.forEach(({ id, data }) => {
+      [id, data.memberId, data.memberID, data.memberCode, data.id].forEach(value => {
+        if (value == null || value === '') return;
+        codes.add(String(value).trim());
+      });
+    });
+    // Drafts that haven't been committed yet already own their ID.
+    draftRecords.forEach(entry => {
+      if (entry.isNewMember && entry.newMemberData && entry.newMemberData.memberId) {
+        codes.add(String(entry.newMemberData.memberId).trim());
+      }
+    });
+    return codes;
+  }
+
+  // Highest sequential number used by any existing member or pending draft.
+  function highestMemberIdNumber(codes) {
+    let highest = 0;
+    codes.forEach(code => {
+      const num = sequentialMemberIdValue(code);
+      if (num !== null && num > highest) highest = num;
+    });
+    return highest;
+  }
+
+  function formatMemberId(num) {
+    return String(num).padStart(MEMBER_ID_PAD, '0');
+  }
+
+  // Returns an ID that is free both in Firestore and among pending drafts.
+  // Used to show the counter the ID their new member will get while the batch
+  // is still a draft; the ID is confirmed again (inside a transaction) at save
+  // time, so a stale reservation here is harmless.
+  async function allocateNewMemberId() {
+    if (!allMembersCacheLoaded) await loadAllMembersCache();
+    const codes = knownMemberCodes();
+    let candidate = highestMemberIdNumber(codes) + 1;
+    // `codes` can be stale (another counter saved a member since page load),
+    // so confirm the document really doesn't exist before claiming the ID.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const id = formatMemberId(candidate);
+      const taken = codes.has(id)
+        || codes.has(String(candidate))
+        || (await getDoc(doc(db, 'members', id))).exists();
+      if (!taken) return id;
+      candidate++;
+    }
+    throw new Error('Could not allocate a free Member ID. Please refresh and try again.');
+  }
+
+  // Writes a brand-new member, guaranteeing the write is a *create*: a Money
+  // Counter has create-but-not-update rights on `members`, so landing on an
+  // existing document would both fail the save and (for a Treasurer) overwrite
+  // a real member. The candidate documents are read inside the transaction, so
+  // if another device claims the ID between the read and the commit, the
+  // transaction retries instead of silently overwriting - the same reason
+  // cash-voucher.html allocates voucher numbers transactionally rather than
+  // with a client-side count + 1. Returns the ID actually used.
+  async function createNewMemberDoc(newMemberData) {
+    const preferred = sequentialMemberIdValue(newMemberData.memberId);
+    const startAt = preferred !== null ? preferred : highestMemberIdNumber(knownMemberCodes()) + 1;
+
+    return runTransaction(db, async (tx) => {
+      let candidate = startAt;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const id = formatMemberId(candidate);
+        const ref = doc(db, 'members', id);
+        const snap = await tx.get(ref);
+        if (!snap.exists()) {
+          tx.set(ref, { ...newMemberData, memberId: id });
+          return id;
+        }
+        candidate++;
+      }
+      throw new Error('Could not allocate a free Member ID. Please refresh and try again.');
+    });
+  }
+
   function searchMembersInCache(term) {
     const q = String(term || '').trim().toLowerCase();
     if (!q) return [];
@@ -1362,14 +1505,7 @@
           const last  = document.getElementById('new-last-name').value.trim();
           if (!first || !last) { alert('Please enter the new member name.'); return; }
 
-          const snap = await getDocs(
-            query(collection(db,'members'), orderBy('memberId','desc'), limit(1))
-          );
-          let nextId = '001';
-          if (!snap.empty) {
-            const lastId = parseInt(snap.docs[0].data().memberId);
-            nextId = (lastId + 1).toString().padStart(3,'0');
-          }
+          const nextId = await allocateNewMemberId();
           finalMemberName = `${last}, ${first}`;
           finalMemberId   = nextId;
           isNew           = true;
@@ -1875,8 +2011,19 @@
         // instead of re-saving already-committed entries as duplicates.
         while (draftRecords.length > 0) {
             const entry = draftRecords[0];
-            if (entry.isNewMember && entry.newMemberData) {
-                await setDoc(doc(db, 'members', entry.newMemberData.memberId), entry.newMemberData);
+            if (entry.isNewMember && entry.newMemberData && !entry.memberCreated) {
+                // The ID reserved when the draft was added may have been taken
+                // since (another counter, another device), so the write picks
+                // the first genuinely free ID and the income document below
+                // follows whatever ID the member actually got.
+                const savedMemberId = await createNewMemberDoc(entry.newMemberData);
+                entry.newMemberData.memberId = savedMemberId;
+                entry.memberId = savedMemberId;
+                // The member exists now; if the income write below fails and
+                // the counter retries, don't create a second copy of them.
+                entry.memberCreated = true;
+                saveDraftsToStorage();
+                allMembersCache.push({ id: savedMemberId, data: entry.newMemberData });
             }
 
             const incomePayload = {
@@ -1904,19 +2051,31 @@
                 `Created ${entry.type || 'income'} for ${entry.member || 'member'}`
             );
             draftRecords.shift();
+            // Persist after every committed entry so a mid-batch failure (or a
+            // reload right after it) can't resurrect an already-saved entry.
+            saveDraftsToStorage();
         }
 
         closeReview();
         alert('🎉 All entries successfully saved to GraceBooks!');
-        
+
         draftRecords = [];
         updateUI();
-        
-        window.location.href = 'income-log.html'; 
-        
+
+        // Only the Treasurer (and the other reading roles) can read the
+        // `income` collection, so sending a Money Counter to income-log.html
+        // used to land them on a page that immediately fails with a
+        // permissions error right after a successful save. Keep them here,
+        // ready for the next batch, instead.
+        if (canViewIncomeLog()) {
+            window.location.href = 'income-log.html';
+        } else {
+            showToast('✅ Saved. Ready for the next entry.');
+        }
+
     } catch (error) {
         console.error("Firebase Error:", error);
-        alert("Error saving entries: " + error.message);
+        alert(describeSaveError(error));
     } finally {
         if(btn) {
             btn.innerHTML = '🚀 Confirm & Save All';
