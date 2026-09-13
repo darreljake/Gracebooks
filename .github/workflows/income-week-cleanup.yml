@@ -1,0 +1,74 @@
+name: Income Week Audit / Cleanup
+
+# Investigate one reporting week's income entries and, if needed, keep only the
+# entries a chosen role (default Treasurer) actually entered.
+#
+#   audit       - read-only report: every entry in the week, who entered it,
+#                 duplicate groups, per-week totals for the month. Writes nothing.
+#   prune_dry_run - shows exactly which rows a prune would delete. Writes nothing.
+#   prune_apply   - deletes those rows. Every deletion writes an auditLogs entry
+#                   holding the full document, so it stays recoverable.
+#
+# Always run `audit` (and then `prune_dry_run`) before `prune_apply`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to do'
+        required: true
+        default: 'audit'
+        type: choice
+        options:
+          - audit
+          - prune_dry_run
+          - prune_apply
+      year:
+        description: 'Year'
+        required: false
+        default: '2026'
+      month:
+        description: 'Month (1-12)'
+        required: false
+        default: '9'
+      week:
+        description: 'Reporting week 1-5, as shown in Reports > Weekly Collection ("all" is audit-only)'
+        required: false
+        default: '2'
+      keep_role:
+        description: 'Role whose entries are kept when pruning'
+        required: false
+        default: 'Treasurer'
+
+jobs:
+  income-week:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Audit (read-only)
+        if: inputs.mode == 'audit'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_YEAR: ${{ inputs.year }}
+          GB_MONTH: ${{ inputs.month }}
+          GB_WEEK: ${{ inputs.week }}
+        run: node scripts/audit-income-week.js
+
+      - name: Prune
+        if: inputs.mode != 'audit'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GB_YEAR: ${{ inputs.year }}
+          GB_MONTH: ${{ inputs.month }}
+          GB_WEEK: ${{ inputs.week }}
+          GB_KEEP_ROLE: ${{ inputs.keep_role }}
+          GB_APPLY: ${{ inputs.mode == 'prune_apply' && 'true' || 'false' }}
+        run: node scripts/prune-income-week.js
