@@ -400,6 +400,22 @@
     renderAttendanceSheet();
   });
 
+  // "Last, First M." - the same name format members.html and the exported
+  // membership roll use, so a middle initial recorded on the roll shows up
+  // wherever the roster is listed (it is there precisely to tell two
+  // same-named members apart).
+  function middleInitialLabel(member) {
+    const letter = String(member.middleInitial || '').replace(/[^A-Za-z]/g, '').charAt(0);
+    return letter ? letter.toUpperCase() + '.' : '';
+  }
+
+  function memberFullName(member) {
+    const first = [String(member.firstName || '').trim(), middleInitialLabel(member)].filter(Boolean).join(' ');
+    const last = String(member.lastName || '').trim();
+    if (last && first) return `${last}, ${first}`;
+    return last || first || member.memberId || '';
+  }
+
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -446,6 +462,7 @@
       .map(member => ({
         memberId: member.memberId,
         firstName: member.firstName || '',
+        middleInitial: member.middleInitial || '',
         lastName: member.lastName || '',
         layOrg: member.layOrg || '',
         status: member.status || ''
@@ -557,7 +574,7 @@
 
     let filtered = members.filter(member => {
       if (orgFilter && member.layOrg !== orgFilter) return false;
-      const haystack = `${member.memberId || ''} ${member.firstName || ''} ${member.lastName || ''} ${member.status || ''} ${member.layOrg || ''} ${member.membershipType || ''}`.toLowerCase();
+      const haystack = `${member.memberId || ''} ${member.firstName || ''} ${member.middleInitial || ''} ${member.lastName || ''} ${member.status || ''} ${member.layOrg || ''} ${member.membershipType || ''}`.toLowerCase();
       return !search || haystack.includes(search);
     });
 
@@ -577,7 +594,7 @@
     roster.innerHTML = filtered.map(member => {
       const id = escapeHtml(member.memberId || '');
       const checked = selectedMemberIds.has(member.memberId) ? 'checked' : '';
-      const name = escapeHtml(`${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId || 'Member');
+      const name = escapeHtml(memberFullName(member) || 'Member');
       const metaParts = [member.memberId || '', member.layOrg || '', member.status || ''].filter(Boolean);
       const meta = escapeHtml(metaParts.join(' - '));
       return `
@@ -776,7 +793,7 @@
   }
 
   function memberLabel(member) {
-    const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+    const name = memberFullName(member);
     return `<div class="name-row">${escapeHtml(name)}${member.layOrg ? `<span class="n-org">${escapeHtml(member.layOrg)}</span>` : ''}</div>`;
   }
 
@@ -837,7 +854,7 @@
       return;
     }
     body.innerHTML = streaks.map(({ member, streak, lastAttended }) => {
-      const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+      const name = memberFullName(member);
       return `
         <tr>
           <td><strong>${escapeHtml(name)}</strong></td>
@@ -923,7 +940,7 @@
       '<th>Present</th>';
 
     tbody.innerHTML = sortedMembers.map(member => {
-      const name = `${member.lastName || ''}, ${member.firstName || ''}`.replace(/^, /, '').trim() || member.memberId;
+      const name = memberFullName(member);
       let presentCount = 0;
       const cells = weeksInScope.map(week => {
         const present = (week.presentMemberIds || []).includes(member.memberId);

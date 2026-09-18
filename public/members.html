@@ -15,7 +15,9 @@
     .topbar { background: #1a5276; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
     .topbar h2 { font-size: 20px; }
     .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-    .container { max-width: 1000px; margin: 30px auto; padding: 0 20px; }
+    /* Widened from 1000px when the M.I. and Gender columns were added - the
+       roll table needs ~935px and was being clipped inside the card. */
+    .container { max-width: 1100px; margin: 30px auto; padding: 0 20px; }
     .card { background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 24px; }
     .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #d6eaf8; flex-wrap: wrap; gap: 10px; }
     .card-header h3 { color: #1a5276; font-size: 18px; }
@@ -25,6 +27,7 @@
     .btn-add { background: #1a5276; color: white; }
     .btn-csv { background: #1e8449; color: white; }
     .btn-template { background: #f0f4f8; color: #555; border: 1px solid #ddd; }
+    .btn-export { background: #117a65; color: white; }
     .stats-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
     .stat-box { background: #f0f4f8; border-radius: 8px; padding: 14px 20px; text-align: center; border-left: 4px solid #1a5276; flex: 1; min-width: 90px; }
     .stat-box .s-num { font-size: 24px; font-weight: bold; color: #1a5276; }
@@ -56,6 +59,7 @@
     .badge-overseas { background: #fdebd0; color: #d35400; }
     .badge-professing-member { background: #d6eaf8; color: #1a5276; }
     .badge-baptized-member { background: #d5f5e3; color: #1e8449; }
+    .badge-associate { background: #fdebd0; color: #b9770e; }
     .badge-pastor { background: #e8daef; color: #7d3c98; }
     .badge-deaconess { background: #e8daef; color: #7d3c98; }
     .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; }
@@ -120,6 +124,7 @@
         <div class="stat-box"><div class="s-num" id="stat-overseas">0</div><div class="s-label">Overseas</div></div>
         <div class="stat-box"><div class="s-num" id="stat-professing">0</div><div class="s-label">Professing</div></div>
         <div class="stat-box"><div class="s-num" id="stat-baptized">0</div><div class="s-label">Baptized</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-associate">0</div><div class="s-label">Associate</div></div>
         <div class="stat-box"><div class="s-num" id="stat-clergy">0</div><div class="s-label">Pastor / Deaconess</div></div>
       </div>
 
@@ -134,10 +139,15 @@
         <div class="org-box"><div class="o-num" id="org-children">0</div><div class="o-label">Children</div></div>
       </div>
 
-      <div class="btn-group" id="edit-controls" style="margin-bottom:20px;">
+      <div class="btn-group" id="edit-controls" style="margin-bottom:12px;">
         <button class="btn btn-template" onclick="downloadTemplate()">📄 CSV Template</button>
         <button class="btn btn-csv" onclick="openCsvModal()">📂 Upload CSV</button>
         <button class="btn btn-add" onclick="openAddModal()">+ Add Member</button>
+      </div>
+
+      <div class="btn-group" style="margin-bottom:20px;">
+        <button class="btn btn-export" onclick="exportMembershipRoll()">📊 Export Membership Roll</button>
+        <span class="muted" style="align-self:center;">Excel workbook — audited summary + full roll</span>
       </div>
 
       <div class="controls-row">
@@ -158,9 +168,11 @@
               <th class="sortable" data-field="memberId" onclick="sortByColumn('memberId')">Member ID<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="lastName" onclick="sortByColumn('lastName')">Last Name<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="firstName" onclick="sortByColumn('firstName')">First Name<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="middleInitial" onclick="sortByColumn('middleInitial')">M.I.<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="layOrg" onclick="sortByColumn('layOrg')">Lay Org<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="membershipType" onclick="sortByColumn('membershipType')">Membership Type<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="ageLevel" onclick="sortByColumn('ageLevel')">Age-Level<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="gender" onclick="sortByColumn('gender')">Gender<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="status" onclick="sortByColumn('status')">Status<span class="sort-arrow"></span></th>
               <th>Actions</th>
             </tr>
@@ -178,8 +190,9 @@
     <br>
     <div class="form-group"><label>Member ID (auto-generated)</label><input type="text" id="m-id" /></div>
     <div style="display:flex; gap:10px;">
-      <div class="form-group" style="flex:1;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
-      <div class="form-group" style="flex:1;"><label>First Name</label><input type="text" id="m-firstname" /></div>
+      <div class="form-group" style="flex:2;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
+      <div class="form-group" style="flex:2;"><label>First Name</label><input type="text" id="m-firstname" /></div>
+      <div class="form-group" style="flex:1;"><label>Middle Initial</label><input type="text" id="m-middleinitial" maxlength="1" placeholder="M" /></div>
     </div>
     <div style="display:flex; gap:10px;">
       <div class="form-group" style="flex:1;">
@@ -192,7 +205,7 @@
       <div class="form-group" style="flex:1;">
         <label>Membership Type</label>
         <select id="m-type" onchange="syncAgeLevelWithType()">
-          <option>Professing Member</option><option>Baptized Member</option><option>Pastor</option><option>Deaconess</option>
+          <option>Professing Member</option><option>Baptized Member</option><option>Associate</option><option>Pastor</option><option>Deaconess</option>
         </select>
       </div>
     </div>
@@ -208,6 +221,14 @@
         <select id="m-status"><option>Active</option><option>Inactive</option><option>Overseas</option></select>
       </div>
     </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Gender</label>
+        <select id="m-gender"><option value="">— Not recorded —</option><option>Male</option><option>Female</option></select>
+      </div>
+      <div class="form-group" style="flex:1;"><label>Birthday</label><input type="date" id="m-birthday" /></div>
+    </div>
+    <div class="form-group"><label>Remarks</label><input type="text" id="m-remarks" placeholder="e.g. received 2018, transferred out 2022" /></div>
     <div class="modal-btns">
       <button class="btn-modal-save" id="btn-save-member" onclick="saveMember()">💾 Save Member</button>
       <button class="btn-modal-delete" id="btn-delete-member" style="display:none;" onclick="confirmDelete()">🗑️ Delete Member</button>
@@ -262,6 +283,15 @@
   const VIEW_ROLES = ['Treasurer', 'Membership Secretary'];
   const EDIT_ROLES = ['Treasurer', 'Membership Secretary'];
 
+  // Order these lists are reported in on the exported roll. Anything on a
+  // member document that is not listed here still exports - it is appended
+  // after the known values - so an older record or a future option never
+  // silently drops out of the totals.
+  const MEMBERSHIP_TYPES = ['Professing Member', 'Baptized Member', 'Associate', 'Pastor', 'Deaconess'];
+  const AGE_LEVELS = ['Adult', 'Young Adult', 'Youth', 'Child'];
+  const STATUSES = ['Active', 'Inactive', 'Overseas'];
+  const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
   let activeUserProfile = null;
   let canEdit = false;
   let members = [];
@@ -292,6 +322,64 @@
 
   function badgeClass(value) {
     return String(value || '').toLowerCase().replace(/\s+/g, '-');
+  }
+
+  // The field is a single initial, so anything longer (a full middle name
+  // typed in, or pasted through the CSV import) is reduced to its first
+  // letter rather than stored as-is.
+  function normalizeMiddleInitial(value) {
+    const letter = String(value || '').replace(/[^A-Za-z]/g, '').charAt(0);
+    return letter ? letter.toUpperCase() : '';
+  }
+
+  function middleInitialLabel(member) {
+    const letter = normalizeMiddleInitial(member.middleInitial);
+    return letter ? letter + '.' : '';
+  }
+
+  // "Last, First M." - the roll's own name format, used on screen and in the
+  // exported workbook so a printed roll matches what the page shows.
+  function memberFullName(member) {
+    const first = [String(member.firstName || '').trim(), middleInitialLabel(member)].filter(Boolean).join(' ');
+    const last = String(member.lastName || '').trim();
+    if (last && first) return `${last}, ${first}`;
+    return last || first || member.memberId || '';
+  }
+
+  // Birthdays are stored ISO (`YYYY-MM-DD`) by the date input; older or
+  // hand-entered values are shown verbatim rather than guessed at.
+  function formatBirthday(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if (!iso) return raw;
+    const month = MONTH_ABBR[parseInt(iso[2], 10) - 1];
+    if (!month) return raw;
+    return `${parseInt(iso[3], 10)}-${month}-${iso[1]}`;
+  }
+
+  // Accepts what a spreadsheet is likely to hand us (ISO, `14-Mar-1985`,
+  // `3/14/1985`) and returns ISO; an unreadable value imports as blank
+  // instead of being stored as junk the date input cannot show.
+  function normalizeBirthdayInput(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const dashed = /^(\d{1,2})-([A-Za-z]{3,})-(\d{4})$/.exec(raw);
+    if (dashed) {
+      const month = MONTH_ABBR.findIndex(m => m.toLowerCase() === dashed[2].slice(0, 3).toLowerCase());
+      if (month >= 0) return `${dashed[3]}-${String(month + 1).padStart(2, '0')}-${dashed[1].padStart(2, '0')}`;
+    }
+    const slashed = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(raw);
+    if (slashed) return `${slashed[3]}-${slashed[1].padStart(2, '0')}-${slashed[2].padStart(2, '0')}`;
+    return '';
+  }
+
+  function normalizeGender(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'm' || raw === 'male') return 'Male';
+    if (raw === 'f' || raw === 'female') return 'Female';
+    return '';
   }
 
   async function writeAuditLog(action, docId, beforeData, afterData, summary) {
@@ -348,7 +436,9 @@
     let filtered = members.filter(m =>
       (m.memberId || '').toLowerCase().includes(q) ||
       (m.lastName || '').toLowerCase().includes(q) ||
-      (m.firstName || '').toLowerCase().includes(q)
+      (m.firstName || '').toLowerCase().includes(q) ||
+      (m.middleInitial || '').toLowerCase().includes(q) ||
+      memberFullName(m).toLowerCase().includes(q)
     );
 
     filtered.sort((a, b) => {
@@ -365,15 +455,17 @@
   window.renderTable = function(list) {
     currentFilteredList = list;
     const tbody = document.getElementById('members-body');
-    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="9" style="text-align:center; padding:20px;">No members found.</td></tr>' :
+    tbody.innerHTML = list.length === 0 ? '<tr><td colspan="11" style="text-align:center; padding:20px;">No members found.</td></tr>' :
       list.map(m => `
         <tr data-member-id="${escapeHtml(m.memberId)}">
           <td class="select-col"><input type="checkbox" ${selectedProfileIds.has(m.memberId) ? 'checked' : ''} onchange="toggleMemberSelection('${escapeHtml(m.memberId)}', this.checked)" /></td>
           <td><strong>${escapeHtml(m.memberId)}</strong></td>
           <td>${escapeHtml(m.lastName)}</td><td>${escapeHtml(m.firstName)}</td>
+          <td>${escapeHtml(middleInitialLabel(m) || '—')}</td>
           <td>${escapeHtml(m.layOrg || '—')}</td>
           <td><span class="badge badge-${badgeClass(m.membershipType)}">${escapeHtml(m.membershipType)}</span></td>
           <td>${escapeHtml(m.ageLevel)}</td>
+          <td>${escapeHtml(m.gender || '—')}</td>
           <td><span class="badge badge-${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
           <td>${canEdit ? `<button class="action-btn btn-edit" onclick="editMember('${escapeHtml(m.memberId)}')">✏️ Edit</button>` : ''}</td>
         </tr>`).join('');
@@ -451,13 +543,16 @@
     const attendanceRecords = await loadAttendanceRecordsOnce();
     area.innerHTML = selected.map(m => `
       <div class="profile-card">
-        <h4>${escapeHtml(m.lastName)}, ${escapeHtml(m.firstName)}</h4>
+        <h4>${escapeHtml(memberFullName(m))}</h4>
         <div class="profile-id">Member ID: ${escapeHtml(m.memberId)}</div>
         <div class="profile-grid">
           <div class="profile-field"><div class="pf-label">Lay Organization</div><div class="pf-value">${escapeHtml(m.layOrg || '—')}</div></div>
           <div class="profile-field"><div class="pf-label">Membership Type</div><div class="pf-value">${escapeHtml(m.membershipType)}</div></div>
           <div class="profile-field"><div class="pf-label">Age-Level</div><div class="pf-value">${escapeHtml(m.ageLevel)}</div></div>
+          <div class="profile-field"><div class="pf-label">Gender</div><div class="pf-value">${escapeHtml(m.gender || '—')}</div></div>
+          <div class="profile-field"><div class="pf-label">Birthday</div><div class="pf-value">${escapeHtml(formatBirthday(m.birthday) || '—')}</div></div>
           <div class="profile-field"><div class="pf-label">Status</div><div class="pf-value">${escapeHtml(m.status)}</div></div>
+          <div class="profile-field" style="grid-column: 1 / -1;"><div class="pf-label">Remarks</div><div class="pf-value">${escapeHtml(m.remarks || '—')}</div></div>
           ${attendanceSummaryFor(m.memberId, attendanceRecords)}
         </div>
       </div>`).join('');
@@ -470,6 +565,7 @@
     document.getElementById('stat-overseas').textContent = members.filter(m => m.status === 'Overseas').length;
     document.getElementById('stat-professing').textContent = members.filter(m => m.membershipType === 'Professing Member').length;
     document.getElementById('stat-baptized').textContent = members.filter(m => m.membershipType === 'Baptized Member').length;
+    document.getElementById('stat-associate').textContent = members.filter(m => m.membershipType === 'Associate').length;
     document.getElementById('stat-clergy').textContent = members.filter(m => m.membershipType === 'Pastor' || m.membershipType === 'Deaconess').length;
 
     document.getElementById('org-umm').textContent = members.filter(m => m.layOrg === 'UMM').length;
@@ -535,7 +631,8 @@
     document.getElementById('btn-delete-member').style.display = 'none';
     document.getElementById('m-id').value = nextMemberId();
     document.getElementById('m-id').disabled = true;
-    ['m-lastname', 'm-firstname'].forEach(id => document.getElementById(id).value = '');
+    ['m-lastname', 'm-firstname', 'm-middleinitial', 'm-birthday', 'm-remarks'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('m-gender').value = '';
     document.getElementById('m-layorg').value = '';
     document.getElementById('m-type').value = 'Professing Member';
     document.getElementById('m-agelevel').disabled = false;
@@ -556,6 +653,10 @@
     document.getElementById('m-id').disabled = true;
     document.getElementById('m-lastname').value = m.lastName || '';
     document.getElementById('m-firstname').value = m.firstName || '';
+    document.getElementById('m-middleinitial').value = normalizeMiddleInitial(m.middleInitial);
+    document.getElementById('m-gender').value = normalizeGender(m.gender);
+    document.getElementById('m-birthday').value = normalizeBirthdayInput(m.birthday);
+    document.getElementById('m-remarks').value = m.remarks || '';
     document.getElementById('m-layorg').value = m.layOrg || '';
     ensureAgeLevelOption(m.ageLevel);
     document.getElementById('m-type').value = m.membershipType || 'Professing Member';
@@ -575,9 +676,13 @@
       memberId: id,
       lastName: document.getElementById('m-lastname').value.trim(),
       firstName: document.getElementById('m-firstname').value.trim(),
+      middleInitial: normalizeMiddleInitial(document.getElementById('m-middleinitial').value),
       layOrg: document.getElementById('m-layorg').value,
       membershipType: document.getElementById('m-type').value,
       ageLevel: document.getElementById('m-agelevel').value,
+      gender: document.getElementById('m-gender').value,
+      birthday: document.getElementById('m-birthday').value,
+      remarks: document.getElementById('m-remarks').value.trim(),
       status: document.getElementById('m-status').value
     };
 
@@ -585,7 +690,7 @@
       const before = editingId ? (members.find(x => x.memberId === editingId) || null) : null;
       const isNew = !editingId;
       await db.collection('membershipRoll').doc(id).set(data);
-      await writeAuditLog(before ? 'member_updated' : 'member_created', id, before, data, `${before ? 'Updated' : 'Added'} member ${data.lastName}, ${data.firstName}`);
+      await writeAuditLog(before ? 'member_updated' : 'member_created', id, before, data, `${before ? 'Updated' : 'Added'} member ${memberFullName(data)}`);
       await loadMembers();
       closeModal('member-modal');
       showSuccess('Member saved successfully!');
@@ -615,25 +720,92 @@
     openModal('csv-modal');
   };
 
+  // Columns are matched by header name, not position, so the template's new
+  // MiddleInitial / Gender / Birthday / Remarks columns can sit anywhere and
+  // a file saved from the older 7-column template still imports correctly.
+  const CSV_HEADER_FIELDS = {
+    memberid: 'memberId', id: 'memberId',
+    lastname: 'lastName', surname: 'lastName',
+    firstname: 'firstName', givenname: 'firstName',
+    middleinitial: 'middleInitial', mi: 'middleInitial', middlename: 'middleInitial',
+    layorg: 'layOrg', layorganization: 'layOrg',
+    membershiptype: 'membershipType', membershipcategory: 'membershipType',
+    agelevel: 'ageLevel',
+    gender: 'gender', sex: 'gender',
+    birthday: 'birthday', birthdate: 'birthday', dateofbirth: 'birthday',
+    status: 'status',
+    remarks: 'remarks', notes: 'remarks'
+  };
+  const LEGACY_CSV_ORDER = ['memberId', 'lastName', 'firstName', 'layOrg', 'membershipType', 'ageLevel', 'status'];
+
+  // Quote-aware single-line split: Remarks is free text and routinely holds a
+  // comma ("Transferred out, 2022"), which the previous plain `split(',')`
+  // would have shifted every following column by one. A quoted field
+  // containing a newline is not supported - the file is still read line by
+  // line - so the template documents Remarks as single-line.
+  function parseCsvLine(line) {
+    const out = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (inQuotes) {
+        if (char !== '"') { current += char; continue; }
+        if (line[i + 1] === '"') { current += '"'; i++; continue; }
+        inQuotes = false;
+      } else if (char === '"') {
+        inQuotes = true;
+      } else if (char === ',') {
+        out.push(current); current = '';
+      } else {
+        current += char;
+      }
+    }
+    out.push(current);
+    return out.map(value => value.trim());
+  }
+
+  function csvFieldOrder(headerLine) {
+    const mapped = parseCsvLine(headerLine).map(cell => CSV_HEADER_FIELDS[cell.toLowerCase().replace(/[^a-z]/g, '')] || null);
+    return mapped.filter(Boolean).length >= 3 ? mapped : LEGACY_CSV_ORDER;
+  }
+
   window.handleCsvFile = (event) => {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      const lines = e.target.result.split('\n');
+      const lines = e.target.result.split(/\r?\n/);
+      const order = csvFieldOrder(lines[0] || '');
+      let unreadableBirthdays = 0;
       csvParsed = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-        if (cols.length < 2 || !cols[1]) continue;
+        if (!lines[i].trim()) continue;
+        const cols = parseCsvLine(lines[i]);
+        const raw = {};
+        order.forEach((field, index) => { if (field && !raw[field]) raw[field] = cols[index] || ''; });
+        if (!raw.lastName && !raw.firstName) continue;
+        const birthday = normalizeBirthdayInput(raw.birthday);
+        if (raw.birthday && !birthday) unreadableBirthdays++;
         csvParsed.push({
-          memberId: cols[0] || `M${Date.now()}${i}`,
-          lastName: cols[1], firstName: cols[2] || '',
-          layOrg: cols[3] || '', membershipType: cols[4] || 'Professing Member',
-          ageLevel: cols[5] || 'Adult', status: cols[6] || 'Active'
+          memberId: raw.memberId || `M${Date.now()}${i}`,
+          lastName: raw.lastName || '',
+          firstName: raw.firstName || '',
+          middleInitial: normalizeMiddleInitial(raw.middleInitial),
+          layOrg: raw.layOrg || '',
+          membershipType: raw.membershipType || 'Professing Member',
+          ageLevel: raw.ageLevel || 'Adult',
+          gender: normalizeGender(raw.gender),
+          birthday,
+          remarks: raw.remarks || '',
+          status: raw.status || 'Active'
         });
       }
+      const notes = [`Found ${csvParsed.length} members in file.`];
+      if (order === LEGACY_CSV_ORDER) notes.push('No recognised header row — read using the original MemberID, LastName, FirstName, LayOrg, MembershipType, AgeLevel, Status order.');
+      if (unreadableBirthdays) notes.push(`${unreadableBirthdays} birthday value(s) could not be read and will import blank — use YYYY-MM-DD.`);
       document.getElementById('csv-preview').style.display = 'block';
-      document.getElementById('csv-preview').innerText = `Found ${csvParsed.length} members in file.`;
+      document.getElementById('csv-preview').innerText = notes.join('\n');
       document.getElementById('btn-import').style.display = 'block';
     };
     reader.readAsText(file);
@@ -657,10 +829,435 @@
   }
 
   window.downloadTemplate = () => {
-    const csv = `MemberID,LastName,FirstName,LayOrg,MembershipType,AgeLevel,Status\nM0001,Delacruz,Juan,UMM,Professing Member,Adult,Active`;
+    const csv = [
+      'MemberID,LastName,FirstName,MiddleInitial,LayOrg,MembershipType,AgeLevel,Gender,Birthday,Status,Remarks',
+      'M0001,Delacruz,Juan,P,UMM,Professing Member,Adult,Male,1985-03-14,Active,"Received 2018"',
+      'M0002,Delacruz,Ana,B,WSCS,Associate,Young Adult,Female,1998-11-02,Active,'
+    ].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = 'membership-template.csv'; a.click();
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  //  MEMBERSHIP ROLL EXPORT  (.xlsx)
+  // ══════════════════════════════════════════════════════════════
+  // Reproduces the church's own "TUMC Members on Roll" workbook: sheet 1 is
+  // the audited summary (age-level x gender, membership category x gender,
+  // and the non-active add-back block), sheet 2 is the full roll in the
+  // office's column order - List of Names / Membership Category / Birthday /
+  // Age-Level / Gender / Remarks - with the status colour coding and legend.
+  //
+  // The repo has no bundler and no npm, so rather than pull in a spreadsheet
+  // library this builds the OOXML parts as strings and packs them into a
+  // store-only (uncompressed) ZIP, which Excel, LibreOffice and Google Sheets
+  // all open natively. Only what this one report needs is implemented:
+  // inline strings, a fixed style table, column widths and merged cells.
+
+  const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let bit = 0; bit < 8; bit++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[i] = c >>> 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function buildZipBlob(files, mimeType) {
+    const encoder = new TextEncoder();
+    const u16 = v => [v & 0xFF, (v >>> 8) & 0xFF];
+    const u32 = v => [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF];
+    const now = new Date();
+    const dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+    const dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+
+    const parts = [];
+    const directory = [];
+    let offset = 0;
+
+    files.forEach(file => {
+      const nameBytes = encoder.encode(file.name);
+      const data = encoder.encode(file.content);
+      const crc = crc32(data);
+      // Local file header: method 0 (stored), flag bit 11 set for UTF-8 names.
+      const localHeader = new Uint8Array([].concat(
+        u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0)
+      ));
+      parts.push(localHeader, nameBytes, data);
+      directory.push(new Uint8Array([].concat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(data.length), u32(data.length),
+        u16(nameBytes.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset),
+        Array.from(nameBytes)
+      )));
+      offset += localHeader.length + nameBytes.length + data.length;
+    });
+
+    const directorySize = directory.reduce((total, entry) => total + entry.length, 0);
+    const endRecord = new Uint8Array([].concat(
+      u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+      u32(directorySize), u32(offset), u16(0)
+    ));
+    return new Blob(parts.concat(directory, [endRecord]), { type: mimeType });
+  }
+
+  function xmlEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+    }[char]));
+  }
+
+  function columnLetter(oneBasedIndex) {
+    let letter = '';
+    let n = oneBasedIndex;
+    while (n > 0) {
+      const remainder = (n - 1) % 26;
+      letter = String.fromCharCode(65 + remainder) + letter;
+      n = Math.floor((n - 1) / 26);
+    }
+    return letter;
+  }
+
+  // Style (cellXfs) indexes, in the order they are written into styles.xml.
+  const XF = {
+    DEFAULT: 0, TITLE: 1, SUBTITLE: 2, SECTION: 3, BODY: 4, TOTAL: 5,
+    BODY_YELLOW: 6, BODY_GREEN: 7, ROLL_HEADER: 8, LABEL: 9, NOTE: 10,
+    SWATCH_YELLOW: 11, SWATCH_GREEN: 12, NUMBER: 13, NUMBER_TOTAL: 14
+  };
+
+  const STYLES_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<fonts count="6">'
+    + '<font><sz val="11"/><name val="Calibri"/></font>'
+    + '<font><b/><sz val="15"/><name val="Calibri"/></font>'
+    + '<font><b/><sz val="11.5"/><name val="Calibri"/></font>'
+    + '<font><b/><sz val="10.5"/><name val="Calibri"/></font>'
+    + '<font><sz val="10.5"/><name val="Calibri"/></font>'
+    + '<font><i/><sz val="10"/><color rgb="FF666666"/><name val="Calibri"/></font>'
+    + '</fonts>'
+    + '<fills count="6">'
+    + '<fill><patternFill patternType="none"/></fill>'
+    + '<fill><patternFill patternType="gray125"/></fill>'
+    + '<fill><patternFill patternType="solid"><fgColor rgb="FFB8CCE3"/><bgColor indexed="64"/></patternFill></fill>'
+    + '<fill><patternFill patternType="solid"><fgColor rgb="FFFFFF00"/><bgColor indexed="64"/></patternFill></fill>'
+    + '<fill><patternFill patternType="solid"><fgColor rgb="FF00B050"/><bgColor indexed="64"/></patternFill></fill>'
+    + '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
+    + '</fills>'
+    + '<borders count="2">'
+    + '<border><left/><right/><top/><bottom/><diagonal/></border>'
+    + '<border><left style="thin"><color rgb="FFBFBFBF"/></left><right style="thin"><color rgb="FFBFBFBF"/></right>'
+    + '<top style="thin"><color rgb="FFBFBFBF"/></top><bottom style="thin"><color rgb="FFBFBFBF"/></bottom><diagonal/></border>'
+    + '</borders>'
+    + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    + '<cellXfs count="15">'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+    + '<alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+    + '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>'
+    + '<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1">'
+    + '<alignment horizontal="center"/></xf>'
+    + '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">'
+    + '<alignment horizontal="center"/></xf>'
+    + '</cellXfs>'
+    + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    + '</styleSheet>';
+
+  // A cell is a bare value, or `{ v, s }` to carry a style index. A styled
+  // cell with no value is still emitted - that is how the legend swatches
+  // and the ruled blank columns of a section row get their fill.
+  function worksheetXml(sheet) {
+    const rowsXml = sheet.rows.map((cells, rowIndex) => {
+      const rowNumber = rowIndex + 1;
+      const cellsXml = (cells || []).map((raw, columnIndex) => {
+        const cell = (raw !== null && typeof raw === 'object') ? raw : { v: raw, s: 0 };
+        const value = (cell.v === null || cell.v === undefined) ? '' : cell.v;
+        const style = cell.s || 0;
+        if (value === '' && !style) return '';
+        const ref = `${columnLetter(columnIndex + 1)}${rowNumber}`;
+        if (value === '') return `<c r="${ref}" s="${style}"/>`;
+        if (typeof value === 'number') return `<c r="${ref}" s="${style}"><v>${value}</v></c>`;
+        return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+      }).join('');
+      return cellsXml ? `<row r="${rowNumber}">${cellsXml}</row>` : '';
+    }).join('');
+
+    const cols = (sheet.columnWidths || [])
+      .map((width, i) => `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`).join('');
+    const merges = (sheet.merges || []).map(ref => `<mergeCell ref="${ref}"/>`).join('');
+
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
+      + (sheet.freezeRow ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="${sheet.freezeRow}" topLeftCell="A${sheet.freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` : '')
+      + (cols ? `<cols>${cols}</cols>` : '')
+      + `<sheetData>${rowsXml}</sheetData>`
+      + (merges ? `<mergeCells count="${sheet.merges.length}">${merges}</mergeCells>` : '')
+      + '<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>'
+      + '<pageSetup orientation="portrait" fitToWidth="1" fitToHeight="0"/>'
+      + '</worksheet>';
+  }
+
+  function buildWorkbookBlob(sheets) {
+    const sheetEntries = sheets.map((sheet, i) => ({
+      name: `xl/worksheets/sheet${i + 1}.xml`,
+      content: worksheetXml(sheet)
+    }));
+    const stylesRelId = sheets.length + 1;
+
+    const files = [
+      {
+        name: '[Content_Types].xml',
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          + '<Default Extension="xml" ContentType="application/xml"/>'
+          + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+          + sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
+          + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+          + '</Types>'
+      },
+      {
+        name: '_rels/.rels',
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+          + '</Relationships>'
+      },
+      {
+        name: 'xl/workbook.xml',
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+          + ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+          + sheets.map((sheet, i) => `<sheet name="${xmlEscape(sheet.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')
+          + '</sheets></workbook>'
+      },
+      {
+        name: 'xl/_rels/workbook.xml.rels',
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
+          + `<Relationship Id="rId${stylesRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+          + '</Relationships>'
+      },
+      { name: 'xl/styles.xml', content: STYLES_XML }
+    ].concat(sheetEntries);
+
+    return buildZipBlob(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  // ── Report content ───────────────────────────────────────────────
+
+  // Known values first, in the office's reporting order, then anything else
+  // actually present on a member document so no one is left out of a total.
+  function orderedValues(list, known, fallbackLabel) {
+    const present = new Set(list.map(value => String(value || '').trim()).filter(Boolean));
+    const extras = Array.from(present).filter(value => !known.includes(value)).sort((a, b) => a.localeCompare(b));
+    const ordered = known.filter(value => present.has(value)).concat(extras);
+    if (list.some(value => !String(value || '').trim())) ordered.push(fallbackLabel);
+    return ordered;
+  }
+
+  function matchesValue(actual, expected, fallbackLabel) {
+    const value = String(actual || '').trim();
+    return expected === fallbackLabel ? !value : value === expected;
+  }
+
+  // Male / Female / TOTAL, matching the paper form. TOTAL is the row's real
+  // headcount, so a member with no gender recorded is counted there even
+  // though no gender column can hold them - the sheet carries a note saying
+  // how many, so the columns never look like they should add up and don't.
+  function genderCounts(rows) {
+    const male = rows.filter(m => normalizeGender(m.gender) === 'Male').length;
+    const female = rows.filter(m => normalizeGender(m.gender) === 'Female').length;
+    return [male, female, rows.length];
+  }
+
+  function summarySheet(roster, meta) {
+    const UNSPECIFIED = '(not recorded)';
+    const active = roster.filter(m => String(m.status || '').trim() === 'Active');
+    const nonActive = roster.filter(m => String(m.status || '').trim() !== 'Active');
+    const rows = [];
+
+    rows.push([{ v: `TAGAYTAY UMC YEAR ${meta.year} MEMBERS ON ROLL`, s: XF.TITLE }]);
+    rows.push([{ v: `Generated - ${meta.generatedOn}`, s: XF.SUBTITLE }]);
+    rows.push([{ v: `Prepared by ${meta.preparedBy}`, s: XF.NOTE }]);
+    rows.push([]);
+    rows.push([{ v: 'SUMMARY:', s: XF.LABEL }]);
+
+    const headerRow = label => [
+      { v: label, s: XF.SECTION }, { v: 'Male', s: XF.SECTION },
+      { v: 'Female', s: XF.SECTION }, { v: 'TOTAL', s: XF.SECTION }
+    ];
+    const dataRow = (label, rowsForLabel) => [{ v: label, s: XF.BODY }]
+      .concat(genderCounts(rowsForLabel).map(n => ({ v: n, s: XF.NUMBER })));
+    const totalRow = (label, rowsForLabel) => [{ v: label, s: XF.TOTAL }]
+      .concat(genderCounts(rowsForLabel).map(n => ({ v: n, s: XF.NUMBER_TOTAL })));
+
+    // Age-Level table covers the whole roll, active or not - the same basis as
+    // the "TOTAL MEMBERS ON ROLL" line at the bottom.
+    rows.push(headerRow('Age-Level'));
+    orderedValues(roster.map(m => m.ageLevel), AGE_LEVELS, UNSPECIFIED).forEach(level => {
+      // The paper form pluralises this one bucket.
+      const label = level === 'Child' ? 'Children' : level;
+      rows.push(dataRow(label, roster.filter(m => matchesValue(m.ageLevel, level, UNSPECIFIED))));
+    });
+    rows.push(totalRow('Total', roster));
+    rows.push([]);
+
+    // Membership Category table counts active members only, which is what
+    // "TOTAL ACTIVE MEMBERS ON ROLL" reports.
+    rows.push(headerRow('Membership Category'));
+    orderedValues(active.map(m => m.membershipType), MEMBERSHIP_TYPES, UNSPECIFIED).forEach(type => {
+      rows.push(dataRow(type, active.filter(m => matchesValue(m.membershipType, type, UNSPECIFIED))));
+    });
+    rows.push(totalRow('TOTAL ACTIVE MEMBERS ON ROLL', active));
+    rows.push([]);
+
+    rows.push([{ v: 'Add:', s: XF.LABEL }]);
+    if (nonActive.length === 0) {
+      rows.push([{ v: 'None', s: XF.BODY }, { v: 0, s: XF.NUMBER }, { v: 0, s: XF.NUMBER }, { v: 0, s: XF.NUMBER }]);
+    } else {
+      orderedValues(nonActive.map(m => m.status), STATUSES, UNSPECIFIED).forEach(status => {
+        rows.push(dataRow(status, nonActive.filter(m => matchesValue(m.status, status, UNSPECIFIED))));
+      });
+    }
+    rows.push(totalRow('Total Add', nonActive));
+    rows.push([]);
+    rows.push(totalRow('TOTAL MEMBERS ON ROLL', roster));
+
+    const noGender = roster.length - roster.filter(m => normalizeGender(m.gender)).length;
+    if (noGender > 0) {
+      rows.push([]);
+      rows.push([{ v: `Note: ${noGender} member(s) have no gender recorded. They are included in every TOTAL but in neither the Male nor the Female column.`, s: XF.NOTE }]);
+    }
+
+    rows.push([]);
+    rows.push([]);
+    rows.push([{ v: 'Submitted by:', s: XF.LABEL }]);
+    rows.push([]);
+    rows.push([{ v: '________________________________' }]);
+    rows.push([{ v: 'Administrative Pastor' }]);
+
+    return {
+      name: 'Summary',
+      columnWidths: [36, 11, 11, 11],
+      merges: ['A1:D1', 'A2:D2', 'A3:D3'],
+      rows
+    };
+  }
+
+  function rollSheet(roster, meta) {
+    const typeRank = type => {
+      const index = MEMBERSHIP_TYPES.indexOf(String(type || '').trim());
+      return index === -1 ? MEMBERSHIP_TYPES.length : index;
+    };
+    const sorted = roster.slice().sort((a, b) => {
+      const byType = typeRank(a.membershipType) - typeRank(b.membershipType)
+        || String(a.membershipType || '').localeCompare(String(b.membershipType || ''));
+      return byType || memberFullName(a).localeCompare(memberFullName(b));
+    });
+
+    const rows = [];
+    rows.push([{ v: 'TAGAYTAY UMC MEMBERS ON ROLL', s: XF.TITLE }]);
+    rows.push([{ v: `Generated - ${meta.generatedOn}  |  ${roster.length} member(s) on roll`, s: XF.SUBTITLE }]);
+    rows.push([]);
+    rows.push(['List of Names', 'Membership\nCategory', 'Birthday', 'Age-Level', 'Gender', 'Remarks']
+      .map(label => ({ v: label, s: XF.ROLL_HEADER })));
+
+    // Status colour coding, same convention as the office's own workbook:
+    // green for members abroad, yellow for inactive ones.
+    const styleFor = status => {
+      const value = String(status || '').trim();
+      if (value === 'Overseas') return XF.BODY_GREEN;
+      if (value === 'Inactive') return XF.BODY_YELLOW;
+      return XF.BODY;
+    };
+
+    sorted.forEach(member => {
+      const style = styleFor(member.status);
+      rows.push([
+        memberFullName(member),
+        member.membershipType || '',
+        formatBirthday(member.birthday),
+        member.ageLevel || '',
+        normalizeGender(member.gender),
+        member.remarks || ''
+      ].map(value => ({ v: value, s: style })));
+    });
+
+    rows.push([]);
+    rows.push([{ v: 'LEGEND', s: XF.LABEL }]);
+    rows.push([{ v: '', s: XF.SWATCH_GREEN }, { v: 'Overseas / abroad', s: XF.BODY }]);
+    rows.push([{ v: '', s: XF.SWATCH_YELLOW }, { v: 'Inactive', s: XF.BODY }]);
+    rows.push([{ v: '', s: XF.BODY }, { v: 'Active (no shading)', s: XF.BODY }]);
+
+    return {
+      name: 'Membership Roll',
+      columnWidths: [42, 22, 14, 14, 12, 30],
+      merges: ['A1:F1', 'A2:F2'],
+      freezeRow: 4,
+      rows
+    };
+  }
+
+  window.exportMembershipRoll = function() {
+    if (!members.length) {
+      alert('There are no members on the roll to export yet.');
+      return;
+    }
+    const now = new Date();
+    const meta = {
+      year: now.getFullYear(),
+      generatedOn: now.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+      preparedBy: activeUserProfile
+        ? `${activeUserProfile.name || 'GraceBooks user'} (${activeUserProfile.role || ''})`.replace(' ()', '')
+        : 'GraceBooks user'
+    };
+
+    let url = '';
+    try {
+      const blob = buildWorkbookBlob([summarySheet(members, meta), rollSheet(members, meta)]);
+      url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `TUMC-Membership-Roll-${now.toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      showSuccess(`Exported ${members.length} members to Excel.`);
+    } catch (e) {
+      alert('Could not build the export: ' + e.message);
+      return;
+    } finally {
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
+
+    // The roll carries personal data, so record who took a copy - same
+    // reasoning as the report-archive save/delete entries. A failure to log
+    // must not look like a failed export, so it only warns.
+    writeAuditLog('membership_roll_exported', null, null, {
+      memberCount: members.length,
+      activeCount: members.filter(m => String(m.status || '').trim() === 'Active').length
+    }, `Exported the membership roll (${members.length} members) to Excel`)
+      .catch(err => console.warn('Could not write the export audit log entry:', err));
   };
 </script>
 <script>
