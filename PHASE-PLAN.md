@@ -670,3 +670,35 @@ Three owner requests against `members.html` (the official roll, `membershipRoll`
 - **`membership-attendance.html` now shows the middle initial too**, via its own copy of `memberFullName()` (project convention - no shared component layer), across the roster, the week detail, the visitation/streak report and the per-member matrix, and it is included in the roster search and in the `presentMembers` snapshot saved on each attendance document so a historic week still renders the full name after the roll changes. Telling two same-named members apart is the whole point of the field, and the attendance roster is where they are picked off a list.
 
 No `firestore.rules` or `storage.rules` change was needed: the new fields live on existing `membershipRoll` documents, and `auditLogs` create is already open to any signed-in user.
+
+## Membership Roll: Affiliate / No Membership Class, and MIS Import Tracking (2026-09-20)
+
+Status: Done (code side); deployed via the `Deploy to Firebase` GitHub workflow on merge to `main`.
+
+Follow-up to the 2026-09-18 entry above, same page (`members.html`).
+
+### Two more membership classes
+
+- `Affiliate` and `No Membership Class` added to the Membership Type options (full list is now `Professing Member`, `Baptized Member`, `Associate`, `Affiliate`, `No Membership Class`, `Pastor`, `Deaconess`), each with its own `.badge-*` colour.
+- **The per-type stat tiles are now generated, not hard-coded.** Three classes have been added by request in three days, and each one previously needed a new `<div class="stat-box">` plus a new line in `updateStats()` - a step that is easy to forget, and forgetting it means a class quietly has no tile. The stats row now keeps only the four status tiles (Total/Active/Inactive/Overseas) plus **In MIS**, and a new **Membership Class** row renders one tile per class *actually present on the roll*, in `MEMBERSHIP_TYPES` order with unknown spellings appended - the same `orderedValues()`/`matchesValue()` pair the export already used. Adding a class is now `MEMBERSHIP_TYPES` + a badge colour, nothing else.
+
+### The `No Membership Class` / blank collision (caught before it shipped)
+
+Making `No Membership Class` a real option collided with the export's existing convention of labelling the "nobody filled this in" bucket. Had the new label been reused as that fallback, `orderedValues()` would have emitted the bucket **twice** and `matchesValue()` would have matched only blanks for *both* copies - so every member deliberately classified as `No Membership Class` would have been counted **zero** times while the blank bucket was counted twice, and the summary's `TOTAL ACTIVE + Total Add = TOTAL MEMBERS` reconciliation would have silently broken.
+
+The rule, now stated in `CLAUDE.md`: **a member the secretary classified and a member nobody got to are different facts.** A blank field buckets under a shared `UNRECORDED` (`'(not recorded)'`) constant, which no real option equals. Both helpers were also hardened so a future label clash degrades safely rather than losing members: `orderedValues()` will not emit the same bucket twice, and `matchesValue()` lets a fallback bucket match both blank and its own spelling. A regression test asserts that every member lands in exactly one bucket for a roster mixing both spellings.
+
+### MIS (Ministry Information System) import tracking
+
+The secretary keys the roll into the UMC's national MIS a record at a time and needs to know which ones are done.
+
+- **`misImported`** (boolean) on the member document, plus `misImportedAt` / `misImportedBy` stamps. Editing an already-imported member for some unrelated reason preserves the original stamp rather than re-dating it.
+- **A toggle switch in its own MIS column**, flipped straight from the table row. It saves immediately as a field-level `.update()` (not a whole-document `.set()`), and **the switch is reverted and the error surfaced if the write fails** - a row that looks ticked but was never written is exactly how a member gets skipped in the national system. Each flip writes a `member_mis_flag_changed` audit entry. A viewer without edit rights sees a read-only badge instead of a switch.
+- **`isMisImported()`** reads anything a spreadsheet might carry (`yes`/`y`/`true`/`1`/`imported`) as imported, and everything else - including an absent field on the ~160 records already seeded - as *not yet* imported. That direction is deliberate: re-checking a record costs a minute, skipping one that was missed costs a member.
+- **A toggle is not usable without a way to see what is left**, so the page also gained an **In MIS** stat tile, a `MIS: all / In MIS / Not yet in MIS` filter beside the search box, and a MIS column sort (compared as a boolean, not as a string, so the column groups cleanly).
+- The add/edit modal carries the same toggle, and the CSV template/import gained a `MISImported` column (`MIS`, `InMIS` and `MinistryInformationSystem` also resolve to it).
+- **The export's roll sheet is deliberately unchanged** - it stays at the office's six columns, because that is the format the church prints and signs. The MIS figure goes on the **Summary** sheet instead, as an `Imported / Remaining / TOTAL` line.
+
+### Verification
+
+Three Node harnesses (helpers, CSV round-trip/edge cases, new features - all passing) plus a headless-Chromium run of the real page that flips a switch and asserts the actual Firestore call: `update` on `membershipRoll/M0002` with `misImported/misImportedAt/misImportedBy`, one `member_mis_flag_changed` audit entry, the In MIS tile moving 1 -> 2, the filter and sort partitioning correctly, and a valid workbook downloading - no page or console errors, no horizontal overflow at 390px. The generated `.xlsx` was re-validated structurally (see the 2026-09-18 entry for the checks); **it still has not been opened in Excel itself**, since this container's LibreOffice cannot read any `.xlsx`.

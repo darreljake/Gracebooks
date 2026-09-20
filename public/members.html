@@ -60,9 +60,31 @@
     .badge-professing-member { background: #d6eaf8; color: #1a5276; }
     .badge-baptized-member { background: #d5f5e3; color: #1e8449; }
     .badge-associate { background: #fdebd0; color: #b9770e; }
+    .badge-affiliate { background: #d4e6f1; color: #21618c; }
+    .badge-no-membership-class { background: #eaecee; color: #566573; }
+    .badge-mis-yes { background: #d5f5e3; color: #1e8449; }
+    .badge-mis-no { background: #eaecee; color: #839192; }
+
+    /* MIS import toggle - a real switch, flipped straight from the table row
+       and saved immediately (the secretary works down the list ticking off
+       records as they are keyed into the UMC's system). */
+    .mis-cell { text-align: center; white-space: nowrap; }
+    .switch { position: relative; display: inline-block; width: 42px; height: 22px; vertical-align: middle; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider { position: absolute; cursor: pointer; inset: 0; background: #ccd1d1; border-radius: 22px; transition: background .15s; }
+    .switch .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: transform .15s; }
+    .switch input:checked + .slider { background: #1e8449; }
+    .switch input:checked + .slider:before { transform: translateX(20px); }
+    .switch input:focus-visible + .slider { outline: 2px solid #1a5276; outline-offset: 2px; }
+    .switch input:disabled + .slider { cursor: progress; opacity: .6; }
+    .mis-label { display: block; font-size: 10px; color: #888; margin-top: 2px; }
+
+    .toggle-field { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #e3e9ef; border-radius: 8px; padding: 10px 12px; }
+    .toggle-field .tf-text { font-size: 13px; color: #555; }
+    .toggle-field .tf-text small { display: block; color: #8a9199; font-weight: normal; font-size: 11px; margin-top: 2px; }
     .badge-pastor { background: #e8daef; color: #7d3c98; }
     .badge-deaconess { background: #e8daef; color: #7d3c98; }
-    .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; }
+    .action-btn { padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; white-space: nowrap; }
     .btn-edit { background: #d6eaf8; color: #1a5276; }
     @keyframes row-highlight-fade { from { background: #fdf3c8; } to { background: transparent; } }
     tr.row-highlight { animation: row-highlight-fade 2.5s ease-out; }
@@ -122,11 +144,13 @@
         <div class="stat-box"><div class="s-num" id="stat-active">0</div><div class="s-label">Active</div></div>
         <div class="stat-box"><div class="s-num" id="stat-inactive">0</div><div class="s-label">Inactive</div></div>
         <div class="stat-box"><div class="s-num" id="stat-overseas">0</div><div class="s-label">Overseas</div></div>
-        <div class="stat-box"><div class="s-num" id="stat-professing">0</div><div class="s-label">Professing</div></div>
-        <div class="stat-box"><div class="s-num" id="stat-baptized">0</div><div class="s-label">Baptized</div></div>
-        <div class="stat-box"><div class="s-num" id="stat-associate">0</div><div class="s-label">Associate</div></div>
-        <div class="stat-box"><div class="s-num" id="stat-clergy">0</div><div class="s-label">Pastor / Deaconess</div></div>
+        <div class="stat-box"><div class="s-num" id="stat-mis">0</div><div class="s-label">In MIS</div></div>
       </div>
+
+      <div class="card-header" style="border:none; margin-bottom:10px; padding-bottom:0;">
+        <h3 style="font-size:14px;">Membership Class</h3>
+      </div>
+      <div class="org-row" id="type-row"></div>
 
       <div class="card-header" style="border:none; margin-bottom:10px; padding-bottom:0;">
         <h3 style="font-size:14px;">Lay Organization / Age-Level Fellowship</h3>
@@ -152,6 +176,11 @@
 
       <div class="controls-row">
         <input type="text" class="search-bar" id="search-input" placeholder="🔍 Search by name or ID..." oninput="handleSearchSort()" />
+        <select id="mis-filter" onchange="handleSearchSort()" style="padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+          <option value="">MIS: all members</option>
+          <option value="yes">In MIS</option>
+          <option value="no">Not yet in MIS</option>
+        </select>
       </div>
 
       <div class="selection-bar">
@@ -174,6 +203,7 @@
               <th class="sortable" data-field="ageLevel" onclick="sortByColumn('ageLevel')">Age-Level<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="gender" onclick="sortByColumn('gender')">Gender<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="status" onclick="sortByColumn('status')">Status<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="misImported" onclick="sortByColumn('misImported')" title="Record already imported into the UMC Ministry Information System">MIS<span class="sort-arrow"></span></th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -205,7 +235,7 @@
       <div class="form-group" style="flex:1;">
         <label>Membership Type</label>
         <select id="m-type" onchange="syncAgeLevelWithType()">
-          <option>Professing Member</option><option>Baptized Member</option><option>Associate</option><option>Pastor</option><option>Deaconess</option>
+          <option>Professing Member</option><option>Baptized Member</option><option>Associate</option><option>Affiliate</option><option>No Membership Class</option><option>Pastor</option><option>Deaconess</option>
         </select>
       </div>
     </div>
@@ -229,6 +259,12 @@
       <div class="form-group" style="flex:1;"><label>Birthday</label><input type="date" id="m-birthday" /></div>
     </div>
     <div class="form-group"><label>Remarks</label><input type="text" id="m-remarks" placeholder="e.g. received 2018, transferred out 2022" /></div>
+    <div class="form-group">
+      <label class="toggle-field" for="m-mis">
+        <span class="switch"><input type="checkbox" id="m-mis" /><span class="slider"></span></span>
+        <span class="tf-text"><strong>Imported into the MIS</strong><small>Record already keyed into the UMC Ministry Information System</small></span>
+      </label>
+    </div>
     <div class="modal-btns">
       <button class="btn-modal-save" id="btn-save-member" onclick="saveMember()">💾 Save Member</button>
       <button class="btn-modal-delete" id="btn-delete-member" style="display:none;" onclick="confirmDelete()">🗑️ Delete Member</button>
@@ -287,9 +323,13 @@
   // member document that is not listed here still exports - it is appended
   // after the known values - so an older record or a future option never
   // silently drops out of the totals.
-  const MEMBERSHIP_TYPES = ['Professing Member', 'Baptized Member', 'Associate', 'Pastor', 'Deaconess'];
+  const MEMBERSHIP_TYPES = ['Professing Member', 'Baptized Member', 'Associate', 'Affiliate', 'No Membership Class', 'Pastor', 'Deaconess'];
   const AGE_LEVELS = ['Adult', 'Young Adult', 'Youth', 'Child'];
   const STATUSES = ['Active', 'Inactive', 'Overseas'];
+  // Bucket label for a field nobody has filled in. Deliberately not a real
+  // option: `No Membership Class` is a classification someone chose, which
+  // is a different fact from never having been classified at all.
+  const UNRECORDED = '(not recorded)';
   const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   let activeUserProfile = null;
@@ -375,6 +415,18 @@
     return '';
   }
 
+  // `misImported` marks a member whose record has already been keyed into
+  // the UMC's Ministry Information System. Anything truthy that a
+  // spreadsheet might carry ("yes", "TRUE", "1", "y") reads as imported;
+  // everything else, including an absent field on an older document, reads
+  // as not yet imported - which is the safe default, since the cost of
+  // re-checking a record is far lower than skipping one that was missed.
+  function isMisImported(member) {
+    const value = member.misImported;
+    if (typeof value === 'boolean') return value;
+    return ['yes', 'y', 'true', '1', 'imported'].includes(String(value ?? '').trim().toLowerCase());
+  }
+
   function normalizeGender(value) {
     const raw = String(value || '').trim().toLowerCase();
     if (raw === 'm' || raw === 'male') return 'Male';
@@ -431,6 +483,7 @@
 
   window.handleSearchSort = function() {
     const q = document.getElementById('search-input').value.toLowerCase();
+    const misFilter = document.getElementById('mis-filter').value;
     const { field, dir } = sortState;
 
     let filtered = members.filter(m =>
@@ -441,7 +494,16 @@
       memberFullName(m).toLowerCase().includes(q)
     );
 
+    if (misFilter) filtered = filtered.filter(m => isMisImported(m) === (misFilter === 'yes'));
+
     filtered.sort((a, b) => {
+      // misImported is a boolean, not a string - sort it as one so the
+      // column groups cleanly instead of comparing "" against "".
+      if (field === 'misImported') {
+        const cmp = Number(isMisImported(a)) - Number(isMisImported(b))
+          || memberFullName(a).localeCompare(memberFullName(b));
+        return dir === 'asc' ? cmp : -cmp;
+      }
       let valA = (a[field] || '').toLowerCase();
       let valB = (b[field] || '').toLowerCase();
       const cmp = valA.localeCompare(valB);
@@ -467,12 +529,58 @@
           <td>${escapeHtml(m.ageLevel)}</td>
           <td>${escapeHtml(m.gender || '—')}</td>
           <td><span class="badge badge-${badgeClass(m.status)}">${escapeHtml(m.status)}</span></td>
+          <td class="mis-cell">${misCell(m)}</td>
           <td>${canEdit ? `<button class="action-btn btn-edit" onclick="editMember('${escapeHtml(m.memberId)}')">✏️ Edit</button>` : ''}</td>
         </tr>`).join('');
     const selectAll = document.getElementById('select-all-checkbox');
     selectAll.checked = list.length > 0 && list.every(m => selectedProfileIds.has(m.memberId));
     updateStats();
     updateSelectionUI();
+  };
+
+  // A viewer without edit rights sees the state but cannot change it.
+  function misCell(m) {
+    const imported = isMisImported(m);
+    if (!canEdit) {
+      return `<span class="badge badge-mis-${imported ? 'yes' : 'no'}">${imported ? 'In MIS' : 'Not yet'}</span>`;
+    }
+    const id = escapeHtml(m.memberId);
+    return `<label class="switch" title="${imported ? 'Imported into the MIS' : 'Not yet imported into the MIS'}">
+        <input type="checkbox" ${imported ? 'checked' : ''} aria-label="Imported into the MIS"
+               onchange="toggleMisImported('${id}', this.checked, this)" />
+        <span class="slider"></span>
+      </label>`;
+  }
+
+  // Saved the moment it is flipped, as a field-level update rather than a
+  // whole-document set: the secretary ticks records off one at a time while
+  // keying them into the MIS, and a row that looks ticked but was never
+  // written is exactly the failure that makes a member get missed. The
+  // switch is reverted and the error surfaced if the write fails.
+  window.toggleMisImported = async function(id, checked, input) {
+    if (!canEdit) return;
+    const member = members.find(x => x.memberId === id);
+    if (!member) return;
+    const before = { ...member };
+    input.disabled = true;
+    const payload = {
+      misImported: checked,
+      misImportedAt: checked ? new Date().toISOString() : '',
+      misImportedBy: checked && activeUserProfile ? (activeUserProfile.name || '') : ''
+    };
+    try {
+      await db.collection('membershipRoll').doc(id).update(payload);
+      Object.assign(member, payload);
+      await writeAuditLog('member_mis_flag_changed', id, before, { ...member },
+        `Marked ${memberFullName(member)} as ${checked ? 'imported into' : 'not yet imported into'} the MIS`);
+      updateStats();
+      showSuccess(`${memberFullName(member)} marked ${checked ? 'as imported into the MIS' : 'as not yet in the MIS'}.`);
+    } catch (e) {
+      input.checked = !checked;
+      alert('Could not save the MIS flag: ' + e.message);
+    } finally {
+      input.disabled = false;
+    }
   };
 
   // ── SELECTION & MEMBER PROFILE ────────────────────────
@@ -552,6 +660,7 @@
           <div class="profile-field"><div class="pf-label">Gender</div><div class="pf-value">${escapeHtml(m.gender || '—')}</div></div>
           <div class="profile-field"><div class="pf-label">Birthday</div><div class="pf-value">${escapeHtml(formatBirthday(m.birthday) || '—')}</div></div>
           <div class="profile-field"><div class="pf-label">Status</div><div class="pf-value">${escapeHtml(m.status)}</div></div>
+          <div class="profile-field"><div class="pf-label">MIS (UMC)</div><div class="pf-value">${isMisImported(m) ? 'Imported' : 'Not yet imported'}</div></div>
           <div class="profile-field" style="grid-column: 1 / -1;"><div class="pf-label">Remarks</div><div class="pf-value">${escapeHtml(m.remarks || '—')}</div></div>
           ${attendanceSummaryFor(m.memberId, attendanceRecords)}
         </div>
@@ -563,10 +672,20 @@
     document.getElementById('stat-active').textContent = members.filter(m => m.status === 'Active').length;
     document.getElementById('stat-inactive').textContent = members.filter(m => m.status === 'Inactive').length;
     document.getElementById('stat-overseas').textContent = members.filter(m => m.status === 'Overseas').length;
-    document.getElementById('stat-professing').textContent = members.filter(m => m.membershipType === 'Professing Member').length;
-    document.getElementById('stat-baptized').textContent = members.filter(m => m.membershipType === 'Baptized Member').length;
-    document.getElementById('stat-associate').textContent = members.filter(m => m.membershipType === 'Associate').length;
-    document.getElementById('stat-clergy').textContent = members.filter(m => m.membershipType === 'Pastor' || m.membershipType === 'Deaconess').length;
+    document.getElementById('stat-mis').textContent = members.filter(isMisImported).length;
+
+    // One tile per membership class actually on the roll, in the reporting
+    // order, so a class added later (Associate, Affiliate, No Membership
+    // Class ...) or an older spelling carried in from a spreadsheet still
+    // gets counted instead of silently missing a tile.
+    const typeRow = document.getElementById('type-row');
+    const classes = orderedValues(members.map(m => m.membershipType), MEMBERSHIP_TYPES, UNRECORDED);
+    typeRow.innerHTML = classes.length === 0
+      ? '<div class="org-box"><div class="o-num">0</div><div class="o-label">No members yet</div></div>'
+      : classes.map(type => {
+          const count = members.filter(m => matchesValue(m.membershipType, type, UNRECORDED)).length;
+          return `<div class="org-box"><div class="o-num">${count}</div><div class="o-label">${escapeHtml(type)}</div></div>`;
+        }).join('');
 
     document.getElementById('org-umm').textContent = members.filter(m => m.layOrg === 'UMM').length;
     document.getElementById('org-wscs').textContent = members.filter(m => m.layOrg === 'WSCS').length;
@@ -633,6 +752,7 @@
     document.getElementById('m-id').disabled = true;
     ['m-lastname', 'm-firstname', 'm-middleinitial', 'm-birthday', 'm-remarks'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('m-gender').value = '';
+    document.getElementById('m-mis').checked = false;
     document.getElementById('m-layorg').value = '';
     document.getElementById('m-type').value = 'Professing Member';
     document.getElementById('m-agelevel').disabled = false;
@@ -657,6 +777,7 @@
     document.getElementById('m-gender').value = normalizeGender(m.gender);
     document.getElementById('m-birthday').value = normalizeBirthdayInput(m.birthday);
     document.getElementById('m-remarks').value = m.remarks || '';
+    document.getElementById('m-mis').checked = isMisImported(m);
     document.getElementById('m-layorg').value = m.layOrg || '';
     ensureAgeLevelOption(m.ageLevel);
     document.getElementById('m-type').value = m.membershipType || 'Professing Member';
@@ -683,8 +804,23 @@
       gender: document.getElementById('m-gender').value,
       birthday: document.getElementById('m-birthday').value,
       remarks: document.getElementById('m-remarks').value.trim(),
-      status: document.getElementById('m-status').value
+      status: document.getElementById('m-status').value,
+      misImported: document.getElementById('m-mis').checked
     };
+    // Keep the "who/when" stamps in step with the flag, and preserve the
+    // original stamp when an already-imported member is edited for some
+    // unrelated reason.
+    const previous = editingId ? members.find(x => x.memberId === editingId) : null;
+    if (!data.misImported) {
+      data.misImportedAt = '';
+      data.misImportedBy = '';
+    } else if (previous && isMisImported(previous)) {
+      data.misImportedAt = previous.misImportedAt || '';
+      data.misImportedBy = previous.misImportedBy || '';
+    } else {
+      data.misImportedAt = new Date().toISOString();
+      data.misImportedBy = activeUserProfile ? (activeUserProfile.name || '') : '';
+    }
 
     try {
       const before = editingId ? (members.find(x => x.memberId === editingId) || null) : null;
@@ -734,7 +870,8 @@
     gender: 'gender', sex: 'gender',
     birthday: 'birthday', birthdate: 'birthday', dateofbirth: 'birthday',
     status: 'status',
-    remarks: 'remarks', notes: 'remarks'
+    remarks: 'remarks', notes: 'remarks',
+    mis: 'misImported', misimported: 'misImported', inmis: 'misImported', ministryinformationsystem: 'misImported'
   };
   const LEGACY_CSV_ORDER = ['memberId', 'lastName', 'firstName', 'layOrg', 'membershipType', 'ageLevel', 'status'];
 
@@ -798,7 +935,8 @@
           gender: normalizeGender(raw.gender),
           birthday,
           remarks: raw.remarks || '',
-          status: raw.status || 'Active'
+          status: raw.status || 'Active',
+          misImported: isMisImported({ misImported: raw.misImported })
         });
       }
       const notes = [`Found ${csvParsed.length} members in file.`];
@@ -830,9 +968,9 @@
 
   window.downloadTemplate = () => {
     const csv = [
-      'MemberID,LastName,FirstName,MiddleInitial,LayOrg,MembershipType,AgeLevel,Gender,Birthday,Status,Remarks',
-      'M0001,Delacruz,Juan,P,UMM,Professing Member,Adult,Male,1985-03-14,Active,"Received 2018"',
-      'M0002,Delacruz,Ana,B,WSCS,Associate,Young Adult,Female,1998-11-02,Active,'
+      'MemberID,LastName,FirstName,MiddleInitial,LayOrg,MembershipType,AgeLevel,Gender,Birthday,Status,Remarks,MISImported',
+      'M0001,Delacruz,Juan,P,UMM,Professing Member,Adult,Male,1985-03-14,Active,"Received 2018",yes',
+      'M0002,Delacruz,Ana,B,WSCS,Affiliate,Young Adult,Female,1998-11-02,Active,,no'
     ].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -1071,13 +1209,13 @@
     const present = new Set(list.map(value => String(value || '').trim()).filter(Boolean));
     const extras = Array.from(present).filter(value => !known.includes(value)).sort((a, b) => a.localeCompare(b));
     const ordered = known.filter(value => present.has(value)).concat(extras);
-    if (list.some(value => !String(value || '').trim())) ordered.push(fallbackLabel);
+    if (list.some(value => !String(value || '').trim()) && !ordered.includes(fallbackLabel)) ordered.push(fallbackLabel);
     return ordered;
   }
 
   function matchesValue(actual, expected, fallbackLabel) {
     const value = String(actual || '').trim();
-    return expected === fallbackLabel ? !value : value === expected;
+    return expected === fallbackLabel ? (!value || value === expected) : value === expected;
   }
 
   // Male / Female / TOTAL, matching the paper form. TOTAL is the row's real
@@ -1091,7 +1229,7 @@
   }
 
   function summarySheet(roster, meta) {
-    const UNSPECIFIED = '(not recorded)';
+    const UNSPECIFIED = UNRECORDED;
     const active = roster.filter(m => String(m.status || '').trim() === 'Active');
     const nonActive = roster.filter(m => String(m.status || '').trim() !== 'Active');
     const rows = [];
@@ -1142,6 +1280,12 @@
     rows.push(totalRow('Total Add', nonActive));
     rows.push([]);
     rows.push(totalRow('TOTAL MEMBERS ON ROLL', roster));
+
+    const inMis = roster.filter(isMisImported).length;
+    rows.push([]);
+    rows.push([{ v: 'MIS (Ministry Information System)', s: XF.SECTION }, { v: 'Imported', s: XF.SECTION }, { v: 'Remaining', s: XF.SECTION }, { v: 'TOTAL', s: XF.SECTION }]);
+    rows.push([{ v: 'Records keyed into the UMC MIS', s: XF.BODY },
+      { v: inMis, s: XF.NUMBER }, { v: roster.length - inMis, s: XF.NUMBER }, { v: roster.length, s: XF.NUMBER }]);
 
     const noGender = roster.length - roster.filter(m => normalizeGender(m.gender)).length;
     if (noGender > 0) {
