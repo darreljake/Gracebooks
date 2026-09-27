@@ -16,6 +16,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="receipt-annotator.js"></script>
   <script src="auth.js"></script>
   <script>requireGraceBooksAuth();</script>
   <style>
@@ -103,6 +104,26 @@
     .history { max-height: 360px; overflow: auto; }
     .history-item { border-top: 1px solid #eef1f4; padding: 10px 0; }
     .history-item:first-child { border-top: none; }
+    .docs-summary { font-size: 12px; color: #667085; margin-bottom: 10px; }
+    .docs-section-title { font-size: 13px; font-weight: 700; color: #8B0000; margin: 14px 0 8px; }
+    .docs-section-title:first-child { margin-top: 0; }
+    .doc-table-wrap { overflow-x: auto; }
+    .doc-table { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 12px; }
+    .doc-table th { background: #f8f9fa; color: #555; padding: 8px 10px; text-align: left; border-bottom: 2px solid #eee; white-space: nowrap; }
+    .doc-table td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .btn-ledger {
+      border: none; border-radius: 5px; padding: 6px 8px; font-size: 11px;
+      font-weight: 700; cursor: pointer; font-family: inherit; background: #eaf2f8; color: #1a5276;
+      text-decoration: none; display: inline-block;
+    }
+    .badge-missing { background: #fdecea; color: #a93226; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 10px; white-space: nowrap; }
+    .badge-highlight { background: #8B0000; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
+    .modal-content { background: white; padding: 20px; border-radius: 10px; width: 95%; max-width: 850px; max-height: 90vh; display: flex; flex-direction: column; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .modal-header h3 { color: #8B0000; font-size: 16px; }
+    .close-modal { background: none; border: none; font-size: 22px; cursor: pointer; color: #777; }
+    .receipt-frame { width: 100%; min-height: 50vh; border: 1px solid #eee; border-radius: 8px; background: #f8f9fa; }
     @media (max-width: 820px) {
       .status-card, .grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
@@ -184,6 +205,11 @@
           <div id="chain-list"></div>
         </div>
 
+        <div class="card" id="supporting-docs-card" style="display:none;">
+          <h2>Supporting Documents</h2>
+          <div id="supporting-docs-body"><div class="muted">Loading...</div></div>
+        </div>
+
         <div class="card">
           <h2>Routing History</h2>
           <div class="history" id="history-list"></div>
@@ -216,6 +242,16 @@
           <div id="signature-list"></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="receiptViewerModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="receipt-viewer-title">Receipt</h3>
+        <button class="close-modal" onclick="closeReceiptViewer()">×</button>
+      </div>
+      <div id="receipt-viewer-body"></div>
     </div>
   </div>
 
@@ -307,6 +343,7 @@
       const doc = await db.collection('reportReviews').doc(workflowId()).get();
       workflow = doc.exists ? doc.data() : null;
       renderWorkflow();
+      await loadSupportingDocuments();
     }
 
     async function loadSignatureProfile() {
@@ -861,6 +898,229 @@
 
     function escapeAttr(value) {
       return escapeHtml(value).replace(/`/g, '&#96;');
+    }
+
+    // ===================== Supporting Documents =====================
+    // Lets the Auditor (and the Treasurer, to check for gaps before
+    // submitting) open the receipts, cash vouchers, and payslips behind the
+    // expenses in the report period, without leaving the workflow page.
+    // Monthly/annual only - Special Projects has its own review page.
+    const SUPPORTING_DOCS_ROLES = ['Treasurer', 'Auditor'];
+    let supportingDocsRequestId = 0;
+    let supportingDocsExpenseMap = new Map();
+
+    function peso(n) {
+      return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // Auditor only gets the receipt/voucher/payslip links once the
+    // Treasurer has submitted the report for this period (status past
+    // 'draft'); Treasurer always sees them, to check for gaps before
+    // submitting. Other roles never reach this card at all (see caller).
+    function supportingDocsGateOk() {
+      if (profile.role === 'Treasurer') return true;
+      if (profile.role === 'Auditor') return !!workflow && workflow.status && workflow.status !== 'draft';
+      return false;
+    }
+
+    function periodMonthPrefix() {
+      const type = document.getElementById('report-type').value;
+      if (type !== 'monthly') return null;
+      const year = document.getElementById('period-year').value;
+      const month = String(Number(document.getElementById('period-month').value) + 1).padStart(2, '0');
+      return `${year}-${month}`;
+    }
+
+    function periodDateRange() {
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      if (type === 'annual') return { start: `${year}-01-01`, end: `${year}-12-31` };
+      const month = String(Number(document.getElementById('period-month').value) + 1).padStart(2, '0');
+      // Using '-31' as the upper bound is safe even for shorter months:
+      // it's a string comparison against real expense dates, none of which
+      // can exceed the actual last day of that month.
+      return { start: `${year}-${month}-01`, end: `${year}-${month}-31` };
+    }
+
+    function payrollMonthInPeriod(month) {
+      if (!month) return false;
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      if (type === 'annual') return month.slice(0, 4) === year;
+      return month === periodMonthPrefix();
+    }
+
+    async function loadSupportingDocuments() {
+      const card = document.getElementById('supporting-docs-card');
+      const body = document.getElementById('supporting-docs-body');
+      if (!profile || !SUPPORTING_DOCS_ROLES.includes(profile.role)) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+
+      const type = document.getElementById('report-type').value;
+      if (type === 'special-project') {
+        body.innerHTML = '<div class="muted">Supporting documents for Special Projects are reviewed on the Special Projects page, not here.</div>';
+        return;
+      }
+      if (!supportingDocsGateOk()) {
+        body.innerHTML = '<div class="muted">Receipt links appear once the Treasurer submits this report.</div>';
+        return;
+      }
+
+      const requestId = ++supportingDocsRequestId;
+      body.innerHTML = '<div class="muted">Loading supporting documents...</div>';
+      try {
+        const { start, end } = periodDateRange();
+        const [dateRangeSnap, payrollSnap] = await Promise.all([
+          db.collection('expenses').where('date', '>=', start).where('date', '<=', end).get(),
+          db.collection('expenses').where('isPayrollGenerated', '==', true).get()
+        ]);
+        if (requestId !== supportingDocsRequestId) return; // a newer period was selected meanwhile
+        const byId = new Map();
+        dateRangeSnap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+        payrollSnap.docs.forEach(d => {
+          const data = d.data();
+          const month = data.payrollMonth || String(data.date || '').slice(0, 7);
+          if (payrollMonthInPeriod(month)) byId.set(d.id, { id: d.id, ...data });
+        });
+        renderSupportingDocuments([...byId.values()]);
+      } catch (error) {
+        if (requestId !== supportingDocsRequestId) return;
+        console.error(error);
+        body.innerHTML = `<div class="muted">Unable to load supporting documents: ${escapeHtml(error.message || 'Unknown error')}</div>`;
+      }
+    }
+
+    function renderSupportingDocuments(rows) {
+      supportingDocsExpenseMap = new Map(rows.map(r => [r.id, r]));
+      const payrollRows = rows.filter(r => r.isPayrollGenerated);
+      const expenseRows = rows.filter(r => !r.isPayrollGenerated);
+
+      let missingReceipts = 0;
+      let missingVouchers = 0;
+      const expenseTableRows = expenseRows.map(e => {
+        if (!e.receiptUrl) missingReceipts++;
+        if (!e.voucherId) missingVouchers++;
+        const annotationCount = (e.receiptAnnotations || []).length;
+        const highlightBadge = annotationCount
+          ? `<span class="badge-highlight" title="${e.receiptAnnotationsLocked ? 'Highlights locked' : 'Highlights'}">${e.receiptAnnotationsLocked ? '🔒' : '🖍'} ${annotationCount}</span>`
+          : '';
+        const receiptCell = e.receiptUrl
+          ? `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">View Receipt</button>${highlightBadge}`
+          : '<span class="badge-missing">No receipt</span>';
+        const voucherCell = e.voucherId
+          ? `<a href="cash-voucher.html?view=${encodeURIComponent(e.voucherId)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">🧾 ${escapeHtml(e.voucherNo || 'View')}</a>`
+          : '<span class="badge-missing">No voucher</span>';
+        return `
+          <tr>
+            <td>${escapeHtml(e.date || '-')}</td>
+            <td>${escapeHtml(e.category || '-')}${e.sub ? `<div class="muted">${escapeHtml(e.sub)}</div>` : ''}</td>
+            <td>${escapeHtml(e.payee || '-')}</td>
+            <td style="text-align:right;">₱${peso(e.amount)}</td>
+            <td>${receiptCell}</td>
+            <td>${voucherCell}</td>
+          </tr>`;
+      }).join('');
+
+      const payrollGroups = buildSupportingPayrollGroups(payrollRows);
+      const payrollTableRows = payrollGroups.map(group => `
+        <tr>
+          <td>${escapeHtml(group.roleLabel)}</td>
+          <td>${escapeHtml(group.monthLabel)}</td>
+          <td style="text-align:right;">₱${peso(group.gross)}</td>
+          <td style="text-align:right;">₱${peso(group.net)}</td>
+          <td>${escapeHtml(group.status)}</td>
+          <td><a href="payslips.html?period=monthly&month=${encodeURIComponent(group.month)}&role=${encodeURIComponent(group.role)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">View Payslip</a></td>
+        </tr>`).join('');
+
+      const expenseSection = `
+        <div class="docs-section-title">Expenses</div>
+        <div class="docs-summary">${expenseRows.length} expense${expenseRows.length === 1 ? '' : 's'} · ${missingReceipts} missing receipt${missingReceipts === 1 ? '' : 's'} · ${missingVouchers} missing voucher${missingVouchers === 1 ? '' : 's'}</div>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <thead><tr><th>Date</th><th>Category</th><th>Payee</th><th>Amount</th><th>Receipt</th><th>Cash Voucher</th></tr></thead>
+            <tbody>${expenseTableRows || '<tr><td colspan="6" class="muted">No non-payroll expenses in this period.</td></tr>'}</tbody>
+          </table>
+        </div>`;
+
+      const payrollSection = `
+        <div class="docs-section-title">Salaries / Payroll</div>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <thead><tr><th>Staff</th><th>Month</th><th>Gross</th><th>Net</th><th>Status</th><th>Payslip</th></tr></thead>
+            <tbody>${payrollTableRows || '<tr><td colspan="6" class="muted">No payroll records in this period.</td></tr>'}</tbody>
+          </table>
+        </div>`;
+
+      document.getElementById('supporting-docs-body').innerHTML = expenseSection + payrollSection;
+    }
+
+    // Groups payroll expense rows the same way payslips.html's
+    // buildPayslipGroups() does for its monthly view (Admin + Admin
+    // Assistant merged under one staff row) - kept simple here since this
+    // card only ever needs the monthly total, not the full payslip detail.
+    function buildSupportingPayrollGroups(rows) {
+      const ROLE_LABELS = { 'Admin': 'Admin Assistant' };
+      const groups = new Map();
+      rows.forEach(row => {
+        const month = row.payrollMonth || String(row.date || '').slice(0, 7);
+        const key = `${row.role || ''}|${month}`;
+        if (!groups.has(key)) groups.set(key, { role: row.role || '', month, earnings: [], benefits: [] });
+        (row.isBenefit ? groups.get(key).benefits : groups.get(key).earnings).push(row);
+      });
+      return Array.from(groups.values()).map(group => {
+        const gross = group.earnings.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+        const net = group.earnings.reduce((sum, row) => sum + Number(row.netPay || 0), 0);
+        const paidCount = group.earnings.filter(row => row.status === 'Paid').length;
+        const status = group.earnings.length === 0 ? 'Paid'
+          : paidCount === group.earnings.length ? 'Paid'
+          : paidCount === 0 ? 'Pending' : 'Partial';
+        return {
+          role: group.role,
+          roleLabel: ROLE_LABELS[group.role] || group.role || '-',
+          month: group.month,
+          monthLabel: monthLabelFor(group.month),
+          gross, net, status
+        };
+      }).sort((a, b) => a.roleLabel.localeCompare(b.roleLabel) || a.month.localeCompare(b.month));
+    }
+
+    function monthLabelFor(monthStr) {
+      if (!monthStr || monthStr.length < 7) return monthStr || '-';
+      const [year, month] = monthStr.split('-');
+      return `${MONTHS[parseInt(month, 10) - 1] || month} ${year}`;
+    }
+
+    function openSupportingReceipt(id) {
+      const record = supportingDocsExpenseMap.get(id);
+      if (!record || !record.receiptUrl) return;
+      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(record.receiptName, record.receiptUrl);
+      if (isPdf) {
+        document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt';
+        document.getElementById('receipt-viewer-body').innerHTML =
+          `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+             <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+             <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">Open PDF in New Tab</a>
+           </div>`;
+        document.getElementById('receiptViewerModal').style.display = 'flex';
+        return;
+      }
+      window.GraceBooksAnnotator.open({
+        title: record.receiptName || 'Receipt',
+        imageUrl: record.receiptUrl,
+        fileName: record.receiptName || '',
+        subtitle: `${record.category || record.sub || 'Expense'} — ₱${peso(record.amount)}`,
+        annotations: record.receiptAnnotations || [],
+        editable: false,
+        locked: !!record.receiptAnnotationsLocked
+      });
+    }
+
+    function closeReceiptViewer() {
+      document.getElementById('receipt-viewer-body').innerHTML = '';
+      document.getElementById('receiptViewerModal').style.display = 'none';
     }
 
     function openPrintReport() {

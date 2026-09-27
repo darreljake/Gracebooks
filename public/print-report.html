@@ -20,6 +20,7 @@
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="receipt-annotator.js"></script>
 
   <style>
     :root {
@@ -107,6 +108,44 @@
     .modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
     .btn-cancel { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:#eee; color:#333; }
     .btn-save { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:var(--red); color:white; }
+
+    /* ── REVIEW LINKS (Auditor/Treasurer on-screen receipt & voucher check) ── */
+    /* On-screen only: never appears on paper print, in the Excel export, or in
+       a saved Report Archive snapshot - see the .review-only rule below and
+       exportToExcel()'s explicit skip of these rows. */
+    .review-only td { padding-top: 2px !important; padding-bottom: 6px !important; }
+    .review-links { padding-left: 54px; display: flex; flex-direction: column; gap: 4px; }
+    .review-line {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 10.5px; color: #555;
+      background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 4px 8px;
+    }
+    .review-date { color: #888; }
+    .review-payee { font-weight: 600; color: #333; }
+    .review-amount { font-weight: 600; }
+    .review-chip {
+      border: none; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 700;
+      cursor: pointer; font-family: inherit; background: #eaf2f8; color: #1a5276; text-decoration: none;
+    }
+    .review-tag-missing { background: #fdecea; color: #a93226; font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 8px; }
+    body.hide-review-links .review-only { display: none !important; }
+    @media print {
+      .review-only { display: none !important; }
+    }
+
+    /* ── RECEIPT VIEWER MODAL (Review Links) ──────────────────────────── */
+    .receipt-viewer-overlay {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center;
+    }
+    .receipt-viewer-overlay.show { display: flex; }
+    .receipt-viewer-content {
+      background: white; padding: 20px; border-radius: 10px; width: 95%; max-width: 850px;
+      max-height: 90vh; display: flex; flex-direction: column;
+    }
+    .receipt-viewer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .receipt-viewer-head h3 { color: var(--red); font-size: 16px; }
+    .receipt-viewer-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #777; }
+    .receipt-frame { width: 100%; min-height: 50vh; border: 1px solid #eee; border-radius: 8px; background: #f8f9fa; }
     
     .sig-header-label { font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 8px; margin-top: 15px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
     .sig-grid { display: grid; grid-template-columns: 1fr 1.5fr 1.5fr; gap: 10px; margin-bottom: 10px; }
@@ -398,6 +437,14 @@
     </div>
   </div>
 
+  <div id="review-links-control" style="display:none; align-items:center; gap:6px;">
+    <label id="review-links-label" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--gray); text-transform:none;">
+      <input type="checkbox" id="review-links-checkbox" checked onchange="toggleReviewLinks(this.checked)">
+      Show receipt links
+    </label>
+    <span id="review-links-note" style="display:none; font-size:12px; color:#888; font-style:italic;">Receipt links appear once the Treasurer submits this report.</span>
+  </div>
+
   <div style="margin-left: auto;">
     <button class="rtype-btn" onclick="document.getElementById('sig-modal').style.display='flex'">
       <i class="fas fa-pen-nib"></i> Set Signatories
@@ -521,6 +568,16 @@
   </div>
 </div>
 
+<div class="receipt-viewer-overlay no-print" id="receiptViewerModal">
+  <div class="receipt-viewer-content">
+    <div class="receipt-viewer-head">
+      <h3 id="receipt-viewer-title">Receipt</h3>
+      <button class="receipt-viewer-close" onclick="closeReceiptViewer()">×</button>
+    </div>
+    <div id="receipt-viewer-body"></div>
+  </div>
+</div>
+
 <script>
   // ── FIREBASE CONFIGURATION ────────────────────────────────────────────────
   const firebaseConfig = {
@@ -567,6 +624,49 @@
   let generalFundAccounts = {};
   let reportZoom = 1;
   let workflowSignatures = {};
+  let workflowStatus = 'draft';
+  // Review Links: lets the Auditor (once the Treasurer submits the report)
+  // and the Treasurer (any time, to check for gaps before submitting) open
+  // each expense's receipt/voucher, or a payroll row's payslip, right from
+  // the on-screen report. See CLAUDE.md - never appears on paper print, in
+  // the Excel export, or in a Report Archive snapshot.
+  let activeProfile = null;
+  let reviewLinksEnabled = true;
+  window.graceBooksAuthReady.then(userProfile => {
+    activeProfile = userProfile;
+    render();
+  });
+
+  function reviewLinksAllowed() {
+    if (!activeProfile) return false;
+    if (activeProfile.role === 'Treasurer') return true;
+    if (activeProfile.role === 'Auditor') return !!workflowStatus && workflowStatus !== 'draft';
+    return false;
+  }
+
+  function toggleReviewLinks(checked) {
+    reviewLinksEnabled = checked;
+    document.body.classList.toggle('hide-review-links', !checked);
+  }
+
+  function updateReviewLinksControl() {
+    const wrap = document.getElementById('review-links-control');
+    const label = document.getElementById('review-links-label');
+    const note = document.getElementById('review-links-note');
+    if (!wrap || !label || !note) return;
+    const role = activeProfile ? activeProfile.role : '';
+    const cardEligibleRole = role === 'Treasurer' || role === 'Auditor';
+    if (!cardEligibleRole || reportType === 'special-project') {
+      wrap.style.display = 'none';
+      document.body.classList.add('hide-review-links');
+      return;
+    }
+    wrap.style.display = 'inline-flex';
+    const gateOk = reviewLinksAllowed();
+    label.style.display = gateOk ? 'inline-flex' : 'none';
+    note.style.display = gateOk ? 'none' : 'inline';
+    document.body.classList.toggle('hide-review-links', !gateOk || !reviewLinksEnabled);
+  }
   const FINANCIAL_ACCOUNTS = [
     { id:'cash-hand',  name:'Cash on Hand' },
     { id:'cash-bank',  name:'Cash in Bank' },
@@ -824,7 +924,7 @@
 
   db.collection('expenses').get().then(s => {
     // Keep the complete expense pool for Financial Overview account balances.
-    allExpenseData = s.docs.map(d => d.data());
+    allExpenseData = s.docs.map(d => ({ id: d.id, ...d.data() }));
     // Deduction-payment entries settle a liability already expensed at gross when
     // payroll was generated (the withheld amount is part of that gross figure).
     // Counting them again here would double the expense for the same cash outflow.
@@ -942,6 +1042,7 @@
 
   async function render() {
     await loadWorkflowSignaturesForCurrentPeriod();
+    updateReviewLinksControl();
     if (reportType === 'monthly') renderMonthly();
     else if (reportType === 'annual') renderAnnual();
     else if (reportType === 'special-project') renderSpecialProject();
@@ -958,10 +1059,13 @@
   async function loadWorkflowSignaturesForCurrentPeriod() {
     try {
       const doc = await db.collection('reportReviews').doc(currentWorkflowId()).get();
-      workflowSignatures = doc.exists ? (doc.data().signatures || {}) : {};
+      const data = doc.exists ? doc.data() : {};
+      workflowSignatures = data.signatures || {};
+      workflowStatus = data.status || 'draft';
     } catch (error) {
       console.warn('Unable to load report workflow signatures.', error);
       workflowSignatures = {};
+      workflowStatus = 'draft';
     }
   }
 
@@ -988,6 +1092,74 @@
 
   function escapeAttr(value) {
     return escapeHtml(value).replace(/`/g, '&#96;');
+  }
+
+  // ===================== Review Links =====================
+  // Renders the "Show receipt links" rows under a report line (see the
+  // .review-only CSS rule and updateReviewLinksControl()). Never called
+  // unless reviewLinksAllowed() is true for the signed-in role, so the
+  // Pastor/Chairperson/etc. never get these rows built into the DOM at all.
+  function buildReviewRows(docs) {
+    if (!reviewLinksAllowed() || !docs || !docs.length) return '';
+    return `<tr class="review-only"><td colspan="3"><div class="review-links">${docs.map(reviewLineFor).join('')}</div></td></tr>`;
+  }
+
+  function reviewLineFor(d) {
+    const dateText = escapeHtml(d.date || '-');
+    const payeeText = escapeHtml(d.payee || '-');
+    const amountText = fmt(d.amount || 0);
+    if (d.isPayrollGenerated) {
+      const month = d.payrollMonth || String(d.date || '').slice(0, 7);
+      return `<div class="review-line">
+        <span class="review-date">${dateText}</span>
+        <span class="review-payee">${payeeText}</span>
+        <span class="review-amount">₱${amountText}</span>
+        <a class="review-chip" href="payslips.html?period=monthly&month=${encodeURIComponent(month)}&role=${encodeURIComponent(d.role || '')}" target="_blank" rel="noopener noreferrer">View Payslip</a>
+      </div>`;
+    }
+    const receiptChip = d.receiptUrl
+      ? `<button type="button" class="review-chip" onclick="openReviewReceipt('${escapeAttr(d.id)}')">🧾 Receipt</button>`
+      : '<span class="review-tag-missing">no receipt</span>';
+    const voucherChip = d.voucherId
+      ? `<a class="review-chip" href="cash-voucher.html?view=${encodeURIComponent(d.voucherId)}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.voucherNo || 'Voucher')}</a>`
+      : '<span class="review-tag-missing">no voucher</span>';
+    return `<div class="review-line">
+      <span class="review-date">${dateText}</span>
+      <span class="review-payee">${payeeText}</span>
+      <span class="review-amount">₱${amountText}</span>
+      ${receiptChip}
+      ${voucherChip}
+    </div>`;
+  }
+
+  function openReviewReceipt(id) {
+    const record = allExpenseData.find(e => e.id === id);
+    if (!record || !record.receiptUrl) return;
+    const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(record.receiptName, record.receiptUrl);
+    if (isPdf) {
+      document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt';
+      document.getElementById('receipt-viewer-body').innerHTML =
+        `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+           <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+           <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="review-chip">Open PDF in New Tab</a>
+         </div>`;
+      document.getElementById('receiptViewerModal').classList.add('show');
+      return;
+    }
+    window.GraceBooksAnnotator.open({
+      title: record.receiptName || 'Receipt',
+      imageUrl: record.receiptUrl,
+      fileName: record.receiptName || '',
+      subtitle: `${record.category || record.sub || 'Expense'} — ₱${fmt(record.amount || 0)}`,
+      annotations: record.receiptAnnotations || [],
+      editable: false,
+      locked: !!record.receiptAnnotationsLocked
+    });
+  }
+
+  function closeReceiptViewer() {
+    document.getElementById('receipt-viewer-body').innerHTML = '';
+    document.getElementById('receiptViewerModal').classList.remove('show');
   }
 
   function updateReportZoom() {
@@ -1384,8 +1556,14 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
         if (!sub || sub.toLowerCase() === 'n/a') sub = 'Others';
       }
 
-      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {} };
-      if (sub) expGroups[main].subs[sub] = (expGroups[main].subs[sub] || 0) + parseFloat(d.amount || 0);
+      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, docsBySub: {} };
+      if (sub) {
+        expGroups[main].subs[sub] = (expGroups[main].subs[sub] || 0) + parseFloat(d.amount || 0);
+        // Tracked only so Review Links (Treasurer/Auditor) can list the
+        // individual expenses behind each report line - see reviewLineFor().
+        if (!expGroups[main].docsBySub[sub]) expGroups[main].docsBySub[sub] = [];
+        expGroups[main].docsBySub[sub].push(d);
+      }
       expGroups[main].total += parseFloat(d.amount || 0);
     });
 
@@ -1452,7 +1630,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
           nestedSubs.push(group);
         }
         group.total += g.subs[sub];
-        group.rows.push({ detail: parts.detail, amount: g.subs[sub] });
+        group.rows.push({ detail: parts.detail, amount: g.subs[sub], docs: g.docsBySub[sub] || [] });
       });
 
       nestedSubs.forEach(group => {
@@ -1464,6 +1642,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
               <td class="col-sub" style="font-weight:600; color:#111;">&#8369; ${fmt(group.total)}</td>
               <td class="col-main"></td>
             </tr>`;
+          expRows += buildReviewRows(group.rows.flatMap(row => row.docs));
           return;
         }
 
@@ -1481,6 +1660,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
               <td class="col-sub" style="font-size:11.5px; color:#777;">&#8369; ${fmt(row.amount)}</td>
               <td class="col-main"></td>
             </tr>`;
+          expRows += buildReviewRows(row.docs);
         });
       });
     });
@@ -2020,6 +2200,9 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       if (!tds.length) return;
 
       const cls = tr.className || '';
+      // Review Links rows (receipt/voucher/payslip checks) are on-screen only
+      // - never exported to the spreadsheet.
+      if (cls.includes('review-only')) return;
       const tdCls0 = tds[0] ? (tds[0].className || '') : '';
       const text0  = tds[0] ? tds[0].innerText.trim() : '';
       const text1  = tds[1] ? tds[1].innerText.trim() : '';

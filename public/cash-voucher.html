@@ -1461,6 +1461,25 @@
     if (canManageVouchersFlag) {
       await applyQueryPrefill();
     }
+    await applyViewQueryParam();
+  }
+
+  // Read-only deep link (?view=<voucherId>) used by report-workflow.html so an
+  // Auditor (or Treasurer) can jump straight to a specific voucher's
+  // View/Print modal without touching the edit-only ?expenseId=/?liquidationId=
+  // prefill flow above, which only runs for the Treasurer.
+  async function applyViewQueryParam() {
+    const voucherId = getQueryParam('view');
+    if (!voucherId) return;
+    if (!allVouchers.some(v => v.id === voucherId)) {
+      try {
+        const doc = await db.collection('cashVouchers').doc(voucherId).get();
+        if (doc.exists) allVouchers.push({ id: doc.id, ...doc.data() });
+      } catch (error) {
+        console.warn('Unable to load voucher for view link', error);
+      }
+    }
+    openPrintModal([voucherId]);
   }
 
   initApp();
