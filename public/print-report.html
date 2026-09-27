@@ -260,6 +260,23 @@
     .amount-positive { color: #1e8449; }
     .amount-negative { color: var(--red-mid); }
 
+    /* Column header row (Account / Detail / Amount) - styled like the
+       section headers above, but with three separate cells instead of one
+       colspan title, so it needs its own class (kept distinct from
+       .section-header so exportToExcel's className-based row detection
+       doesn't merge it into a single-cell section title). */
+    .col-header-row td {
+      font-weight: 700; font-size: 10.5px; text-transform: uppercase;
+      letter-spacing: 0.4px; padding-top: 6px !important; padding-bottom: 6px !important;
+      color: var(--red); border-bottom: 1px solid var(--red);
+    }
+    .col-header-row .col-sub, .col-header-row .col-main { font-weight: 700; }
+
+    /* Reconciliation line (General Fund accounts vs Ending Balance). */
+    .reconcile-row td { padding-top: 6px !important; font-size: 11.5px; }
+    .reconcile-ok { color: #1e8449; font-weight: 700; }
+    .reconcile-bad { color: var(--red-mid); font-weight: 700; }
+
     /* ── SIGNATURES ──────────────────────────────────────────── */
     .sig-section { margin-top: 60px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
     .sig-box { text-align: center; flex: 1 1 145px; max-width: 180px; }
@@ -651,6 +668,27 @@
     return (d.memberId || d.memberID || d.memberCode || '').toString().trim();
   }
 
+  // Case/whitespace-insensitive key for merging near-duplicate Miscellaneous
+  // (Unbudgeted) sub-labels - e.g. "Meralco" and "MERALCO" - into a single
+  // report line instead of one line per spelling variant. Used only for
+  // grouping; the *displayed* label is still whichever formatCategoryName()
+  // form was seen first for that key, so acronyms in the original text
+  // survive rather than being re-derived from a lowercased key.
+  function normalizeGroupKey(s) {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  // Adds `amt` to a Miscellaneous-style group keyed by the case/whitespace
+  // -insensitive form of `label`, recording the first-seen label as the
+  // group's display text. `bucket.totals` maps normalized key -> amount,
+  // `bucket.labels` maps normalized key -> display label.
+  function addToMiscBucket(bucket, label, amt) {
+    const key = normalizeGroupKey(label) || 'other unbudgeted';
+    if (!bucket.labels[key]) bucket.labels[key] = label || 'Other Unbudgeted';
+    bucket.totals[key] = (bucket.totals[key] || 0) + amt;
+    return key;
+  }
+
   function resolveMemberName(d) {
     const memberId = getMemberId(d);
     if (memberId && memberNameById[memberId]) return memberNameById[memberId];
@@ -810,13 +848,18 @@
     // Keep the complete income pool for Financial Overview account balances.
     allIncomeData = s.docs.map(d => d.data()).filter(d => !d.isSpecialProject);
     incomeData = allIncomeData.filter(d => {
-      // Skip transfers
+      // Skip transfers - a fund transfer is a cash movement between
+      // accounts, not real income; generateReportHTML() nets transfers
+      // separately (see its own "Skip transfers" comment) so the General
+      // Fund ending balance still reconciles with the true account
+      // balances. Building Fund income is deliberately no longer excluded
+      // here: it now flows into whichever of the General Fund / Restricted
+      // Fund Activity sections its account belongs to (see
+      // isGeneralFundAccount()), instead of silently vanishing from the
+      // report entirely as it used to.
       if (d.type === 'transfer') return false;
       // Skip legacy special project inflows; project reports handle these separately.
       if (d.isSpecialProject) return false;
-      // Skip Building Fund
-      if ((d.type || '').toLowerCase().includes('building fund') || 
-          (d.budgetCategory || '').toLowerCase().includes('building fund')) return false;
       return true;
     });
     render();
@@ -1044,47 +1087,133 @@
 
   // ── CORE REPORT GENERATION ───────────────────────────────────────────────
   function generateReportHTML(year, month, isAnnual) {
-    const fInc = incomeData.filter(d => {
-      if(!d.date) return false;
-      const dt = new Date(d.date);
-      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear()===year && dt.getMonth()===month);
-    });
-    
-    const fExp = expenseData.filter(d => {
-      if(!d.date) return false;
-      const dt = new Date(d.date);
-      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear()===year && dt.getMonth()===month);
-    });
-
-    let begBal = systemInitialBalance; 
-    let memberSort = 'surname'; // Default sort
     const targetDate = isAnnual ? new Date(year, 0, 1) : new Date(year, month, 1);
-    
-    incomeData.forEach(d => {
-      if (d.date && new Date(d.date) < targetDate && isGeneralFundAccount(getIncomeAccountId(d))) begBal += parseFloat(d.amount||0);
+    const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
+    const dayBeforeStart = new Date(targetDate.getTime() - 1);
+
+    // ── General Fund vs Restricted Funds ────────────────────────────────────
+    // isGeneralFundAccount() reads the Treasurer's own per-account setting
+    // (Financial Overview > Beginning Balances), so which of the six
+    // FINANCIAL_ACCOUNTS count as "General Fund" here is configurable, not
+    // hardcoded - Building/Mission/Investment default to General Fund unless
+    // the Treasurer explicitly excludes them.
+    const gfAccounts = FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id));
+    const restrictedAccounts = FINANCIAL_ACCOUNTS.filter(a => !isGeneralFundAccount(a.id));
+    const gfIds = gfAccounts.map(a => a.id);
+    const restrictedIds = restrictedAccounts.map(a => a.id);
+    function sumIds(balances, ids) {
+      return ids.reduce((s, id) => s + (parseFloat(balances[id]) || 0), 0);
+    }
+
+    // getAccountBalancesThrough() is the one place that already nets every
+    // real cash effect - income, expense (at net cash impact for payroll),
+    // deduction-payment remittances, and both sides of a fund transfer - so
+    // it's used here as the single source of truth for the General Fund's
+    // beginning and true ending balance, instead of a second hand-rolled
+    // loop that could silently drift from it (see the transfer note below).
+    const beginningAccountBalances = getAccountBalancesThrough(dayBeforeStart);
+    const accountBalances = getAccountBalancesThrough(periodEndDate);
+    const begBal = sumIds(beginningAccountBalances, gfIds);
+    const gfTrueEndBalance = sumIds(accountBalances, gfIds);
+    const restrictedTrueEndBalance = sumIds(accountBalances, restrictedIds);
+
+    // ── Period pools: real (non-transfer) income/expense records ────────────
+    // Kept whole (both General Fund and restricted) so the new Restricted
+    // Fund Activity section below can show what the General-Fund-basis
+    // statement excludes, rather than that money silently disappearing from
+    // the report the way excluded Building Fund income used to.
+    const periodIncome = incomeData.filter(d => {
+      if (!d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
     });
-    expenseData.forEach(d => {
-      if (d.date && new Date(d.date) < targetDate && isGeneralFundAccount(getExpenseAccountId(d))) begBal -= parseFloat(d.amount||0);
+    const periodExpense = expenseData.filter(d => {
+      if (!d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
     });
 
-    const totalIn  = fInc.reduce((s,d) => s + parseFloat(d.amount||0), 0);
-    const totalOut = fExp.reduce((s,d) => s + parseFloat(d.amount||0), 0);
-    const endBal   = begBal + totalIn - totalOut;
-    const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
+    const fInc = periodIncome.filter(d => isGeneralFundAccount(getIncomeAccountId(d)));
+    const fExp = periodExpense.filter(d => isGeneralFundAccount(getExpenseAccountId(d)));
+    const restrictedIncomeRows = periodIncome.filter(d => !isGeneralFundAccount(getIncomeAccountId(d)));
+    const restrictedExpenseRows = periodExpense.filter(d => !isGeneralFundAccount(getExpenseAccountId(d)));
+
+    // ── Fund transfers ───────────────────────────────────────────────────────
+    // Transfers move cash between accounts rather than representing real
+    // income/expense, so incomeData/expenseData (and so fInc/fExp above)
+    // deliberately exclude them entirely ("Skip transfers", see where those
+    // arrays are built). That used to mean a transfer moving money between a
+    // General Fund account and a restricted one was invisible to this
+    // statement's own beginning/ending balance math - the printed Ending
+    // Balance would silently drift away from the true account balances
+    // (Financial Overview) every time such a transfer happened. Per
+    // financial-overview.html's transferFunds(), each transfer writes two
+    // docs tagged type:'transfer': an expenses-collection doc debiting the
+    // source account (targetAccId = source) and an income-collection doc
+    // crediting the destination (targetAccId = destination). Netting those
+    // two pools by General-Fund-ness gives this period's net transfer into
+    // (or out of) the General Fund, now folded into the statement as its own
+    // labelled line instead of being silently absorbed into an
+    // unreconciled beginning balance.
+    const periodTransferIn = allIncomeData.filter(d => {
+      if (d.type !== 'transfer' || !d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
+    });
+    const periodTransferOut = allExpenseData.filter(d => {
+      if (d.type !== 'transfer' || !d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
+    });
+    const transferIntoGF = periodTransferIn
+      .filter(d => isGeneralFundAccount(getIncomeAccountId(d)))
+      .reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const transferOutOfGF = periodTransferOut
+      .filter(d => isGeneralFundAccount(getExpenseAccountId(d)))
+      .reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const netTransferGF = transferIntoGF - transferOutOfGF;
+
+    const totalIn = fInc.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const totalOut = fExp.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    // Surplus/Deficit is operating performance only (income vs. expense) -
+    // fund transfers are financing/movement, not operating results, so they
+    // sit on their own line below rather than inside this computation.
     const netChange = totalIn - totalOut;
-    const accountBalances = getAccountBalancesThrough(periodEndDate);
-    const financialOverviewTotal = FINANCIAL_ACCOUNTS.reduce((sum, account) => {
-      return sum + (parseFloat(accountBalances[account.id]) || 0);
+    const endBal = begBal + netChange + netTransferGF;
+
+    // ── Payroll withheld-but-not-yet-remitted reconciling item ──────────────
+    // This statement deliberately keeps using GROSS pay (d.amount) for
+    // payroll, same as Total Disbursements always has, so a reader sees the
+    // same figure that was budgeted/expensed. getAccountBalancesThrough()
+    // (and so gfTrueEndBalance above) instead recognizes payroll's cash
+    // impact at NET pay - the withheld tithe/SSS/other deductions only
+    // actually leave cash later, via a separate deduction-payment record
+    // (see getExpenseCashImpact()). That is the one remaining, expected
+    // difference between this statement's own Ending Balance and the true
+    // General Fund account balances; it's surfaced explicitly below rather
+    // than silently changing the statement's basis to net pay.
+    const periodDeductionPayments = allExpenseData.filter(d => {
+      if (d.type !== 'deduction-payment' || !d.date) return false;
+      if (!isGeneralFundAccount(getExpenseAccountId(d))) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
+    });
+    const payrollWithheldThisPeriod = fExp.reduce((s, d) => {
+      if (!d.isPayrollGenerated || d.isBenefit) return s;
+      const netPay = parseFloat(d.netPay);
+      if (!Number.isFinite(netPay)) return s;
+      return s + Math.max(0, parseFloat(d.amount || 0) - netPay);
     }, 0);
-    const accountRows = FINANCIAL_ACCOUNTS.map(a => {
-      const balance = accountBalances[a.id] || 0;
-      return `
-        <tr>
-          <td class="col-desc indent-1">${a.name}</td>
-          <td class="col-sub"></td>
-          <td class="col-main ${balance < 0 ? 'amount-negative' : ''}">₱ ${fmt(balance)}</td>
-        </tr>`;
-    }).join('');
+    const payrollRemittedThisPeriod = periodDeductionPayments.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const payrollReconcilingAmount = payrollWithheldThisPeriod - payrollRemittedThisPeriod;
+
+    // Positive reconcileDiff = the true accounts hold MORE than this
+    // statement's own math says (e.g. withholding accrued this period that
+    // hasn't been remitted yet); negative = the reverse.
+    const reconcileDiff = gfTrueEndBalance - endBal;
+    const reconcileUnexplained = reconcileDiff - payrollReconcilingAmount;
+    const reconcileIsClean = Math.abs(reconcileUnexplained) < 0.01;
+
     const periodObligations = obligationsData.filter(o => {
       if (getObligationBalance(o) <= 0) return false;
       if (!o.dueDate) return true;
@@ -1099,11 +1228,62 @@
       const settlementText = paidAmount > 0 ? ` · settled ₱ ${fmt(paidAmount)} of ₱ ${fmt(amount)}` : '';
       return `
       <tr>
-        <td class="col-desc indent-1">${o.name || 'Church Obligation'} <span style="color:#777;font-size:11px;">${status}${o.dueDate ? ' · ' + o.dueDate : ''}${settlementText}</span></td>
+        <td class="col-desc indent-1">${escapeHtml(o.name || 'Church Obligation')} <span style="color:#777;font-size:11px;">${escapeHtml(status)}${o.dueDate ? ' · ' + escapeHtml(o.dueDate) : ''}${escapeHtml(settlementText)}</span></td>
         <td class="col-sub"></td>
         <td class="col-main">₱ ${fmt(balanceAmount)}</td>
       </tr>`;
     }).join('');
+
+    // Account rows shared by the General Fund / Restricted Funds sections:
+    // hides an account with an exactly-zero balance, unless every account in
+    // that subset is zero (so the section is never left completely empty).
+    function accountRowsFor(accounts) {
+      const nonZero = accounts.filter(a => Math.abs(parseFloat(accountBalances[a.id]) || 0) >= 0.01);
+      const shown = nonZero.length ? nonZero : accounts;
+      return shown.map(a => {
+        const balance = parseFloat(accountBalances[a.id]) || 0;
+        return `
+          <tr>
+            <td class="col-desc indent-1">${escapeHtml(a.name)}</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${balance < 0 ? 'amount-negative' : ''}">₱ ${fmt(balance)}</td>
+          </tr>`;
+      }).join('');
+    }
+    const gfAccountRows = accountRowsFor(gfAccounts);
+    const restrictedAccountRows = accountRowsFor(restrictedAccounts);
+    const grandTotalBalance = gfTrueEndBalance + restrictedTrueEndBalance;
+
+    // Restricted Fund Activity: what this period's General-Fund-only
+    // statement excludes must still be visible somewhere, not disappear.
+    const restrictedActivityRows = restrictedAccounts.map(a => {
+      const inAmt = restrictedIncomeRows.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const outAmt = restrictedExpenseRows.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      return { name: a.name, inAmt, outAmt, net: inAmt - outAmt };
+    }).filter(row => Math.abs(row.inAmt) >= 0.01 || Math.abs(row.outAmt) >= 0.01);
+    const restrictedActivityHtml = restrictedActivityRows.length
+      ? restrictedActivityRows.map(row => `
+        <tr>
+          <td class="col-desc indent-1">${escapeHtml(row.name)}</td>
+          <td class="col-sub"></td>
+          <td class="col-main"></td>
+        </tr>
+        <tr>
+          <td class="col-desc indent-2">Receipts In</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(row.inAmt)}</td>
+        </tr>
+        <tr>
+          <td class="col-desc indent-2">Disbursements Out</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(row.outAmt)}</td>
+        </tr>
+        <tr class="subtotal-row">
+          <td class="col-desc indent-2">Net</td>
+          <td class="col-sub"></td>
+          <td class="col-main ${row.net < 0 ? 'amount-negative' : ''}">₱ ${fmt(row.net)}</td>
+        </tr>`).join('')
+      : '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No restricted fund activity this period.</td></tr>';
 
     // expOrderMain / expOrderSub use the EXACT original strings from accountOrder.expense
     // so the report order always matches the budget setup exactly, with no formatting drift.
@@ -1152,47 +1332,52 @@
       if (!incOrderSub[m].includes(s)) incOrderSub[m].push(s);
     });
 
-    const incGroups = { 'Source of Funds': {t:0, s:{}}, 'Occasional Offering': {t:0, s:{}}, 'Miscellaneous': {t:0, s:{}} };
-    
+    const MISC_MAIN = 'Miscellaneous (Unbudgeted)';
+    const incGroups = {
+      'Source of Funds': { t: 0, s: {}, sLabels: {} },
+      'Occasional Offering': { t: 0, s: {}, sLabels: {} },
+      [MISC_MAIN]: { t: 0, s: {}, sLabels: {} }
+    };
+
     fInc.forEach(d => {
       let mainType = (d.type || '').trim();
       let budgetCat = (d.budgetCategory || d.category || '').trim();
       let details = (d.budgetDetails || d.notes || '').trim();
-      
+
       let subLow = budgetCat.toLowerCase();
       let mainLow = mainType.toLowerCase();
       let checkMain = formatCategoryName(mainType);
-      
+
       let finalMain = '';
       let sub = '';
 
       let isKnown = false;
       if (incOrderMain.length === 0) {
-          isKnown = true; 
+          isKnown = true;
       } else if (incOrderMain.includes(checkMain)) {
           isKnown = true;
       }
-      
+
       if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school') || mainType === 'Occasional Offering') {
           isKnown = true;
       }
 
       if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
-        finalMain = 'Miscellaneous';
-        
+        finalMain = MISC_MAIN;
+
         let candidates = [details, budgetCat, mainType];
         let subName = 'Other Unbudgeted Income';
-        
+
         for (let cand of candidates) {
            if (!cand) continue;
            let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
            if (cleaned && cleaned.toLowerCase() !== 'others' && cleaned.toLowerCase() !== 'miscellaneous') {
                subName = formatCategoryName(cleaned);
-               break; 
+               break;
            }
         }
         sub = subName;
-        
+
       } else {
         if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school')) {
           finalMain = 'Source of Funds';
@@ -1215,33 +1400,38 @@
         }
       }
 
-      if (finalMain !== 'Miscellaneous' && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) {
-          finalMain = 'Miscellaneous';
+      if (finalMain !== MISC_MAIN && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) {
+          finalMain = MISC_MAIN;
           sub = details ? formatCategoryName(details) : formatCategoryName(budgetCat || 'Other Unbudgeted Income');
       }
 
-      if (!incGroups[finalMain]) incGroups[finalMain] = {t:0, s:{}};
-  if (!incGroups[finalMain].s[sub]) {
-      incGroups[finalMain].s[sub] = {t:0, m:{}, ids:{}}; // Added ids object here
-  }
-  
-  let amt = parseFloat(d.amount || 0);
-  let member = resolveMemberName(d);
-  let mId = getMemberId(d); // Capture Member ID from database
-  
-  incGroups[finalMain].s[sub].t += amt;
-  
-  if (member.toLowerCase() !== 'general collection') {
-    incGroups[finalMain].s[sub].m[member] = (incGroups[finalMain].s[sub].m[member] || 0) + amt;
-    if (mId) incGroups[finalMain].s[sub].ids[member] = mId; // Map name to ID
-  }
-  incGroups[finalMain].t += amt;
-});
+      if (!incGroups[finalMain]) incGroups[finalMain] = { t: 0, s: {}, sLabels: {} };
+      const group = incGroups[finalMain];
+      // Miscellaneous sub-labels merge case/whitespace-insensitively so near
+      // -duplicate spellings ("Meralco" vs "MERALCO") land on one line
+      // instead of splitting the same income across several; budgeted mains
+      // keep their exact budget wording as the key, unchanged.
+      const subKey = finalMain === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted income') : sub;
+      if (finalMain === MISC_MAIN && !group.sLabels[subKey]) group.sLabels[subKey] = sub;
+      if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {} };
+
+      let amt = parseFloat(d.amount || 0);
+      let member = resolveMemberName(d);
+      let mId = getMemberId(d);
+
+      group.s[subKey].t += amt;
+
+      if (member.toLowerCase() !== 'general collection') {
+        group.s[subKey].m[member] = (group.s[subKey].m[member] || 0) + amt;
+        if (mId) group.s[subKey].ids[member] = mId;
+      }
+      group.t += amt;
+    });
 
     let incRows = '';
     const sortedIncMainKeys = Object.keys(incGroups).sort((a, b) => {
-       if (a === 'Miscellaneous') return 1;
-       if (b === 'Miscellaneous') return -1;
+       if (a === MISC_MAIN) return 1;
+       if (b === MISC_MAIN) return -1;
        const order = ['Source of Funds', 'Occasional Offering'];
        let idxA = order.indexOf(a);
        let idxB = order.indexOf(b);
@@ -1253,78 +1443,75 @@
 
     sortedIncMainKeys.forEach(main => {
       const g = incGroups[main];
-      if (g.t === 0) return; 
-      
+      if (g.t === 0) return;
+
       incRows += `
         <tr>
-          <td class="col-desc indent-1" style="font-weight:bold;">${main}</td>
+          <td class="col-desc indent-1" style="font-weight:bold;">${escapeHtml(main)}</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(g.t)}</td>
         </tr>`;
 
       const sortedIncomeSubKeys = Object.keys(g.s).sort((a, b) => {
-        const al = a.toLowerCase(), bl = b.toLowerCase();
+        const la = g.sLabels[a] || a, lb = g.sLabels[b] || b;
+        const al = la.toLowerCase(), bl = lb.toLowerCase();
         if (al.includes('tithe') && !bl.includes('tithe')) return -1;
         if (!al.includes('tithe') && bl.includes('tithe')) return 1;
-        return a.localeCompare(b);
+        return la.localeCompare(lb);
       });
 
-      sortedIncomeSubKeys.forEach(sub => {
+      sortedIncomeSubKeys.forEach(subKey => {
+        const subLabel = g.sLabels[subKey] || subKey;
+        // Sub-category total now sits in col-main (same column as the
+        // main-category total above), so it's never stacked in the same
+        // column as the member-detail amounts below - see the CLAUDE.md
+        // note on report-line "levelling" for why.
         incRows += `
           <tr>
-            <td class="col-desc indent-2">${sub}</td>
-            <td class="col-sub">₱ ${fmt(g.s[sub].t)}</td>
-            <td class="col-main"></td>
+            <td class="col-desc indent-2">${escapeHtml(subLabel)}</td>
+            <td class="col-sub"></td>
+            <td class="col-main" style="font-weight:600;">₱ ${fmt(g.s[subKey].t)}</td>
           </tr>`;
-        
-       // Hanapin ang parteng ito sa loob ng generateReportHTML function:
-if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().includes('sunday school')) {
-  
-  // Kunin ang kasalukuyang piniling sort option mula sa dropdown
-  const sortType = document.getElementById('sel-member-sort').value;
-  const memberList = Object.keys(g.s[sub].m);
-  const memberAmounts = g.s[sub].m;
-  const memberIds = g.s[sub].ids || {};
 
-  // Dito isinasagawa ang aktwal na sorting base sa iyong pinili
-  memberList.sort((a, b) => {
-    switch(sortType) {
-      case 'surname':
-        // Kinukuha ang huling salita bilang apelyido
-        const getSurname = (n) => n.trim().split(' ').pop().toLowerCase();
-        return getSurname(a).localeCompare(getSurname(b));
-      
-      case 'id':
-        const idA = memberIds[a] || '';
-        const idB = memberIds[b] || '';
-        // 'numeric: true' para tama ang pagkakasunod ng numbers (e.g. 2 bago ang 10)
-        return idA.localeCompare(idB, undefined, {numeric: true});
-      
-      case 'amount-desc':
-        return memberAmounts[b] - memberAmounts[a];
-      
-      case 'amount-asc':
-        return memberAmounts[a] - memberAmounts[b];
-      
-      case 'name':
-      default:
-        return a.localeCompare(b);
-    }
-  }).forEach(m => {
-    // I-render ang bawat row ng member
-    incRows += `
-      <tr>
-        <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${m}</td>
-        <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[sub].m[m])}</td>
-        <td class="col-main"></td>
-      </tr>`;
-  });
-}
+        if (!isAnnual && !subLabel.toLowerCase().includes('loose') && !subLabel.toLowerCase().includes('sunday school')) {
+          const sortType = document.getElementById('sel-member-sort').value;
+          const memberList = Object.keys(g.s[subKey].m);
+          const memberAmounts = g.s[subKey].m;
+          const memberIds = g.s[subKey].ids || {};
+
+          memberList.sort((a, b) => {
+            switch (sortType) {
+              case 'surname': {
+                const getSurname = (n) => n.trim().split(' ').pop().toLowerCase();
+                return getSurname(a).localeCompare(getSurname(b));
+              }
+              case 'id': {
+                const idA = memberIds[a] || '';
+                const idB = memberIds[b] || '';
+                return idA.localeCompare(idB, undefined, { numeric: true });
+              }
+              case 'amount-desc':
+                return memberAmounts[b] - memberAmounts[a];
+              case 'amount-asc':
+                return memberAmounts[a] - memberAmounts[b];
+              case 'name':
+              default:
+                return a.localeCompare(b);
+            }
+          }).forEach(m => {
+            incRows += `
+              <tr>
+                <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(m)}</td>
+                <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[subKey].m[m])}</td>
+                <td class="col-main"></td>
+              </tr>`;
+          });
+        }
       });
     });
 
     const expGroups = {};
-    fExp.forEach(d => {  // fExp = date-filtered expenses, so totals match totalOut
+    fExp.forEach(d => {  // fExp = date-filtered, General-Fund-only expenses, so totals match totalOut
       const rawVal = (d.category || '').trim();
       const rawLow = rawVal.toLowerCase();
       let main, sub;
@@ -1338,55 +1525,47 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       } else {
         // ── Fallback for unbudgeted / manually-entered categories ──
         let parts = rawVal.includes(' - ') ? rawVal.split(' - ') : [rawVal];
-        main = parts[0].trim() ? formatCategoryName(parts[0].trim()) : 'Miscellaneous';
+        main = parts[0].trim() ? formatCategoryName(parts[0].trim()) : MISC_MAIN;
         sub  = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : '';
         const checkMain = main.toLowerCase();
         if (rawLow.includes('not in') || checkMain === 'others' || checkMain === 'unbudgeted'
             || checkMain === 'miscellaneous' || !expOrderMain.includes(main)) {
-          main = 'Miscellaneous';
+          main = MISC_MAIN;
         }
       }
 
-      // ── Miscellaneous: derive best available sub-label ──
-      if (main === 'Miscellaneous') {
-        let _miscRawSub = (d.sub || '').trim();
-        let _miscIsPayroll = d.isPayrollGenerated
-            || /\(wk\s*\d/i.test(_miscRawSub)
-            || /week\s*\d/i.test(_miscRawSub)
-            || /\d{4}-\d{2}$/.test(_miscRawSub);
-        let rSub   = (!_miscIsPayroll && _miscRawSub) ? _miscRawSub : '';
-        let rNotes = (d.notes  || '').trim();
-        let rPayee = (d.payee  || '').trim();
+      // ── Miscellaneous (Unbudgeted): derive best available sub-label ──
+      // A detail (indent-3) row only ever comes from the budget's own
+      // multi-level key structure (see the "Budgeted" branch below and
+      // getExpenseDisplayParts()) - free-text payee/notes never split an
+      // unbudgeted line into further sub-buckets here.
+      if (main === MISC_MAIN) {
+        let rNotes = (d.notes || '').trim();
+        let rPayee = (d.payee || '').trim();
         let subName = 'Other Unbudgeted';
-        for (let cand of [rNotes, rSub, rPayee, rawVal]) {
+        for (let cand of [rNotes, rPayee, rawVal]) {
           if (!cand) continue;
           let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
-          if (cleaned && !['others','miscellaneous','unbudgeted'].includes(cleaned.toLowerCase())) {
+          if (cleaned && !['others', 'miscellaneous', 'unbudgeted'].includes(cleaned.toLowerCase())) {
             subName = formatCategoryName(cleaned);
             break;
           }
         }
         sub = subName;
-
-      } else {
-        // ── Budgeted: optionally append user-entered notes (never payroll junk) ──
-        let rawSub = (d.sub || '').trim();
-        let isPayrollSub = d.isPayrollGenerated
-            || /\(wk\s*\d/i.test(rawSub)
-            || /week\s*\d/i.test(rawSub)
-            || /\d{4}-\d{2}$/.test(rawSub);
-        let notes = (!isPayrollSub && rawSub && rawSub.toLowerCase() !== 'n/a') ? rawSub : '';
-        if (notes && notes !== sub && sub !== 'Others') {
-          sub = sub + ' - ' + notes;
-        } else if (notes && sub === 'Others') {
-          sub = notes;
-        }
-        if (!sub || sub.toLowerCase() === 'n/a') sub = 'Others';
+      } else if (!sub || sub.toLowerCase() === 'n/a') {
+        // ── Budgeted: sub comes straight from the budget's own key, never
+        // from free-text d.sub/notes (previously appended here, which
+        // fragmented one budget line into "Meralco", "meralco bill", etc.
+        // depending on what the Treasurer happened to type that day).
+        sub = 'Others';
       }
 
-      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {} };
-      if (sub) expGroups[main].subs[sub] = (expGroups[main].subs[sub] || 0) + parseFloat(d.amount || 0);
-      expGroups[main].total += parseFloat(d.amount || 0);
+      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {} };
+      const group = expGroups[main];
+      const subKey = main === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted') : sub;
+      if (main === MISC_MAIN && !group.subLabels[subKey]) group.subLabels[subKey] = sub;
+      if (subKey) group.subs[subKey] = (group.subs[subKey] || 0) + parseFloat(d.amount || 0);
+      group.total += parseFloat(d.amount || 0);
     });
 
     function getExpenseDisplayParts(main, sub) {
@@ -1408,14 +1587,14 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
     }
 
     let expRows = '';
-    
+
     const sortedExpMainKeys = Object.keys(expGroups).sort((a, b) => {
-      if (a === 'Miscellaneous') return 1;
-      if (b === 'Miscellaneous') return -1;
-      
+      if (a === MISC_MAIN) return 1;
+      if (b === MISC_MAIN) return -1;
+
       let idxA = expOrderMain.indexOf(a);
       let idxB = expOrderMain.indexOf(b);
-      
+
       if (idxA === -1 && idxB === -1) return a.localeCompare(b);
       if (idxA === -1) return 1;
       if (idxB === -1) return -1;
@@ -1426,12 +1605,18 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       const g = expGroups[main];
       expRows += `
         <tr>
-          <td class="col-desc indent-1" style="font-weight: bold;">${main}</td>
+          <td class="col-desc indent-1" style="font-weight: bold;">${escapeHtml(main)}</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(g.total)}</td>
         </tr>`;
-      
+
       const sortedSubKeys = Object.keys(g.subs).sort((a, b) => {
+        if (main === MISC_MAIN) {
+          // No budget-defined order for unbudgeted lines - alphabetise by
+          // the display label instead of the normalized grouping key.
+          const la = g.subLabels[a] || a, lb = g.subLabels[b] || b;
+          return la.localeCompare(lb);
+        }
         // g.subs keys are exact original budget sub names, and so is expOrderSub[main].
         // Simple indexOf gives perfect budget-defined order.
         let arr = expOrderSub[main] || [];
@@ -1444,41 +1629,38 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       });
 
       const nestedSubs = [];
-      sortedSubKeys.forEach(sub => {
-        const parts = getExpenseDisplayParts(main, sub);
+      sortedSubKeys.forEach(subKey => {
+        const subLabel = g.subLabels[subKey] || subKey;
+        const parts = getExpenseDisplayParts(main, subLabel);
         let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
         if (!group) {
           group = { subCategory: parts.subCategory, total: 0, rows: [] };
           nestedSubs.push(group);
         }
-        group.total += g.subs[sub];
-        group.rows.push({ detail: parts.detail, amount: g.subs[sub] });
+        group.total += g.subs[subKey];
+        group.rows.push({ detail: parts.detail, amount: g.subs[subKey] });
       });
 
       nestedSubs.forEach(group => {
         const hasDetails = group.rows.some(row => row.detail);
-        if (!hasDetails) {
-          expRows += `
-            <tr>
-              <td class="col-desc indent-2">${group.subCategory}</td>
-              <td class="col-sub" style="font-weight:600; color:#111;">&#8369; ${fmt(group.total)}</td>
-              <td class="col-main"></td>
-            </tr>`;
-          return;
-        }
-
+        // Sub-category total now sits in col-main - the same column as the
+        // main-category total above it - so its own detail (indent-3) rows
+        // below, which stay in col-sub, are never stacked in the same
+        // column as a total they're already part of.
         expRows += `
           <tr>
-            <td class="col-desc indent-2">${group.subCategory}</td>
-            <td class="col-sub" style="font-weight:600; color:#111;">&#8369; ${fmt(group.total)}</td>
-            <td class="col-main"></td>
+            <td class="col-desc indent-2">${escapeHtml(group.subCategory)}</td>
+            <td class="col-sub"></td>
+            <td class="col-main" style="font-weight:600;">₱ ${fmt(group.total)}</td>
           </tr>`;
+
+        if (!hasDetails) return;
 
         group.rows.forEach(row => {
           expRows += `
             <tr>
-              <td class="col-desc indent-3">${row.detail || 'General'}</td>
-              <td class="col-sub" style="font-size:11.5px; color:#777;">&#8369; ${fmt(row.amount)}</td>
+              <td class="col-desc indent-3">${escapeHtml(row.detail || 'General')}</td>
+              <td class="col-sub" style="font-size:11.5px; color:#777;">₱ ${fmt(row.amount)}</td>
               <td class="col-main"></td>
             </tr>`;
         });
@@ -1487,6 +1669,18 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
 
     const periodText = isAnnual ? `For the Year ${year}` : `For the Month of ${MONTHS[month]} ${year}`;
     const footerText = isAnnual ? `${year}` : `${MONTHS[month]} ${year}`;
+
+    const reconcileLineHtml = Math.abs(payrollReconcilingAmount) >= 0.01
+      ? `
+        <tr class="reconcile-row">
+          <td class="col-desc">Payroll withholdings not yet remitted</td>
+          <td class="col-sub"></td>
+          <td class="col-main">₱ ${fmt(payrollReconcilingAmount)}</td>
+        </tr>`
+      : '';
+    const reconcileCheckHtml = reconcileIsClean
+      ? `<span class="reconcile-ok">✓ Matches${Math.abs(payrollReconcilingAmount) >= 0.01 ? ' (net of payroll withholdings not yet remitted)' : ''}</span>`
+      : `<span class="reconcile-bad">✗ Off by ₱ ${fmt(Math.abs(reconcileUnexplained))}</span>`;
 
     return `
       <div class="siksik-container" id="printable-content">
@@ -1501,15 +1695,20 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
         </div>
 
         <table class="fs-table" id="export-table">
+          <tr class="col-header-row">
+            <td class="col-desc">Account</td>
+            <td class="col-sub">Detail</td>
+            <td class="col-main">Amount</td>
+          </tr>
           <tr class="bold-row">
-            <td class="col-desc">Beginning Balance</td>
+            <td class="col-desc">Beginning Balance (General Fund)</td>
             <td class="col-sub"></td>
             <td class="col-main ${begBal<0?'amount-negative':''}">₱ ${fmt(begBal)}</td>
           </tr>
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Receipts / Income</td>
+            <td colspan="3">Receipts / Income (General Fund)</td>
           </tr>
           ${incRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No income recorded for this period.</td></tr>'}
           <tr class="spacer-row"><td colspan="3"></td></tr>
@@ -1526,7 +1725,7 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Disbursements / Expenses</td>
+            <td colspan="3">Disbursements / Expenses (General Fund)</td>
           </tr>
           ${expRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No expenses recorded for this period.</td></tr>'}
           <tr class="spacer-row"><td colspan="3"></td></tr>
@@ -1535,15 +1734,28 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
             <td class="col-sub"></td>
             <td class="col-main">₱ ${fmt(totalOut)}</td>
           </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Restricted Fund Activity</td>
+          </tr>
+          ${restrictedActivityHtml}
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="bold-row">
+            <td class="col-desc">Net Fund Transfers (into)/out of General Fund</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${netTransferGF < 0 ? 'amount-negative' : ''}">₱ ${fmt(netTransferGF)}</td>
+          </tr>
           <tr class="total-row">
-            <td class="col-desc">Ending Balance</td>
+            <td class="col-desc">Ending Balance (General Fund)</td>
             <td class="col-sub"></td>
             <td class="col-main ${endBal<0?'amount-negative':'amount-positive'}">₱ ${fmt(endBal)}</td>
           </tr>
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Surplus / Deficit Computation</td>
+            <td colspan="3">Surplus / Deficit Computation (General Fund)</td>
           </tr>
           <tr class="bold-row">
             <td class="col-desc">Total Income</td>
@@ -1563,13 +1775,35 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Financial Overview Accounts</td>
+            <td colspan="3">General Fund Accounts</td>
           </tr>
-          ${accountRows}
+          ${gfAccountRows}
           <tr class="subtotal-row bold-row">
-            <td class="col-desc">Total Financial Overview</td>
+            <td class="col-desc">Subtotal, General Fund</td>
             <td class="col-sub"></td>
-            <td class="col-main ${financialOverviewTotal < 0 ? 'amount-negative' : ''}">₱ ${fmt(financialOverviewTotal)}</td>
+            <td class="col-main ${gfTrueEndBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(gfTrueEndBalance)}</td>
+          </tr>
+          <tr class="spacer-row"><td colspan="3"></td></tr>
+
+          <tr class="section-header">
+            <td colspan="3">Restricted Funds</td>
+          </tr>
+          ${restrictedAccountRows}
+          <tr class="subtotal-row bold-row">
+            <td class="col-desc">Subtotal, Restricted Funds</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${restrictedTrueEndBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(restrictedTrueEndBalance)}</td>
+          </tr>
+          <tr class="total-row">
+            <td class="col-desc">Grand Total, All Accounts</td>
+            <td class="col-sub"></td>
+            <td class="col-main ${grandTotalBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(grandTotalBalance)}</td>
+          </tr>
+          ${reconcileLineHtml}
+          <tr class="reconcile-row">
+            <td class="col-desc">General Fund accounts vs Ending Balance</td>
+            <td class="col-sub"></td>
+            <td class="col-main">${reconcileCheckHtml}</td>
           </tr>
           <tr class="spacer-row"><td colspan="3"></td></tr>
 
@@ -1582,27 +1816,27 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
         <div class="sig-section">
 
           <div class="sig-box">
-            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.chairpersonLabel}</div>
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${escapeHtml(signatories.chairpersonLabel)}</div>
             ${workflowSignatureHtml('chairperson', signatories.chairpersonName, signatories.chairpersonTitle)}
           </div>
 
           <div class="sig-box">
-            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.financeChairLabel}</div>
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${escapeHtml(signatories.financeChairLabel)}</div>
             ${workflowSignatureHtml('financeChair', signatories.financeChairName, signatories.financeChairTitle)}
           </div>
 
           <div class="sig-box">
-            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.treasurerLabel}</div>
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${escapeHtml(signatories.treasurerLabel)}</div>
             ${workflowSignatureHtml('treasurer', signatories.treasurerName, signatories.treasurerTitle)}
           </div>
-          
+
           <div class="sig-box">
-            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.auditorLabel}</div>
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${escapeHtml(signatories.auditorLabel)}</div>
             ${workflowSignatureHtml('auditor', signatories.auditorName, signatories.auditorTitle)}
           </div>
-          
+
           <div class="sig-box">
-            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${signatories.pastorLabel}</div>
+            <div style="text-align:left; font-size:11px; margin-bottom:30px;">${escapeHtml(signatories.pastorLabel)}</div>
             ${workflowSignatureHtml('pastor', signatories.pastorName, signatories.pastorTitle)}
           </div>
 
@@ -2028,6 +2262,30 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       // Helper: parse peso text to number
       const parsePeso = t => parseFloat((t || '').replace(/[₱,\s]/g, '')) || null;
 
+      // ── Column header row (Account / Detail / Amount) ──
+      if (cls.includes('col-header-row')) {
+        const headFill = { patternType: 'solid', fgColor: { rgb: RED } };
+        cell(R, 0, text0, { font: fontSection, fill: headFill, alignment: { ...alignL, indent: 1 } });
+        cell(R, 1, text1, { font: fontSection, fill: headFill, alignment: alignC });
+        cell(R, 2, text2, { font: fontSection, fill: headFill, alignment: alignC });
+        R++; return;
+      }
+
+      // ── Reconciliation line (General Fund accounts vs Ending Balance,
+      // Payroll withholdings not yet remitted) ──
+      if (cls.includes('reconcile-row')) {
+        const amt = parsePeso(text2);
+        cell(R, 0, text0, { font: fontBold, alignment: alignL });
+        if (amt !== null) {
+          cell(R, 2, amt, sAmount());
+        } else if (text2) {
+          // The on-screen check/cross is rendered as coloured HTML; innerText
+          // still gives the plain "✓ Matches..." / "✗ Off by ₱..." text.
+          cell(R, 2, text2, { font: fontBold, alignment: alignR });
+        }
+        R++; return;
+      }
+
       // ── Section header (Receipts / Disbursements) ──
       if (cls.includes('section-header')) {
         merge(R, 0, R, 2);
@@ -2105,11 +2363,33 @@ if (!isAnnual && !sub.toLowerCase().includes('loose') && !sub.toLowerCase().incl
       }
 
       // ── Sub-category (indent-2) ──
+      // Its total now lives in col-main (Amount), not col-sub (Detail) - see
+      // generateReportHTML()'s report-line levelling: a sub-category total
+      // and its own detail rows must never share a column, or the sheet
+      // reads like the details are additional amounts on top of the total.
       if (tdCls0.includes('indent-2')) {
-        const subAmt = parsePeso(text1);
+        const subAmt = parsePeso(text2);
         cell(R, 0, '      ' + text0, { font: fontIndent2, alignment: alignL });
+        cell(R, 1, '', {});
         if (subAmt !== null) {
-          cell(R, 1, subAmt, { font: fontIndent2, alignment: alignR, numFmt });
+          cell(R, 2, subAmt, { font: fontIndent2, alignment: alignR, numFmt });
+        }
+        R++; return;
+      }
+
+      // ── Detail rows (indent-3) - only ever the budget's own multi-level
+      // categories (see generateReportHTML), never free-text notes. Kept in
+      // col-sub (Detail) so paper, screen and Excel agree on where a
+      // sub-category's own breakdown belongs. ──
+      if (tdCls0.includes('indent-3')) {
+        const detailAmt = parsePeso(text1);
+        cell(R, 0, '          ' + text0, {
+          font: { ...fontBase, sz: 9, color: { rgb: GRAY } }, alignment: alignL
+        });
+        if (detailAmt !== null) {
+          cell(R, 1, detailAmt, {
+            font: { ...fontBase, sz: 9, color: { rgb: GRAY } }, alignment: alignR, numFmt
+          });
         }
         cell(R, 2, '', {});
         R++; return;
