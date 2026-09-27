@@ -301,10 +301,21 @@
         - Number(row.workersTithe || 0) - Number(row.sssDeduction || 0));
     }
 
+    // Treasurer and Auditor both see every staff member's payroll records
+    // (Treasurer as the payroll preparer, Auditor as a read-only reviewer -
+    // e.g. via the Supporting Documents card on report-workflow.html).
+    // Every other role only sees its own payslips.
     function payrollRolesFor(profileRole) {
-      if (profileRole === 'Treasurer') return ['Pastor', 'Deaconess', 'Admin', 'Admin Assistant'];
+      if (profileRole === 'Treasurer' || profileRole === 'Auditor') return ['Pastor', 'Deaconess', 'Admin', 'Admin Assistant'];
       if (profileRole === 'Admin Assistant') return ['Admin', 'Admin Assistant'];
       return [profileRole];
+    }
+
+    // True for the two roles that browse the whole payroll ledger rather
+    // than only their own payslips - drives the page title, the staff
+    // filter's visibility, and employeeNameFor's role-label fallback.
+    function isPayrollAdmin(profileRole) {
+      return profileRole === 'Treasurer' || profileRole === 'Auditor';
     }
 
     // Determines which half of the month a payroll row belongs to for the
@@ -398,7 +409,7 @@
     function employeeNameFor(group) {
       const roleLabel = ROLE_LABELS[group.role] || group.role || '-';
       const ownRoles = payrollRolesFor(activeProfile.role);
-      if (activeProfile.role !== 'Treasurer' && ownRoles.includes(group.role)) {
+      if (!isPayrollAdmin(activeProfile.role) && ownRoles.includes(group.role)) {
         return activeProfile.name || roleLabel;
       }
       return roleLabel;
@@ -406,13 +417,17 @@
 
     async function loadPayslips() {
       activeProfile = window.graceBooksUser || await window.graceBooksAuthReady;
-      const isTreasurer = activeProfile.role === 'Treasurer';
-      document.getElementById('page-title').textContent = isTreasurer ? 'Payroll / Payslips' : 'My Payslips';
-      document.getElementById('staff-name').textContent = isTreasurer ? 'Payroll Records' : (activeProfile.name || activeProfile.role);
-      document.getElementById('staff-role').textContent = isTreasurer ? 'Treasurer view: all generated payroll records' : activeProfile.role;
+      const admin = isPayrollAdmin(activeProfile.role);
+      document.getElementById('page-title').textContent = admin ? 'Payroll / Payslips' : 'My Payslips';
+      document.getElementById('staff-name').textContent = admin ? 'Payroll Records' : (activeProfile.name || activeProfile.role);
+      document.getElementById('staff-role').textContent = admin
+        ? `${activeProfile.role} view: all generated payroll records`
+        : activeProfile.role;
       document.getElementById('month-filter').value = new Date().toISOString().slice(0, 7);
       document.getElementById('year-filter').value = new Date().getFullYear();
-      if (isTreasurer) document.getElementById('staff-filter-wrap').style.display = '';
+      if (admin) document.getElementById('staff-filter-wrap').style.display = '';
+
+      applyDeepLinkParams();
 
       const roles = payrollRolesFor(activeProfile.role);
       const snapshots = await Promise.all(roles.map(role =>
@@ -423,6 +438,47 @@
       ));
       payrollRows = snapshots.flatMap(snapshot => snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       renderPayslips();
+      openDeepLinkedPayslip();
+    }
+
+    // Supports report-workflow.html's "View Payslip" links:
+    // ?period=monthly&month=YYYY-MM&role=<Role> (or period=yearly&year=YYYY).
+    // Sets the filters before the first render; the matching payslip (if
+    // exactly one group matches) is auto-opened by openDeepLinkedPayslip()
+    // once payrollRows has loaded.
+    let deepLinkRole = '';
+    function applyDeepLinkParams() {
+      const params = new URLSearchParams(window.location.search);
+      const period = params.get('period');
+      const month = params.get('month');
+      const year = params.get('year');
+      const role = params.get('role');
+      if (!period) return;
+      if (['weekly', 'semimonthly', 'monthly', 'yearly'].includes(period)) {
+        document.getElementById('period-filter').value = period;
+      }
+      if (month) document.getElementById('month-filter').value = month;
+      if (year) document.getElementById('year-filter').value = year;
+      onPeriodChange();
+      if (role) {
+        // The staff filter merges Admin/Admin Assistant under one 'Admin'
+        // option (see the <select> markup), matching the merge already done
+        // in renderPayslips()'s roleMatch and the YTD staff filter below.
+        const staffValue = (role === 'Admin' || role === 'Admin Assistant') ? 'Admin' : role;
+        if (isPayrollAdmin(activeProfile.role)) document.getElementById('staff-filter').value = staffValue;
+        deepLinkRole = role;
+      }
+    }
+
+    function openDeepLinkedPayslip() {
+      if (!deepLinkRole) return;
+      const matches = visibleGroups
+        .map((group, index) => ({ group, index }))
+        .filter(({ group }) => group.role === deepLinkRole ||
+          (deepLinkRole === 'Admin Assistant' && group.role === 'Admin') ||
+          (deepLinkRole === 'Admin' && group.role === 'Admin Assistant'));
+      if (matches.length === 1) openPayslipModal(matches[0].index);
+      deepLinkRole = '';
     }
 
     function onPeriodChange() {
