@@ -239,6 +239,35 @@
     .indent-2 { padding-left: 36px !important; color: #111; font-size: 12px; }
     .indent-3 { padding-left: 54px !important; color: #222; font-size: 11.5px; }
 
+    /* Budget / % Used columns (Item 7) - only emitted when the "Show budget
+       columns" toggle is on, so widths only need to account for the 5-column
+       layout; the 3-column layout keeps col-desc/col-sub/col-main at 60/20/20
+       as above. */
+    .fs-table.has-budget .col-desc { width: 40%; }
+    .fs-table.has-budget .col-sub  { width: 14%; }
+    .fs-table.has-budget .col-main { width: 16%; }
+    .col-budget, .col-pct { width: 15%; text-align: right; padding-right: 8px; font-size: 11px; color: var(--gray); }
+    .fs-table.has-budget .col-budget, .fs-table.has-budget .col-pct { font-size: 11px; }
+    .pct-over  { color: var(--red-mid); font-weight: 700; }
+    .pct-under { color: #b8860b; font-weight: 700; }
+
+    /* Miscellaneous (Unbudgeted) helper note + entry counts */
+    .misc-note { color: #888; font-size: 10.5px; font-style: italic; }
+    .entry-count { color: #999; font-size: 10px; font-weight: 400; }
+
+    /* Church Obligations compact sub-table (Item 6) */
+    .obligation-table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 2px 0 4px; }
+    .obligation-table td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    .obligation-table .obligation-header-row td {
+      font-weight: 700; font-size: 10px; text-transform: uppercase; color: var(--red);
+      border-bottom: 1px solid var(--red); padding-top: 4px !important; padding-bottom: 4px !important;
+    }
+    .obligation-table .obligation-totals-row td {
+      font-weight: 700; border-top: 1px solid var(--dark); border-bottom: none;
+    }
+    .obligation-table td.ob-num { text-align: right; }
+    .obligation-table td.ob-status { text-align: center; white-space: nowrap; }
+
     .section-header td {
       font-weight: 700;
       font-size: 12.5px;
@@ -321,6 +350,7 @@
       .sig-section      { break-inside: avoid; page-break-inside: avoid;
                           break-before: auto; page-break-before: auto; }
       .rpt-footer       { break-inside: avoid; page-break-inside: avoid; }
+      .obligation-table { break-inside: avoid; page-break-inside: avoid; }
 
       /* ── Font scaling per paper size ── */
       /* Long bond — default, comfortable */
@@ -336,6 +366,13 @@
       body.paper-a4 .fs-table td              { padding: 2px 4px; }
       body.paper-a4 .spacer-row td            { padding: 3px 0 !important; }
       body.paper-a4 .section-header td        { padding-top: 11px !important; }
+
+      /* Budget columns make each row wider - shrink a little further so the
+         5-column layout still fits comfortably on one printed line. */
+      .fs-table.has-budget            { font-size: 11px; }
+      .fs-table.has-budget .col-budget,
+      .fs-table.has-budget .col-pct   { font-size: 10px; }
+      .obligation-table                { font-size: 10px; }
     }
   </style>
 </head>
@@ -413,6 +450,13 @@
         <option value="">Loading projects...</option>
       </select>
     </div>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:6px;">
+    <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+      <input type="checkbox" id="chk-budget-cols" checked onchange="toggleBudgetCols(this.checked)">
+      Show budget columns
+    </label>
   </div>
 
   <div style="margin-left: auto;">
@@ -572,6 +616,61 @@
   let allIncomeData = [];
   let allExpenseData = [];
   let obligationsData = [];
+  // Item 7 (Budget / % Used columns): budgets/{year} is loaded once per year
+  // with a one-time .get() and cached here (keyed by year), reloaded only
+  // when the selected year changes. A missing doc caches as null ("no
+  // budget"), not undefined, so it's never re-fetched needlessly.
+  let budgetsCache = {};
+  let currentBudgets = null;
+  let showBudgetCols = true;
+  async function ensureBudgetsForYear(year) {
+    if (Object.prototype.hasOwnProperty.call(budgetsCache, year)) return budgetsCache[year];
+    try {
+      const doc = await db.collection('budgets').doc(String(year)).get();
+      budgetsCache[year] = doc.exists ? doc.data() : null;
+    } catch (err) {
+      console.warn('Unable to load budget for year', year, err);
+      budgetsCache[year] = null;
+    }
+    return budgetsCache[year];
+  }
+  function toggleBudgetCols(checked) {
+    showBudgetCols = checked;
+    render();
+  }
+  // Scheduling helpers mirrored from budget-vs-actual.html (no shared JS
+  // modules in this repo - see CLAUDE.md), operating on a passed-in budgets
+  // doc rather than a page-level global.
+  function getScheduleMonths(sched) {
+    if (!sched) return [];
+    if (Array.isArray(sched.months) && sched.months.length) {
+      return [...new Set(sched.months.map(m => parseInt(m)).filter(m => Number.isInteger(m) && m >= 0 && m <= 11))].sort((a,b)=>a-b);
+    }
+    if (Number.isInteger(sched.month)) return [sched.month];
+    return [];
+  }
+  function isRecurringExpense(key, budgetsObj) {
+    const sched = (budgetsObj.expenseSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function expenseBudgetForMonth(key, month, budgetsObj) {
+    const ann = (budgetsObj.expense || {})[key] || 0;
+    if (isRecurringExpense(key, budgetsObj)) return ann / 12;
+    const months = getScheduleMonths((budgetsObj.expenseSchedule || {})[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
+  }
+  function isRecurringIncome(key, budgetsObj) {
+    const sched = (budgetsObj.incomeSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function incomeBudgetForMonth(key, month, budgetsObj) {
+    const ann = (budgetsObj.income || {})[key] || 0;
+    if (isRecurringIncome(key, budgetsObj)) return ann / 12;
+    const months = getScheduleMonths((budgetsObj.incomeSchedule || {})[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
+  }
   let specialProjects = [];
   let specialProjectEntries = [];
   let specialProjectCosts = [];
@@ -985,6 +1084,8 @@
 
   async function render() {
     await loadWorkflowSignaturesForCurrentPeriod();
+    const budgetYear = parseInt(document.getElementById('sel-year').value);
+    currentBudgets = Number.isInteger(budgetYear) ? await ensureBudgetsForYear(budgetYear) : null;
     if (reportType === 'monthly') renderMonthly();
     else if (reportType === 'annual') renderAnnual();
     else if (reportType === 'special-project') renderSpecialProject();
@@ -1091,6 +1192,42 @@
     const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
     const dayBeforeStart = new Date(targetDate.getTime() - 1);
 
+    // ── Item 7: Budget / % Used columns ─────────────────────────────────────
+    // Annual statement: Budget = the full annual amount from budgets/{year}.
+    // Monthly statement: Budget = Year-to-Date, i.e. the sum of
+    // expenseBudgetForMonth/incomeBudgetForMonth (copied above from
+    // budget-vs-actual.html) for every month from January through the
+    // selected month, on the same schedule-aware basis budget-vs-actual.html
+    // uses. Neither figure changes any existing Amount figure - these are
+    // purely additive columns.
+    const budgetsObj = currentBudgets || { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
+    function budgetForExpenseKey(key) {
+      if (isAnnual) return (budgetsObj.expense || {})[key] || 0;
+      let sum = 0;
+      for (let m = 0; m <= month; m++) sum += expenseBudgetForMonth(key, m, budgetsObj);
+      return sum;
+    }
+    function budgetForIncomeKey(key) {
+      if (isAnnual) return (budgetsObj.income || {})[key] || 0;
+      let sum = 0;
+      for (let m = 0; m <= month; m++) sum += incomeBudgetForMonth(key, m, budgetsObj);
+      return sum;
+    }
+    const COLSPAN = showBudgetCols ? 5 : 3;
+    const emptyBudgetCells = showBudgetCols ? '<td class="col-budget"></td><td class="col-pct"></td>' : '';
+    // isExpenseSide: colour % Used red above 100% for expenses, amber below
+    // 100% for income (an income shortfall is the concerning direction).
+    function budgetCellsHtml(budgetAmt, actualAmt, isExpenseSide, dash) {
+      if (!showBudgetCols) return '';
+      if (dash) return '<td class="col-budget">—</td><td class="col-pct"></td>';
+      if (!(budgetAmt > 0)) return emptyBudgetCells;
+      const pct = (actualAmt / budgetAmt) * 100;
+      let cls = '';
+      if (isExpenseSide && pct > 100) cls = 'pct-over';
+      else if (!isExpenseSide && pct < 100) cls = 'pct-under';
+      return `<td class="col-budget">₱ ${fmt(budgetAmt)}</td><td class="col-pct ${cls}">${pct.toFixed(1)}%</td>`;
+    }
+
     // ── General Fund vs Restricted Funds ────────────────────────────────────
     // isGeneralFundAccount() reads the Treasurer's own per-account setting
     // (Financial Overview > Beginning Balances), so which of the six
@@ -1176,6 +1313,24 @@
     const restrictedIncomeRows = periodIncome.filter(d => !isGeneralFundAccount(getIncomeAccountId(d)));
     const restrictedExpenseRows = periodExpense.filter(d => !isGeneralFundAccount(getExpenseAccountId(d)));
 
+    // Item 7 (monthly YTD % Used): a separate Year-to-Date pool (January
+    // through the selected month), General-Fund-basis like fInc/fExp, used
+    // ONLY to compute the YTD *actual* half of "YTD actual / YTD budget".
+    // fInc/fExp (this period only) still drive every existing Amount figure
+    // unchanged - this pool is additive, never a replacement.
+    const ytdIncomePool = isAnnual ? fInc : incomeData.filter(d => {
+      if (!d.date) return false;
+      const dt = new Date(d.date);
+      return dt.getFullYear() === year && dt.getMonth() <= month;
+    }).filter(d => isGeneralFundAccount(getIncomeAccountId(d)));
+    const ytdExpensePool = isAnnual ? fExp : expenseData.filter(d => {
+      if (!d.date) return false;
+      const dt = new Date(d.date);
+      return dt.getFullYear() === year && dt.getMonth() <= month;
+    }).filter(d => isGeneralFundAccount(getExpenseAccountId(d)));
+    const ytdTotalIn = ytdIncomePool.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const ytdTotalOut = ytdExpensePool.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+
     // ── Fund transfers ───────────────────────────────────────────────────────
     // Transfers move cash between accounts rather than representing real
     // income/expense, so incomeData/expenseData (and so fInc/fExp above)
@@ -1243,19 +1398,59 @@
       const dt = new Date(o.dueDate);
       return !isNaN(dt.getTime()) && dt.getFullYear() === year;
     }).sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
-    const obligationRows = periodObligations.map(o => {
+    // Item 6: Church Obligations rendered as a compact sub-table (Obligation
+    // / Due Date / Amount / Paid / Balance / Status, plus a totals row)
+    // instead of a status/due-date/settlement span crammed into col-desc.
+    // It's nested inside a single colspan="3"/"5" cell of the outer fs-table
+    // so it fits the existing layout, and carries its own row classes
+    // (obligation-header-row/-row/-totals-row) so exportToExcel() can pick
+    // it apart explicitly instead of falling through to the generic
+    // class-based row handling (which would otherwise read the whole nested
+    // table's text as one giant cell).
+    let obligationsAmountTotal = 0, obligationsPaidTotal = 0, obligationsBalanceTotal = 0;
+    const obligationDataRows = periodObligations.map(o => {
       const amount = Math.max(0, parseFloat(o.amount || 0));
-      const paidAmount = getObligationPaidAmount(o);
+      const paidAmount = Math.min(amount, getObligationPaidAmount(o));
       const balanceAmount = getObligationBalance(o);
       const status = getObligationStatus(o);
-      const settlementText = paidAmount > 0 ? ` · settled ₱ ${fmt(paidAmount)} of ₱ ${fmt(amount)}` : '';
+      obligationsAmountTotal += amount;
+      obligationsPaidTotal += paidAmount;
+      obligationsBalanceTotal += balanceAmount;
       return `
-      <tr>
-        <td class="col-desc indent-1">${escapeHtml(o.name || 'Church Obligation')} <span style="color:#777;font-size:11px;">${escapeHtml(status)}${o.dueDate ? ' · ' + escapeHtml(o.dueDate) : ''}${escapeHtml(settlementText)}</span></td>
-        <td class="col-sub"></td>
-        <td class="col-main">₱ ${fmt(balanceAmount)}</td>
-      </tr>`;
+        <tr class="obligation-row">
+          <td>${escapeHtml(o.name || 'Church Obligation')}</td>
+          <td>${o.dueDate ? escapeHtml(o.dueDate) : '—'}</td>
+          <td class="ob-num">₱ ${fmt(amount)}</td>
+          <td class="ob-num">₱ ${fmt(paidAmount)}</td>
+          <td class="ob-num">₱ ${fmt(balanceAmount)}</td>
+          <td class="ob-status">${escapeHtml(status)}</td>
+        </tr>`;
     }).join('');
+    const obligationsTableHtml = periodObligations.length
+      ? `
+      <tr class="obligation-wrapper-row">
+        <td colspan="${COLSPAN}">
+          <table class="obligation-table">
+            <tr class="obligation-header-row">
+              <td>Obligation</td>
+              <td>Due Date</td>
+              <td class="ob-num">Amount</td>
+              <td class="ob-num">Paid</td>
+              <td class="ob-num">Balance</td>
+              <td class="ob-status">Status</td>
+            </tr>
+            ${obligationDataRows}
+            <tr class="obligation-totals-row">
+              <td colspan="2">Total</td>
+              <td class="ob-num">₱ ${fmt(obligationsAmountTotal)}</td>
+              <td class="ob-num">₱ ${fmt(obligationsPaidTotal)}</td>
+              <td class="ob-num">₱ ${fmt(obligationsBalanceTotal)}</td>
+              <td></td>
+            </tr>
+          </table>
+        </td>
+      </tr>`
+      : '';
 
     // Account rows shared by the General Fund / Restricted Funds sections:
     // hides an account with an exactly-zero balance, unless every account in
@@ -1270,6 +1465,7 @@
             <td class="col-desc indent-1">${escapeHtml(a.name)}</td>
             <td class="col-sub"></td>
             <td class="col-main ${balance < 0 ? 'amount-negative' : ''}">₱ ${fmt(balance)}</td>
+            ${emptyBudgetCells}
           </tr>`;
       }).join('');
     }
@@ -1301,29 +1497,34 @@
           <td class="col-desc indent-1">${escapeHtml(row.name)}</td>
           <td class="col-sub"></td>
           <td class="col-main"></td>
+          ${emptyBudgetCells}
         </tr>
         <tr>
           <td class="col-desc indent-2">Receipts In</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(row.realInAmt)}</td>
+          ${emptyBudgetCells}
         </tr>
         <tr>
           <td class="col-desc indent-2">Disbursements Out</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(row.realOutAmt)}</td>
+          ${emptyBudgetCells}
         </tr>
         ${Math.abs(row.transferNet) >= 0.01 ? `
         <tr>
           <td class="col-desc indent-2">Transfers (Net)</td>
           <td class="col-sub"></td>
           <td class="col-main ${row.transferNet < 0 ? 'amount-negative' : ''}">₱ ${fmt(row.transferNet)}</td>
+          ${emptyBudgetCells}
         </tr>` : ''}
         <tr class="subtotal-row">
           <td class="col-desc indent-2">Net</td>
           <td class="col-sub"></td>
           <td class="col-main ${row.net < 0 ? 'amount-negative' : ''}">₱ ${fmt(row.net)}</td>
+          ${emptyBudgetCells}
         </tr>`).join('')
-      : '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No restricted fund activity this period.</td></tr>';
+      : `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No restricted fund activity this period.</td></tr>`;
 
     // expOrderMain / expOrderSub use the EXACT original strings from accountOrder.expense
     // so the report order always matches the budget setup exactly, with no formatting drift.
@@ -1363,6 +1564,12 @@
 
     let incOrderMain = [];
     let incOrderSub = {};
+    // incKeyToMain/incKeyToSub: same key -> canonical main/sub mapping as
+    // catKeyToMain/catKeyToSub above, but for accountOrder.income, so Item 7
+    // can sum each income budget key into the same main/sub buckets the
+    // actuals below are grouped into.
+    const incKeyToMain = {};
+    const incKeyToSub = {};
     (accountOrder.income || []).forEach(k => {
       let parts = k.split(' - ');
       let m = formatCategoryName(parts[0].trim());
@@ -1370,16 +1577,39 @@
       if (!incOrderMain.includes(m)) incOrderMain.push(m);
       if (!incOrderSub[m]) incOrderSub[m] = [];
       if (!incOrderSub[m].includes(s)) incOrderSub[m].push(s);
+      incKeyToMain[k] = m;
+      incKeyToSub[k] = s;
+    });
+    // Main-category budget = sum of its subs' budgets, built directly from
+    // the mapping above so a budget line always lands in the same bucket its
+    // actual income would.
+    const incBudgetMainTotals = {};
+    const incBudgetSubTotals = {};
+    (accountOrder.income || []).forEach(k => {
+      const main = incKeyToMain[k];
+      const sub = incKeyToSub[k];
+      const amt = budgetForIncomeKey(k);
+      incBudgetMainTotals[main] = (incBudgetMainTotals[main] || 0) + amt;
+      if (!incBudgetSubTotals[main]) incBudgetSubTotals[main] = {};
+      incBudgetSubTotals[main][sub] = (incBudgetSubTotals[main][sub] || 0) + amt;
     });
 
     const MISC_MAIN = 'Miscellaneous (Unbudgeted)';
+    // Wrapped in a function (rather than inlined against fInc directly) so
+    // Item 7's monthly YTD % Used can run the exact same categorization
+    // against a YTD-filtered pool (Jan through the selected month) to get a
+    // YTD actual, without duplicating - and risking drifting from - this
+    // classification logic. The Amount column's own actuals (fInc, this
+    // period only) are completely unaffected: buildIncGroups(fInc) below is
+    // the same call this code always made.
+    function buildIncGroups(list) {
     const incGroups = {
       'Source of Funds': { t: 0, s: {}, sLabels: {} },
       'Occasional Offering': { t: 0, s: {}, sLabels: {} },
       [MISC_MAIN]: { t: 0, s: {}, sLabels: {} }
     };
 
-    fInc.forEach(d => {
+    list.forEach(d => {
       let mainType = (d.type || '').trim();
       let budgetCat = (d.budgetCategory || d.category || '').trim();
       let details = (d.budgetDetails || d.notes || '').trim();
@@ -1405,7 +1635,12 @@
       if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
         finalMain = MISC_MAIN;
 
-        let candidates = [details, budgetCat, mainType];
+        // Label source order (deterministic, most-structured field first):
+        // the budget category text, then the income type, then free-text
+        // notes/details last - notes previously went first, which produced
+        // an unpredictable label depending on what the Treasurer happened to
+        // type that day.
+        let candidates = [budgetCat, mainType, details];
         let subName = 'Other Unbudgeted Income';
 
         for (let cand of candidates) {
@@ -1442,7 +1677,9 @@
 
       if (finalMain !== MISC_MAIN && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) {
           finalMain = MISC_MAIN;
-          sub = details ? formatCategoryName(details) : formatCategoryName(budgetCat || 'Other Unbudgeted Income');
+          // Same label source order as above: budget category text first,
+          // notes/details last.
+          sub = budgetCat ? formatCategoryName(budgetCat) : formatCategoryName(details || 'Other Unbudgeted Income');
       }
 
       if (!incGroups[finalMain]) incGroups[finalMain] = { t: 0, s: {}, sLabels: {} };
@@ -1453,13 +1690,14 @@
       // keep their exact budget wording as the key, unchanged.
       const subKey = finalMain === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted income') : sub;
       if (finalMain === MISC_MAIN && !group.sLabels[subKey]) group.sLabels[subKey] = sub;
-      if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {} };
+      if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {}, cnt: 0 };
 
       let amt = parseFloat(d.amount || 0);
       let member = resolveMemberName(d);
       let mId = getMemberId(d);
 
       group.s[subKey].t += amt;
+      group.s[subKey].cnt += 1;
 
       if (member.toLowerCase() !== 'general collection') {
         group.s[subKey].m[member] = (group.s[subKey].m[member] || 0) + amt;
@@ -1467,6 +1705,16 @@
       }
       group.t += amt;
     });
+    return incGroups;
+    }
+    const incGroups = buildIncGroups(fInc);
+    // Item 7: YTD actual groups (annual: identical to incGroups, since the
+    // whole year already is the YTD range).
+    const ytdIncGroups = isAnnual ? incGroups : buildIncGroups(ytdIncomePool);
+    function incActualForSub(groups, main, subLabel) {
+      const g = groups[main];
+      return (g && g.s[subLabel]) ? g.s[subLabel].t : 0;
+    }
 
     let incRows = '';
     const sortedIncMainKeys = Object.keys(incGroups).sort((a, b) => {
@@ -1485,12 +1733,21 @@
       const g = incGroups[main];
       if (g.t === 0) return;
 
+      const isMisc = main === MISC_MAIN;
       incRows += `
         <tr>
           <td class="col-desc indent-1" style="font-weight:bold;">${escapeHtml(main)}</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(g.t)}</td>
+          ${budgetCellsHtml(incBudgetMainTotals[main], (ytdIncGroups[main] || {}).t || 0, false, isMisc)}
         </tr>`;
+      if (isMisc) {
+        incRows += `
+        <tr>
+          <td class="col-desc indent-2 misc-note" colspan="${COLSPAN - 1}">Items not in the approved budget — consider adding a budget line.</td>
+          <td class="col-main"></td>
+        </tr>`;
+      }
 
       const sortedIncomeSubKeys = Object.keys(g.s).sort((a, b) => {
         const la = g.sLabels[a] || a, lb = g.sLabels[b] || b;
@@ -1506,11 +1763,13 @@
         // main-category total above), so it's never stacked in the same
         // column as the member-detail amounts below - see the CLAUDE.md
         // note on report-line "levelling" for why.
+        const entryCountHtml = isMisc ? ` <span class="entry-count">(${g.s[subKey].cnt} ${g.s[subKey].cnt === 1 ? 'entry' : 'entries'})</span>` : '';
         incRows += `
           <tr>
-            <td class="col-desc indent-2">${escapeHtml(subLabel)}</td>
+            <td class="col-desc indent-2">${escapeHtml(subLabel)}${entryCountHtml}</td>
             <td class="col-sub"></td>
             <td class="col-main" style="font-weight:600;">₱ ${fmt(g.s[subKey].t)}</td>
+            ${budgetCellsHtml(isMisc ? 0 : (incBudgetSubTotals[main] || {})[subLabel], incActualForSub(ytdIncGroups, main, subLabel), false, isMisc)}
           </tr>`;
 
         if (!isAnnual && !subLabel.toLowerCase().includes('loose') && !subLabel.toLowerCase().includes('sunday school')) {
@@ -1544,14 +1803,20 @@
                 <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(m)}</td>
                 <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[subKey].m[m])}</td>
                 <td class="col-main"></td>
+                ${emptyBudgetCells}
               </tr>`;
           });
         }
       });
     });
 
+    // Same reasoning as buildIncGroups() above: wrapped so Item 7's monthly
+    // YTD % Used can reuse this exact classification against a YTD-filtered
+    // pool. buildExpGroups(fExp) below is the same call this code always
+    // made, so the Amount column's own per-period actuals are unaffected.
+    function buildExpGroups(list) {
     const expGroups = {};
-    fExp.forEach(d => {  // fExp = date-filtered, General-Fund-only expenses, so totals match totalOut
+    list.forEach(d => {  // fExp = date-filtered, General-Fund-only expenses, so totals match totalOut
       const rawVal = (d.category || '').trim();
       const rawLow = rawVal.toLowerCase();
       let main, sub;
@@ -1580,10 +1845,16 @@
       // getExpenseDisplayParts()) - free-text payee/notes never split an
       // unbudgeted line into further sub-buckets here.
       if (main === MISC_MAIN) {
+        let rSub = (d.sub || '').trim();
         let rNotes = (d.notes || '').trim();
         let rPayee = (d.payee || '').trim();
         let subName = 'Other Unbudgeted';
-        for (let cand of [rNotes, rPayee, rawVal]) {
+        // Label source order (deterministic, most-structured field first):
+        // the budget category text (rawVal, "not in budget" stripped), then
+        // the free-text particular (d.sub), then payee, then notes last -
+        // notes previously went first, which produced an unpredictable
+        // label depending on what the Treasurer happened to type that day.
+        for (let cand of [rawVal, rSub, rPayee, rNotes]) {
           if (!cand) continue;
           let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
           if (cleaned && !['others', 'miscellaneous', 'unbudgeted'].includes(cleaned.toLowerCase())) {
@@ -1600,13 +1871,19 @@
         sub = 'Others';
       }
 
-      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {} };
+      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {}, subCounts: {} };
       const group = expGroups[main];
       const subKey = main === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted') : sub;
       if (main === MISC_MAIN && !group.subLabels[subKey]) group.subLabels[subKey] = sub;
-      if (subKey) group.subs[subKey] = (group.subs[subKey] || 0) + parseFloat(d.amount || 0);
+      if (subKey) {
+        group.subs[subKey] = (group.subs[subKey] || 0) + parseFloat(d.amount || 0);
+        group.subCounts[subKey] = (group.subCounts[subKey] || 0) + 1;
+      }
       group.total += parseFloat(d.amount || 0);
     });
+    return expGroups;
+    }
+    const expGroups = buildExpGroups(fExp);
 
     function getExpenseDisplayParts(main, sub) {
       let label = String(sub || '').trim();
@@ -1626,6 +1903,39 @@
       };
     }
 
+    // Item 7: expense Budget totals, grouped by the same main/subCategory
+    // buckets the actuals above use - main total is the sum of every budget
+    // key mapped to it (catKeyToMain), sub-category total is the sum of
+    // every budget key whose getExpenseDisplayParts() subCategory matches
+    // (the same split the actuals' nestedSubs grouping uses just below).
+    const expBudgetMainTotals = {};
+    const expBudgetSubTotals = {};
+    expAllKeys.forEach(k => {
+      const main = catKeyToMain[k];
+      const subFull = catKeyToSub[k];
+      const parts = getExpenseDisplayParts(main, subFull);
+      const amt = budgetForExpenseKey(k);
+      expBudgetMainTotals[main] = (expBudgetMainTotals[main] || 0) + amt;
+      if (!expBudgetSubTotals[main]) expBudgetSubTotals[main] = {};
+      expBudgetSubTotals[main][parts.subCategory] = (expBudgetSubTotals[main][parts.subCategory] || 0) + amt;
+    });
+
+    // Item 7: YTD actual groups (annual: identical to expGroups). A
+    // sub-category's YTD actual sums every raw budget-sub key that maps to
+    // it via getExpenseDisplayParts(), same as the display-side nestedSubs
+    // grouping further below.
+    const ytdExpGroups = isAnnual ? expGroups : buildExpGroups(ytdExpensePool);
+    function expActualForSubCategory(groups, main, subCategory) {
+      const g = groups[main];
+      if (!g) return 0;
+      let sum = 0;
+      Object.keys(g.subs).forEach(subKey => {
+        const label = g.subLabels[subKey] || subKey;
+        if (getExpenseDisplayParts(main, label).subCategory === subCategory) sum += g.subs[subKey];
+      });
+      return sum;
+    }
+
     let expRows = '';
 
     const sortedExpMainKeys = Object.keys(expGroups).sort((a, b) => {
@@ -1643,12 +1953,21 @@
 
     sortedExpMainKeys.forEach(main => {
       const g = expGroups[main];
+      const isMiscExp = main === MISC_MAIN;
       expRows += `
         <tr>
           <td class="col-desc indent-1" style="font-weight: bold;">${escapeHtml(main)}</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(g.total)}</td>
+          ${budgetCellsHtml(expBudgetMainTotals[main], (ytdExpGroups[main] || {}).total || 0, true, isMiscExp)}
         </tr>`;
+      if (isMiscExp) {
+        expRows += `
+        <tr>
+          <td class="col-desc indent-2 misc-note" colspan="${COLSPAN - 1}">Items not in the approved budget — consider adding a budget line.</td>
+          <td class="col-main"></td>
+        </tr>`;
+      }
 
       const sortedSubKeys = Object.keys(g.subs).sort((a, b) => {
         if (main === MISC_MAIN) {
@@ -1674,27 +1993,30 @@
         const parts = getExpenseDisplayParts(main, subLabel);
         let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
         if (!group) {
-          group = { subCategory: parts.subCategory, total: 0, rows: [] };
+          group = { subCategory: parts.subCategory, total: 0, rows: [], count: 0 };
           nestedSubs.push(group);
         }
         group.total += g.subs[subKey];
+        group.count += (g.subCounts || {})[subKey] || 0;
         group.rows.push({ detail: parts.detail, amount: g.subs[subKey] });
       });
 
       nestedSubs.forEach(group => {
         const hasDetails = group.rows.some(row => row.detail);
+        const entryCountHtml = isMiscExp ? ` <span class="entry-count">(${group.count} ${group.count === 1 ? 'entry' : 'entries'})</span>` : '';
         // Sub-category total now sits in col-main - the same column as the
         // main-category total above it - so its own detail (indent-3) rows
         // below, which stay in col-sub, are never stacked in the same
         // column as a total they're already part of.
         expRows += `
           <tr>
-            <td class="col-desc indent-2">${escapeHtml(group.subCategory)}</td>
+            <td class="col-desc indent-2">${escapeHtml(group.subCategory)}${entryCountHtml}</td>
             <td class="col-sub"></td>
             <td class="col-main" style="font-weight:600;">₱ ${fmt(group.total)}</td>
+            ${budgetCellsHtml(isMiscExp ? 0 : (expBudgetSubTotals[main] || {})[group.subCategory], expActualForSubCategory(ytdExpGroups, main, group.subCategory), true, isMiscExp)}
           </tr>`;
 
-        if (!hasDetails) return;
+        if (!hasDetails) { return; }
 
         group.rows.forEach(row => {
           expRows += `
@@ -1702,6 +2024,7 @@
               <td class="col-desc indent-3">${escapeHtml(row.detail || 'General')}</td>
               <td class="col-sub" style="font-size:11.5px; color:#777;">₱ ${fmt(row.amount)}</td>
               <td class="col-main"></td>
+              ${emptyBudgetCells}
             </tr>`;
         });
       });
@@ -1716,11 +2039,25 @@
           <td class="col-desc">Payroll withholdings held for remittance (cumulative)</td>
           <td class="col-sub"></td>
           <td class="col-main">₱ ${fmt(outstandingWithholdingsAtEnd)}</td>
+          ${emptyBudgetCells}
         </tr>`
       : '';
     const reconcileCheckHtml = reconcileIsClean
       ? `<span class="reconcile-ok">✓ Matches${Math.abs(outstandingWithholdingsAtEnd) >= 0.01 ? ' (net of payroll withholdings held for remittance)' : ''}</span>`
       : `<span class="reconcile-bad">✗ Off by ₱ ${fmt(Math.abs(reconcileDiff))}</span>`;
+
+    // Item 7: Total Budget / % Used on the Total Cash Receipts / Total
+    // Disbursements lines - the sum of every budgeted main category's own
+    // budget (Miscellaneous (Unbudgeted) contributes no budget amount).
+    const totalIncomeBudget = Object.keys(incBudgetMainTotals)
+      .filter(m => m !== MISC_MAIN).reduce((s, m) => s + (incBudgetMainTotals[m] || 0), 0);
+    const totalExpenseBudget = Object.keys(expBudgetMainTotals)
+      .filter(m => m !== MISC_MAIN).reduce((s, m) => s + (expBudgetMainTotals[m] || 0), 0);
+    const budgetColLabel = isAnnual ? 'Budget' : 'YTD Budget';
+    const pctColLabel = isAnnual ? '% Used' : 'YTD % Used';
+    const headerBudgetCells = showBudgetCols
+      ? `<td class="col-budget">${budgetColLabel}</td><td class="col-pct">${pctColLabel}</td>`
+      : '';
 
     return `
       <div class="siksik-container" id="printable-content">
@@ -1734,123 +2071,137 @@
           </div>
         </div>
 
-        <table class="fs-table" id="export-table">
+        <table class="fs-table ${showBudgetCols ? 'has-budget' : ''}" id="export-table">
           <tr class="col-header-row">
             <td class="col-desc">Account</td>
             <td class="col-sub">Detail</td>
             <td class="col-main">Amount</td>
+            ${headerBudgetCells}
           </tr>
           <tr class="bold-row">
             <td class="col-desc">Beginning Balance (General Fund)</td>
             <td class="col-sub"></td>
             <td class="col-main ${begBal<0?'amount-negative':''}">₱ ${fmt(begBal)}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Receipts / Income (General Fund)</td>
+            <td colspan="${COLSPAN}">Receipts / Income (General Fund)</td>
           </tr>
-          ${incRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No income recorded for this period.</td></tr>'}
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          ${incRows || `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No income recorded for this period.</td></tr>`}
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
           <tr class="subtotal-row bold-row">
             <td class="col-desc">Total Cash Receipts</td>
             <td class="col-sub"></td>
             <td class="col-main">₱ ${fmt(totalIn)}</td>
+            ${budgetCellsHtml(totalIncomeBudget, ytdTotalIn, false, false)}
           </tr>
           <tr class="bold-row">
             <td class="col-desc">Total Cash Available</td>
             <td class="col-sub"></td>
             <td class="col-main">₱ ${fmt(begBal + totalIn)}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Disbursements / Expenses (General Fund)</td>
+            <td colspan="${COLSPAN}">Disbursements / Expenses (General Fund)</td>
           </tr>
-          ${expRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No expenses recorded for this period.</td></tr>'}
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          ${expRows || `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No expenses recorded for this period.</td></tr>`}
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
           <tr class="subtotal-row bold-row">
             <td class="col-desc">Total Disbursements</td>
             <td class="col-sub"></td>
             <td class="col-main">₱ ${fmt(totalOut)}</td>
+            ${budgetCellsHtml(totalExpenseBudget, ytdTotalOut, true, false)}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Restricted Fund Activity</td>
+            <td colspan="${COLSPAN}">Restricted Fund Activity</td>
           </tr>
           ${restrictedActivityHtml}
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="bold-row">
             <td class="col-desc">Net Fund Transfers (into)/out of General Fund</td>
             <td class="col-sub"></td>
             <td class="col-main ${netTransferGF < 0 ? 'amount-negative' : ''}">₱ ${fmt(netTransferGF)}</td>
+            ${emptyBudgetCells}
           </tr>
           <tr class="total-row">
             <td class="col-desc">Ending Balance (General Fund)</td>
             <td class="col-sub"></td>
             <td class="col-main ${endBal<0?'amount-negative':'amount-positive'}">₱ ${fmt(endBal)}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Surplus / Deficit Computation (General Fund)</td>
+            <td colspan="${COLSPAN}">Surplus / Deficit Computation (General Fund)</td>
           </tr>
           <tr class="bold-row">
             <td class="col-desc">Total Income</td>
             <td class="col-sub"></td>
             <td class="col-main">₱ ${fmt(totalIn)}</td>
+            ${emptyBudgetCells}
           </tr>
           <tr class="subtotal-row">
             <td class="col-desc">Less: Total Disbursements</td>
             <td class="col-sub">-</td>
             <td class="col-main">₱ ${fmt(totalOut)}</td>
+            ${emptyBudgetCells}
           </tr>
           <tr class="subtotal-row bold-row">
             <td class="col-desc">${netChange >= 0 ? 'Surplus' : 'Deficit'}</td>
             <td class="col-sub">=</td>
             <td class="col-main ${netChange < 0 ? 'amount-negative' : 'amount-positive'}">₱ ${fmt(Math.abs(netChange))}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">General Fund Accounts</td>
+            <td colspan="${COLSPAN}">General Fund Accounts</td>
           </tr>
           ${gfAccountRows}
           <tr class="subtotal-row bold-row">
             <td class="col-desc">Subtotal, General Fund</td>
             <td class="col-sub"></td>
             <td class="col-main ${gfTrueEndBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(gfTrueEndBalance)}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Restricted Funds</td>
+            <td colspan="${COLSPAN}">Restricted Funds</td>
           </tr>
           ${restrictedAccountRows}
           <tr class="subtotal-row bold-row">
             <td class="col-desc">Subtotal, Restricted Funds</td>
             <td class="col-sub"></td>
             <td class="col-main ${restrictedTrueEndBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(restrictedTrueEndBalance)}</td>
+            ${emptyBudgetCells}
           </tr>
           <tr class="total-row">
             <td class="col-desc">Grand Total, All Accounts</td>
             <td class="col-sub"></td>
             <td class="col-main ${grandTotalBalance < 0 ? 'amount-negative' : ''}">₱ ${fmt(grandTotalBalance)}</td>
+            ${emptyBudgetCells}
           </tr>
           ${reconcileLineHtml}
           <tr class="reconcile-row">
             <td class="col-desc">General Fund accounts vs Ending Balance</td>
             <td class="col-sub"></td>
             <td class="col-main">${reconcileCheckHtml}</td>
+            ${emptyBudgetCells}
           </tr>
-          <tr class="spacer-row"><td colspan="3"></td></tr>
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
-            <td colspan="3">Church Obligations</td>
+            <td colspan="${COLSPAN}">Church Obligations</td>
           </tr>
-          ${obligationRows || '<tr><td class="indent-1 col-desc" colspan="3" style="color:#aaa;padding:8px 0;">No outstanding church obligations for this year.</td></tr>'}
+          ${obligationsTableHtml || `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No outstanding church obligations for this year.</td></tr>`}
         </table>
 
         <div class="sig-section">
@@ -2298,16 +2649,77 @@
       const text0  = tds[0] ? tds[0].innerText.trim() : '';
       const text1  = tds[1] ? tds[1].innerText.trim() : '';
       const text2  = tds[2] ? tds[2].innerText.trim() : '';
+      // Budget / % Used (Item 7) - only present (tds[3]/tds[4]) when the
+      // "Show budget columns" toggle is on; a plain 3-column row simply has
+      // no tds[3]/tds[4] and these come back empty.
+      const text3  = tds[3] ? tds[3].innerText.trim() : '';
+      const text4  = tds[4] ? tds[4].innerText.trim() : '';
 
       // Helper: parse peso text to number
       const parsePeso = t => parseFloat((t || '').replace(/[₱,\s]/g, '')) || null;
+      // Same idea, but a genuine ₱0.00 (e.g. an obligation with nothing paid
+      // yet) must come through AS zero, not fall through to blank the way
+      // `0 || null` above does - parsePeso's fallback reads a 0 amount as
+      // "no amount text", which the Church Obligations table (Item 6) hits
+      // routinely (an unpaid obligation's Paid column is legitimately 0).
+      const parsePesoStrict = t => {
+        if (!t) return null;
+        const n = parseFloat(t.replace(/[₱,\s]/g, ''));
+        return Number.isFinite(n) ? n : null;
+      };
+      // Writes the Budget (col D) / % Used (col E) pair for the current row,
+      // reusing whichever font the row's other cells used so the extra
+      // columns read consistently with the rest of the line.
+      function appendBudgetCols(font) {
+        const budgetAmt = parsePeso(text3);
+        if (budgetAmt !== null) cell(R, 3, budgetAmt, { font: font || fontBase, alignment: alignR, numFmt });
+        else if (text3) cell(R, 3, text3, { font: font || fontBase, alignment: alignR });
+        if (text4) cell(R, 4, text4, { font: font || fontBase, alignment: alignR });
+      }
 
-      // ── Column header row (Account / Detail / Amount) ──
+      // ── Church Obligations compact sub-table (Item 6) - the wrapper row's
+      // own single <td colspan> holds the *entire* nested table, so it must
+      // be skipped here (its innerText would otherwise read as one giant,
+      // meaningless cell); the nested table's own rows are still visited by
+      // this same querySelectorAll('tr') walk right after it, in document
+      // order, and are handled by the three branches below instead. ──
+      if (cls.includes('obligation-wrapper-row')) { return; }
+      if (cls.includes('obligation-header-row')) {
+        const obCols = [tds[0], tds[1], tds[2], tds[3], tds[4], tds[5]].map(td => td ? td.innerText.trim() : '');
+        obCols.forEach((t, i) => cell(R, i, t, { font: fontSection, fill: { patternType: 'solid', fgColor: { rgb: RED } }, alignment: i >= 2 ? alignR : alignL }));
+        R++; return;
+      }
+      if (cls.includes('obligation-totals-row')) {
+        // tds[0] carries colspan="2" (Obligation + Due Date) but is still
+        // one <td> element, so Amount/Paid/Balance are tds[1..3] here, not
+        // tds[2..4] - the obligation-row branch below has no such colspan
+        // and does use [2,3,4].
+        cell(R, 0, tds[0] ? tds[0].innerText.trim() : 'Total', { font: fontBold, alignment: alignL, border: { top: borderThin } });
+        [1, 2, 3].forEach((tdIdx, n) => {
+          const amt = parsePesoStrict(tds[tdIdx] ? tds[tdIdx].innerText.trim() : '');
+          if (amt !== null) cell(R, 2 + n, amt, sAmountBold({ border: { top: borderThin } }));
+        });
+        R++; return;
+      }
+      if (cls.includes('obligation-row')) {
+        cell(R, 0, tds[0] ? tds[0].innerText.trim() : '', { font: fontBase, alignment: alignL });
+        cell(R, 1, tds[1] ? tds[1].innerText.trim() : '', { font: fontBase, alignment: alignC });
+        [2, 3, 4].forEach(i => {
+          const amt = parsePesoStrict(tds[i] ? tds[i].innerText.trim() : '');
+          if (amt !== null) cell(R, i, amt, sAmount());
+        });
+        cell(R, 5, tds[5] ? tds[5].innerText.trim() : '', { font: fontBase, alignment: alignC });
+        R++; return;
+      }
+
+      // ── Column header row (Account / Detail / Amount[ / Budget / % Used]) ──
       if (cls.includes('col-header-row')) {
         const headFill = { patternType: 'solid', fgColor: { rgb: RED } };
         cell(R, 0, text0, { font: fontSection, fill: headFill, alignment: { ...alignL, indent: 1 } });
         cell(R, 1, text1, { font: fontSection, fill: headFill, alignment: alignC });
         cell(R, 2, text2, { font: fontSection, fill: headFill, alignment: alignC });
+        if (text3) cell(R, 3, text3, { font: fontSection, fill: headFill, alignment: alignC });
+        if (text4) cell(R, 4, text4, { font: fontSection, fill: headFill, alignment: alignC });
         R++; return;
       }
 
@@ -2355,6 +2767,7 @@
             border: { top: borderMed, bottom: borderDbl }
           });
         }
+        appendBudgetCols(fontTotal);
         R++; return;
       }
 
@@ -2369,6 +2782,7 @@
         if (amt !== null) {
           cell(R, 2, amt, sAmountBold({ border: { top: borderThin } }));
         }
+        appendBudgetCols(fontBold);
         R++; return;
       }
 
@@ -2380,6 +2794,7 @@
         if (amt !== null) {
           cell(R, 2, amt, sAmountBold());
         }
+        appendBudgetCols(fontBold);
         R++; return;
       }
 
@@ -2399,6 +2814,7 @@
             fill: { patternType: 'solid', fgColor: { rgb: 'FFF9F2F2' } }
           });
         }
+        appendBudgetCols(fontIndent1);
         R++; return;
       }
 
@@ -2414,6 +2830,7 @@
         if (subAmt !== null) {
           cell(R, 2, subAmt, { font: fontIndent2, alignment: alignR, numFmt });
         }
+        appendBudgetCols(fontIndent2);
         R++; return;
       }
 
@@ -2489,13 +2906,16 @@
     });
 
     // ── Sheet dimensions ─────────────────────────────────────────────────────
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R, c: 4 } });
+    // Column F (index 5) only ever holds the obligation sub-table's Status
+    // column; every other section of the sheet uses A-E.
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R, c: 5 } });
     ws['!cols'] = [
       { wch: 42 }, // A: description (wide)
-      { wch: 16 }, // B: sub amount
+      { wch: 16 }, // B: sub amount / obligation due date
       { wch: 16 }, // C: main amount
-      { wch: 16 },
-      { wch: 16 },
+      { wch: 16 }, // D: budget (Item 7) / obligation paid
+      { wch: 16 }, // E: % used (Item 7) / obligation balance
+      { wch: 14 }, // F: obligation status
     ];
     ws['!rows'] = [
       { hpt: 22 }, // church name
