@@ -959,6 +959,12 @@
       }
       card.style.display = 'block';
 
+      // Bumped before every early return (not just the Firestore fetch
+      // below) so an in-flight fetch from a previous period selection can
+      // never land after this call and overwrite whichever note/table this
+      // call ends up showing - see the requestId check after the fetch.
+      const requestId = ++supportingDocsRequestId;
+
       const type = document.getElementById('report-type').value;
       if (type === 'special-project') {
         body.innerHTML = '<div class="muted">Supporting documents for Special Projects are reviewed on the Special Projects page, not here.</div>';
@@ -969,7 +975,6 @@
         return;
       }
 
-      const requestId = ++supportingDocsRequestId;
       body.innerHTML = '<div class="muted">Loading supporting documents...</div>';
       try {
         const { start, end } = periodDateRange();
@@ -985,7 +990,13 @@
           const month = data.payrollMonth || String(data.date || '').slice(0, 7);
           if (payrollMonthInPeriod(month)) byId.set(d.id, { id: d.id, ...data });
         });
-        renderSupportingDocuments([...byId.values()]);
+        // Fund transfers and deduction-payment remittances are real cash
+        // movements but never carry a receipt or cash voucher of their own
+        // (see print-report.html's matching expenseData filter) - listing
+        // them here would just show the Auditor a false "No receipt / No
+        // voucher" flag on a record that was never supposed to have either.
+        const reportableRows = [...byId.values()].filter(r => r.type !== 'transfer' && r.type !== 'deduction-payment');
+        renderSupportingDocuments(reportableRows);
       } catch (error) {
         if (requestId !== supportingDocsRequestId) return;
         console.error(error);
