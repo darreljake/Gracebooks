@@ -1109,13 +1109,51 @@
     // real cash effect - income, expense (at net cash impact for payroll),
     // deduction-payment remittances, and both sides of a fund transfer - so
     // it's used here as the single source of truth for the General Fund's
-    // beginning and true ending balance, instead of a second hand-rolled
+    // true beginning/ending cash balance, instead of a second hand-rolled
     // loop that could silently drift from it (see the transfer note below).
     const beginningAccountBalances = getAccountBalancesThrough(dayBeforeStart);
     const accountBalances = getAccountBalancesThrough(periodEndDate);
-    const begBal = sumIds(beginningAccountBalances, gfIds);
     const gfTrueEndBalance = sumIds(accountBalances, gfIds);
     const restrictedTrueEndBalance = sumIds(accountBalances, restrictedIds);
+
+    // ── Beginning/Ending Balance basis ──────────────────────────────────────
+    // This statement's Beginning and Ending Balance must be on the SAME
+    // basis, or they won't carry over from one period's Ending Balance to
+    // the next period's Beginning Balance - an auditor would catch that
+    // immediately. getAccountBalancesThrough() (above) recognizes payroll at
+    // NET cash impact, while the statement's own period math (totalOut,
+    // below) deliberately keeps payroll at GROSS pay, so the true account
+    // balance and this statement's own running total diverge by exactly the
+    // payroll withheld-but-not-yet-remitted amount, and that amount carries
+    // forward indefinitely until it's remitted. The fix: put BOTH balances
+    // on "cash net of payroll withholdings still held for remittance" -
+    // i.e. subtract the *cumulative* outstanding withholding (all-time
+    // withheld minus all-time remitted, through a given date) from the true
+    // cash balance at that same date. Because that adjustment is applied
+    // identically at both the period's start and its end, the statement's
+    // own beginBal + netChange + netTransferGF math (below) lands on
+    // exactly that adjusted basis too - see the reconciliation section
+    // further down, where the two are shown to be algebraically equal.
+    function outstandingWithholdingsThrough(throughDate) {
+      let withheld = 0;
+      let remitted = 0;
+      allExpenseData.forEach(d => {
+        if (!d.date) return;
+        const dt = new Date(d.date);
+        if (dt > throughDate) return;
+        if (!isGeneralFundAccount(getExpenseAccountId(d))) return;
+        if (d.isPayrollGenerated && !d.isBenefit) {
+          const netPay = parseFloat(d.netPay);
+          if (Number.isFinite(netPay)) withheld += Math.max(0, parseFloat(d.amount || 0) - netPay);
+        } else if (d.type === 'deduction-payment') {
+          remitted += parseFloat(d.amount || 0);
+        }
+      });
+      return withheld - remitted;
+    }
+    const outstandingWithholdingsBeforePeriod = outstandingWithholdingsThrough(dayBeforeStart);
+    const outstandingWithholdingsAtEnd = outstandingWithholdingsThrough(periodEndDate);
+    const begBal = sumIds(beginningAccountBalances, gfIds) - outstandingWithholdingsBeforePeriod;
 
     // ── Period pools: real (non-transfer) income/expense records ────────────
     // Kept whole (both General Fund and restricted) so the new Restricted
@@ -1181,38 +1219,23 @@
     const netChange = totalIn - totalOut;
     const endBal = begBal + netChange + netTransferGF;
 
-    // ── Payroll withheld-but-not-yet-remitted reconciling item ──────────────
+    // ── Reconciliation: General Fund accounts vs Ending Balance ─────────────
     // This statement deliberately keeps using GROSS pay (d.amount) for
     // payroll, same as Total Disbursements always has, so a reader sees the
-    // same figure that was budgeted/expensed. getAccountBalancesThrough()
-    // (and so gfTrueEndBalance above) instead recognizes payroll's cash
-    // impact at NET pay - the withheld tithe/SSS/other deductions only
-    // actually leave cash later, via a separate deduction-payment record
-    // (see getExpenseCashImpact()). That is the one remaining, expected
-    // difference between this statement's own Ending Balance and the true
-    // General Fund account balances; it's surfaced explicitly below rather
-    // than silently changing the statement's basis to net pay.
-    const periodDeductionPayments = allExpenseData.filter(d => {
-      if (d.type !== 'deduction-payment' || !d.date) return false;
-      if (!isGeneralFundAccount(getExpenseAccountId(d))) return false;
-      const dt = new Date(d.date);
-      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
-    });
-    const payrollWithheldThisPeriod = fExp.reduce((s, d) => {
-      if (!d.isPayrollGenerated || d.isBenefit) return s;
-      const netPay = parseFloat(d.netPay);
-      if (!Number.isFinite(netPay)) return s;
-      return s + Math.max(0, parseFloat(d.amount || 0) - netPay);
-    }, 0);
-    const payrollRemittedThisPeriod = periodDeductionPayments.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
-    const payrollReconcilingAmount = payrollWithheldThisPeriod - payrollRemittedThisPeriod;
-
-    // Positive reconcileDiff = the true accounts hold MORE than this
-    // statement's own math says (e.g. withholding accrued this period that
-    // hasn't been remitted yet); negative = the reverse.
-    const reconcileDiff = gfTrueEndBalance - endBal;
-    const reconcileUnexplained = reconcileDiff - payrollReconcilingAmount;
-    const reconcileIsClean = Math.abs(reconcileUnexplained) < 0.01;
+    // same figure that was budgeted/expensed. The true account balance
+    // (gfTrueEndBalance, above) instead recognizes payroll's cash impact at
+    // NET pay - the withheld tithe/SSS/other deductions only actually leave
+    // cash later, via a separate deduction-payment record (see
+    // getExpenseCashImpact()). outstandingWithholdingsAtEnd is exactly that
+    // gap, carried cumulatively (not just this period's own withholding) so
+    // it matches what begBal above already subtracted at the period's
+    // start: gfTrueEndBalance - outstandingWithholdingsAtEnd is algebraically
+    // identical to endBal (begBal + netChange + netTransferGF), so this
+    // should always reconcile to zero - a genuine mismatch here (red ✗)
+    // means something outside this accounting (a data issue, a
+    // misclassified account, etc.) needs investigating.
+    const reconcileDiff = (gfTrueEndBalance - outstandingWithholdingsAtEnd) - endBal;
+    const reconcileIsClean = Math.abs(reconcileDiff) < 0.01;
 
     const periodObligations = obligationsData.filter(o => {
       if (getObligationBalance(o) <= 0) return false;
@@ -1255,11 +1278,22 @@
     const grandTotalBalance = gfTrueEndBalance + restrictedTrueEndBalance;
 
     // Restricted Fund Activity: what this period's General-Fund-only
-    // statement excludes must still be visible somewhere, not disappear.
+    // statement excludes must still be visible somewhere, not disappear -
+    // including transfers into/out of a restricted account, so each
+    // account's own Net here ties to its true balance movement for the
+    // period (its Receipts In/Disbursements Out alone would miss a transfer
+    // that moved money into or out of it - see the GF "Net Fund Transfers"
+    // line above for the mirror-image General Fund side of the same
+    // transfers).
     const restrictedActivityRows = restrictedAccounts.map(a => {
-      const inAmt = restrictedIncomeRows.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
-      const outAmt = restrictedExpenseRows.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
-      return { name: a.name, inAmt, outAmt, net: inAmt - outAmt };
+      const realInAmt = restrictedIncomeRows.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const realOutAmt = restrictedExpenseRows.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferInAmt = periodTransferIn.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferOutAmt = periodTransferOut.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferNet = transferInAmt - transferOutAmt;
+      const inAmt = realInAmt + transferInAmt;
+      const outAmt = realOutAmt + transferOutAmt;
+      return { name: a.name, realInAmt, realOutAmt, transferNet, inAmt, outAmt, net: inAmt - outAmt };
     }).filter(row => Math.abs(row.inAmt) >= 0.01 || Math.abs(row.outAmt) >= 0.01);
     const restrictedActivityHtml = restrictedActivityRows.length
       ? restrictedActivityRows.map(row => `
@@ -1271,13 +1305,19 @@
         <tr>
           <td class="col-desc indent-2">Receipts In</td>
           <td class="col-sub"></td>
-          <td class="col-main">₱ ${fmt(row.inAmt)}</td>
+          <td class="col-main">₱ ${fmt(row.realInAmt)}</td>
         </tr>
         <tr>
           <td class="col-desc indent-2">Disbursements Out</td>
           <td class="col-sub"></td>
-          <td class="col-main">₱ ${fmt(row.outAmt)}</td>
+          <td class="col-main">₱ ${fmt(row.realOutAmt)}</td>
         </tr>
+        ${Math.abs(row.transferNet) >= 0.01 ? `
+        <tr>
+          <td class="col-desc indent-2">Transfers (Net)</td>
+          <td class="col-sub"></td>
+          <td class="col-main ${row.transferNet < 0 ? 'amount-negative' : ''}">₱ ${fmt(row.transferNet)}</td>
+        </tr>` : ''}
         <tr class="subtotal-row">
           <td class="col-desc indent-2">Net</td>
           <td class="col-sub"></td>
@@ -1670,17 +1710,17 @@
     const periodText = isAnnual ? `For the Year ${year}` : `For the Month of ${MONTHS[month]} ${year}`;
     const footerText = isAnnual ? `${year}` : `${MONTHS[month]} ${year}`;
 
-    const reconcileLineHtml = Math.abs(payrollReconcilingAmount) >= 0.01
+    const reconcileLineHtml = Math.abs(outstandingWithholdingsAtEnd) >= 0.01
       ? `
         <tr class="reconcile-row">
-          <td class="col-desc">Payroll withholdings not yet remitted</td>
+          <td class="col-desc">Payroll withholdings held for remittance (cumulative)</td>
           <td class="col-sub"></td>
-          <td class="col-main">₱ ${fmt(payrollReconcilingAmount)}</td>
+          <td class="col-main">₱ ${fmt(outstandingWithholdingsAtEnd)}</td>
         </tr>`
       : '';
     const reconcileCheckHtml = reconcileIsClean
-      ? `<span class="reconcile-ok">✓ Matches${Math.abs(payrollReconcilingAmount) >= 0.01 ? ' (net of payroll withholdings not yet remitted)' : ''}</span>`
-      : `<span class="reconcile-bad">✗ Off by ₱ ${fmt(Math.abs(reconcileUnexplained))}</span>`;
+      ? `<span class="reconcile-ok">✓ Matches${Math.abs(outstandingWithholdingsAtEnd) >= 0.01 ? ' (net of payroll withholdings held for remittance)' : ''}</span>`
+      : `<span class="reconcile-bad">✗ Off by ₱ ${fmt(Math.abs(reconcileDiff))}</span>`;
 
     return `
       <div class="siksik-container" id="printable-content">
@@ -2272,7 +2312,7 @@
       }
 
       // ── Reconciliation line (General Fund accounts vs Ending Balance,
-      // Payroll withholdings not yet remitted) ──
+      // Payroll withholdings held for remittance) ──
       if (cls.includes('reconcile-row')) {
         const amt = parsePeso(text2);
         cell(R, 0, text0, { font: fontBold, alignment: alignL });
