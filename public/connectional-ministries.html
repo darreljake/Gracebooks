@@ -116,7 +116,20 @@
     @media (max-width: 400px) {
       .kpi-row { grid-template-columns: 1fr; }
     }
-  </style>
+      /* PHONE LAYOUT (screen only, <=600px) - same approach as print-report.html: compact
+       non-overlapping topbar, no page-level sideways scroll, amounts never wrap, 16px inputs. */
+    @media screen and (max-width: 600px) {
+  .topbar { padding: 10px 12px; gap: 8px; }
+  .topbar h2 { font-size: 17px; min-width: 0; }
+  .back-btn { flex: 0 0 auto; white-space: nowrap; min-height: 40px; display: inline-flex; align-items: center; }
+  .container { padding-left: 10px; padding-right: 10px; margin-top: 14px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select, textarea { font-size: 16px !important; min-height: 40px; }
+  .modal-overlay { padding: 8px; }
+  .kpi .value { white-space: nowrap; }
+  #obligations-body td:nth-child(3) { white-space: nowrap; }
+    }
+    /* /PHONE LAYOUT */
+</style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
