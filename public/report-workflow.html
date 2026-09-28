@@ -117,7 +117,12 @@
       text-decoration: none; display: inline-block;
     }
     .badge-missing { background: #fdecea; color: #a93226; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 10px; white-space: nowrap; }
+    .badge-awaiting { background: #fef5e7; color: #9c640c; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 10px; white-space: nowrap; }
     .badge-highlight { background: #8B0000; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
+    .badge-mismatch { background: #fdecea; color: #a93226; font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 10px; white-space: nowrap; margin-left: 6px; }
+    .receipt-chooser-list { list-style: none; padding: 0; margin: 0; }
+    .receipt-chooser-list li { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .receipt-chooser-list li:last-child { border-bottom: none; }
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; }
     .modal-content { background: white; padding: 20px; border-radius: 10px; width: 95%; max-width: 850px; max-height: 90vh; display: flex; flex-direction: column; }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -908,6 +913,18 @@
     const SUPPORTING_DOCS_ROLES = ['Treasurer', 'Auditor'];
     let supportingDocsRequestId = 0;
     let supportingDocsExpenseMap = new Map();
+    // id -> array of {id, name, url, annotations, locked, source} candidate
+    // receipts resolved for that expense row (see resolveExpenseReceipts).
+    let supportingDocsReceiptMap = new Map();
+    // Sunday date -> that date's countSheets docs (see renderIncomeSection).
+    let supportingDocsSheetMap = new Map();
+
+    // A cash advance's placeholder category, copied verbatim from
+    // liquidation-reimbursements.html's PLACEHOLDER_ADVANCE_CATEGORY -
+    // there is no shared JS module in this repo, so this is kept in step by
+    // hand. Used only as a defensive extra signal for "awaiting liquidation"
+    // alongside the linked request's own status.
+    const LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
 
     function peso(n) {
       return Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -978,9 +995,10 @@
       body.innerHTML = '<div class="muted">Loading supporting documents...</div>';
       try {
         const { start, end } = periodDateRange();
-        const [dateRangeSnap, payrollSnap] = await Promise.all([
+        const [dateRangeSnap, payrollSnap, incomeSnap] = await Promise.all([
           db.collection('expenses').where('date', '>=', start).where('date', '<=', end).get(),
-          db.collection('expenses').where('isPayrollGenerated', '==', true).get()
+          db.collection('expenses').where('isPayrollGenerated', '==', true).get(),
+          db.collection('income').where('date', '>=', start).where('date', '<=', end).get()
         ]);
         if (requestId !== supportingDocsRequestId) return; // a newer period was selected meanwhile
         const byId = new Map();
@@ -996,7 +1014,36 @@
         // them here would just show the Auditor a false "No receipt / No
         // voucher" flag on a record that was never supposed to have either.
         const reportableRows = [...byId.values()].filter(r => r.type !== 'transfer' && r.type !== 'deduction-payment');
-        renderSupportingDocuments(reportableRows);
+
+        // Expenses created from liquidation-reimbursements.html (cash
+        // advances/reimbursements) carry their receipts and/or cash voucher
+        // on the liquidationRequests doc, not on the expense itself - fetch
+        // those one time, deduped and batched, so the card can resolve them
+        // instead of wrongly flagging every one as "No receipt". Treasurer
+        // and Auditor both have Firestore read access to liquidationRequests
+        // (see firestore.rules).
+        const liquidationIds = [...new Set(reportableRows.map(r => r.linkedLiquidationRequestId).filter(Boolean))];
+        const liquidationSnaps = await Promise.all(
+          liquidationIds.map(reqId => db.collection('liquidationRequests').doc(reqId).get())
+        );
+        if (requestId !== supportingDocsRequestId) return;
+        const liquidationMap = new Map();
+        liquidationSnaps.forEach(snap => { if (snap.exists) liquidationMap.set(snap.id, { id: snap.id, ...snap.data() }); });
+
+        // Income excludes type === 'transfer' the same way the expense side
+        // excludes it above; restricted-fund entries are kept, matching the
+        // expense table's own choice not to filter by fund.
+        const incomeRows = incomeSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.type !== 'transfer');
+        const sheetIds = [...new Set(incomeRows.map(r => r.countSheetId).filter(Boolean))];
+        const sheetSnaps = await Promise.all(
+          sheetIds.map(sheetId => db.collection('countSheets').doc(sheetId).get())
+        );
+        if (requestId !== supportingDocsRequestId) return;
+        const sheetMap = new Map();
+        sheetSnaps.forEach(snap => { if (snap.exists) sheetMap.set(snap.id, { id: snap.id, ...snap.data() }); });
+
+        renderSupportingDocuments(reportableRows, liquidationMap);
+        renderIncomeSection(incomeRows, sheetMap);
       } catch (error) {
         if (requestId !== supportingDocsRequestId) return;
         console.error(error);
@@ -1004,33 +1051,155 @@
       }
     }
 
-    function renderSupportingDocuments(rows) {
+    // Every uploaded receipt attached anywhere on a liquidation request
+    // (initial submission + every liquidation cycle), keyed by receiptId
+    // with the legacy receiptPath fallback - mirrors
+    // liquidation-reimbursements.html's receiptPoolFromRow() exactly (no
+    // shared JS module in this repo).
+    function liquidationReceiptPool(request) {
+      const existing = (request.liquidationReceipts || []).concat(request.supportingReceipts || []);
+      const seen = new Set();
+      const pool = [];
+      existing.forEach(receipt => {
+        const id = receipt.receiptId || receipt.receiptPath;
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        pool.push({ id, name: receipt.receiptName || 'Receipt', url: receipt.receiptUrl });
+      });
+      return pool;
+    }
+
+    // Conservatively matches a generated expense back to the liquidation
+    // item it came from, by comparing sub/amount/date - the same fields the
+    // reconcile flow copied onto the expense in the first place. Returns
+    // null (no confident match) when zero or more than one item matches, so
+    // callers fall back to showing the whole request's receipt pool instead
+    // of guessing wrong.
+    function findMatchingLiquidationItem(request, expense) {
+      const items = request.liquidationItems || [];
+      if (!items.length) return null;
+      const matches = items.filter(item => {
+        const amountMatch = Math.abs(Number(item.amount || 0) - Number(expense.amount || 0)) < 0.01;
+        const descMatch = (item.description || '') === (expense.sub || '');
+        const dateMatch = !item.date || !expense.date || item.date === expense.date;
+        return amountMatch && descMatch && dateMatch;
+      });
+      return matches.length === 1 ? matches[0] : null;
+    }
+
+    // Resolves every receipt available for one expense row: its own
+    // receiptUrl (if any) plus, for an expense linked to a liquidation
+    // request, whatever that request can offer - a matched item's specific
+    // receiptIds, or (no confident item match) the request's whole receipt
+    // pool labelled as such. Also reports whether the expense is really
+    // just a released-but-not-yet-liquidated cash advance, which should
+    // read "Awaiting liquidation" rather than a red "No receipt".
+    function resolveExpenseReceipts(expense, liquidationMap) {
+      const candidates = [];
+      if (expense.receiptUrl) {
+        candidates.push({
+          id: 'own',
+          name: expense.receiptName || 'Receipt',
+          url: expense.receiptUrl,
+          annotations: expense.receiptAnnotations || [],
+          locked: !!expense.receiptAnnotationsLocked,
+          source: 'expense'
+        });
+      }
+
+      const request = expense.linkedLiquidationRequestId ? liquidationMap.get(expense.linkedLiquidationRequestId) : null;
+      let isFallbackPool = false;
+      let awaitingLiquidation = false;
+
+      if (request) {
+        const isCashAdvanceRequest = request.type !== 'Reimbursement';
+        awaitingLiquidation = isCashAdvanceRequest
+          && ['Released', 'Liquidation Submitted'].includes(request.status)
+          && expense.category === LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY;
+
+        if (!candidates.length) {
+          const pool = liquidationReceiptPool(request);
+          const matchedItem = findMatchingLiquidationItem(request, expense);
+          if (matchedItem && (matchedItem.receiptIds || []).length) {
+            matchedItem.receiptIds.forEach(receiptId => {
+              const found = pool.find(p => p.id === receiptId);
+              if (found) {
+                candidates.push({
+                  id: found.id,
+                  name: found.name,
+                  url: found.url,
+                  annotations: (matchedItem.annotations || []).filter(a => a.receiptId === receiptId),
+                  locked: !!matchedItem.annotationsLocked,
+                  source: 'item'
+                });
+              }
+            });
+          } else if (pool.length) {
+            // No confident per-item match (a reimbursement's receipts, or a
+            // liquidated item we couldn't pin down conservatively) - show
+            // the whole pool rather than silently dropping it.
+            isFallbackPool = true;
+            pool.forEach(p => candidates.push({ id: p.id, name: p.name, url: p.url, annotations: [], locked: false, source: 'pool' }));
+          }
+        }
+      }
+
+      const voucherId = expense.voucherId || (request && request.voucherId) || '';
+      const voucherNo = expense.voucherNo || (request && request.voucherNo) || '';
+      return { candidates, isFallbackPool, awaitingLiquidation, voucherId, voucherNo, requestId: request ? request.id : null };
+    }
+
+    function renderSupportingDocuments(rows, liquidationMap) {
       supportingDocsExpenseMap = new Map(rows.map(r => [r.id, r]));
+      supportingDocsReceiptMap = new Map();
       const payrollRows = rows.filter(r => r.isPayrollGenerated);
       const expenseRows = rows.filter(r => !r.isPayrollGenerated);
 
       let missingReceipts = 0;
       let missingVouchers = 0;
+      let awaitingLiquidationCount = 0;
       const expenseTableRows = expenseRows.map(e => {
-        if (!e.receiptUrl) missingReceipts++;
-        if (!e.voucherId) missingVouchers++;
+        const resolved = resolveExpenseReceipts(e, liquidationMap);
+        supportingDocsReceiptMap.set(e.id, resolved);
         const annotationCount = (e.receiptAnnotations || []).length;
         const highlightBadge = annotationCount
           ? `<span class="badge-highlight" title="${e.receiptAnnotationsLocked ? 'Highlights locked' : 'Highlights'}">${e.receiptAnnotationsLocked ? '🔒' : '🖍'} ${annotationCount}</span>`
           : '';
-        const receiptCell = e.receiptUrl
-          ? `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">View Receipt</button>${highlightBadge}`
-          : '<span class="badge-missing">No receipt</span>';
-        const voucherCell = e.voucherId
-          ? `<a href="cash-voucher.html?view=${encodeURIComponent(e.voucherId)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">🧾 ${escapeHtml(e.voucherNo || 'View')}</a>`
+
+        let receiptCell;
+        if (resolved.candidates.length === 0) {
+          if (resolved.awaitingLiquidation) {
+            awaitingLiquidationCount++;
+            receiptCell = '<span class="badge-awaiting">Awaiting liquidation</span>';
+          } else {
+            missingReceipts++;
+            receiptCell = '<span class="badge-missing">No receipt</span>';
+          }
+        } else if (resolved.candidates.length === 1 && !resolved.isFallbackPool) {
+          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">View Receipt</button>${highlightBadge}`;
+        } else {
+          const label = resolved.isFallbackPool
+            ? `Receipts on liquidation request (${resolved.candidates.length})`
+            : `View Receipts (${resolved.candidates.length})`;
+          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">${escapeHtml(label)}</button>${highlightBadge}`;
+        }
+
+        const voucherCell = resolved.voucherId
+          ? `<a href="cash-voucher.html?view=${encodeURIComponent(resolved.voucherId)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">🧾 ${escapeHtml(resolved.voucherNo || 'View')}</a>`
           : '<span class="badge-missing">No voucher</span>';
+        if (!resolved.voucherId) missingVouchers++;
+
+        const liquidationBadge = e.linkedLiquidationRequestId
+          ? ` <a href="liquidation-reimbursements.html" target="_blank" rel="noopener noreferrer" class="btn-ledger" title="Open the Liquidation / Reimbursements page">🔗 Liquidation</a>`
+          : '';
+
         return `
           <tr>
             <td>${escapeHtml(e.date || '-')}</td>
             <td>${escapeHtml(e.category || '-')}${e.sub ? `<div class="muted">${escapeHtml(e.sub)}</div>` : ''}</td>
             <td>${escapeHtml(e.payee || '-')}</td>
             <td style="text-align:right;">₱${peso(e.amount)}</td>
-            <td>${receiptCell}</td>
+            <td>${receiptCell}${liquidationBadge}</td>
             <td>${voucherCell}</td>
           </tr>`;
       }).join('');
@@ -1048,7 +1217,7 @@
 
       const expenseSection = `
         <div class="docs-section-title">Expenses</div>
-        <div class="docs-summary">${expenseRows.length} expense${expenseRows.length === 1 ? '' : 's'} · ${missingReceipts} missing receipt${missingReceipts === 1 ? '' : 's'} · ${missingVouchers} missing voucher${missingVouchers === 1 ? '' : 's'}</div>
+        <div class="docs-summary">${expenseRows.length} expense${expenseRows.length === 1 ? '' : 's'} · ${missingReceipts} missing receipt${missingReceipts === 1 ? '' : 's'} · ${missingVouchers} missing voucher${missingVouchers === 1 ? '' : 's'}${awaitingLiquidationCount ? ` · ${awaitingLiquidationCount} awaiting liquidation` : ''}</div>
         <div class="doc-table-wrap">
           <table class="doc-table">
             <thead><tr><th>Date</th><th>Category</th><th>Payee</th><th>Amount</th><th>Receipt</th><th>Cash Voucher</th></tr></thead>
@@ -1065,7 +1234,73 @@
           </table>
         </div>`;
 
-      document.getElementById('supporting-docs-body').innerHTML = expenseSection + payrollSection;
+      const incomeSectionPlaceholder = '<div class="docs-section-title">Income</div><div id="supporting-income-body" class="muted">Loading...</div>';
+      document.getElementById('supporting-docs-body').innerHTML = incomeSectionPlaceholder + expenseSection + payrollSection;
+    }
+
+    // Groups the period's income by Sunday/service date and shows each
+    // date's count sheet (or flags it missing), same gating as the rest of
+    // this card. Rendered into its own placeholder so it doesn't have to
+    // wait on (or block) the expense/payroll tables above.
+    function renderIncomeSection(incomeRows, sheetMap) {
+      supportingDocsSheetMap = sheetMap;
+      const target = document.getElementById('supporting-income-body');
+      if (!target) return;
+
+      const groups = new Map();
+      incomeRows.forEach(r => {
+        const date = r.date || 'Unknown date';
+        if (!groups.has(date)) groups.set(date, []);
+        groups.get(date).push(r);
+      });
+      const dates = [...groups.keys()].sort();
+
+      let missingCount = 0;
+      const rowsHtml = dates.map(date => {
+        const entries = groups.get(date);
+        const total = entries.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const cashTotal = entries.filter(r => r.payment === 'Cash').reduce((s, r) => s + Number(r.amount || 0), 0);
+        const nonCashTotal = total - cashTotal;
+        const sheetIds = [...new Set(entries.map(r => r.countSheetId).filter(Boolean))];
+        const sheets = sheetIds.map(id => sheetMap.get(id)).filter(Boolean);
+        const linkedCount = entries.filter(r => r.countSheetId).length;
+
+        let sheetCell;
+        if (!sheets.length) {
+          missingCount++;
+          sheetCell = '<span class="badge-missing">No count sheet</span>';
+        } else {
+          const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
+          sheetCell = `<button type="button" class="btn-ledger" onclick="openSupportingCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
+          if (linkedCount < entries.length) {
+            sheetCell += ` <span class="muted" style="font-size:11px;">(${linkedCount}/${entries.length} entries linked)</span>`;
+          } else {
+            const countedTotal = sheets.reduce((s, sh) => s + Number(sh.totalAmount || 0), 0);
+            const mismatch = Math.abs(countedTotal - total) > 0.004;
+            sheetCell += mismatch
+              ? ` <span class="badge-mismatch">Counted ₱${peso(countedTotal)} ≠ income ₱${peso(total)}</span>`
+              : ` <span class="muted" style="font-size:11px;">Counted ₱${peso(countedTotal)}</span>`;
+          }
+        }
+
+        return `
+          <tr>
+            <td>${escapeHtml(date)}</td>
+            <td>${entries.length}</td>
+            <td style="text-align:right;">₱${peso(total)}</td>
+            <td style="text-align:right;">₱${peso(cashTotal)} cash / ₱${peso(nonCashTotal)} other</td>
+            <td>${sheetCell}</td>
+          </tr>`;
+      }).join('');
+
+      target.outerHTML = `
+        <div class="docs-summary">${dates.length} Sunday${dates.length === 1 ? '' : 's'} · ${missingCount} missing count sheet${missingCount === 1 ? '' : 's'}</div>
+        <div class="doc-table-wrap">
+          <table class="doc-table">
+            <thead><tr><th>Date</th><th>Entries</th><th>Total</th><th>Cash / Non-Cash</th><th>Count Sheet</th></tr></thead>
+            <tbody>${rowsHtml || '<tr><td colspan="5" class="muted">No income in this period.</td></tr>'}</tbody>
+          </table>
+        </div>`;
     }
 
     // Groups payroll expense rows the same way payslips.html's
@@ -1104,28 +1339,115 @@
       return `${MONTHS[parseInt(month, 10) - 1] || month} ${year}`;
     }
 
-    function openSupportingReceipt(id) {
-      const record = supportingDocsExpenseMap.get(id);
-      if (!record || !record.receiptUrl) return;
-      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(record.receiptName, record.receiptUrl);
+    function openReceiptCandidate(record, candidate) {
+      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(candidate.name, candidate.url);
       if (isPdf) {
-        document.getElementById('receipt-viewer-title').textContent = record.receiptName || 'Receipt';
+        document.getElementById('receipt-viewer-title').textContent = candidate.name || 'Receipt';
         document.getElementById('receipt-viewer-body').innerHTML =
           `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
              <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
-             <a href="${escapeHtml(record.receiptUrl)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">Open PDF in New Tab</a>
+             <a href="${escapeHtml(candidate.url)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">Open PDF in New Tab</a>
            </div>`;
         document.getElementById('receiptViewerModal').style.display = 'flex';
         return;
       }
       window.GraceBooksAnnotator.open({
-        title: record.receiptName || 'Receipt',
-        imageUrl: record.receiptUrl,
-        fileName: record.receiptName || '',
+        title: candidate.name || 'Receipt',
+        imageUrl: candidate.url,
+        fileName: candidate.name || '',
         subtitle: `${record.category || record.sub || 'Expense'} — ₱${peso(record.amount)}`,
-        annotations: record.receiptAnnotations || [],
+        annotations: candidate.annotations || [],
         editable: false,
-        locked: !!record.receiptAnnotationsLocked
+        locked: !!candidate.locked
+      });
+    }
+
+    function openSupportingReceipt(id) {
+      const record = supportingDocsExpenseMap.get(id);
+      const resolved = supportingDocsReceiptMap.get(id);
+      if (!record || !resolved || !resolved.candidates.length) return;
+      if (resolved.candidates.length === 1) {
+        openReceiptCandidate(record, resolved.candidates[0]);
+        return;
+      }
+      // Several receipts - show a small chooser inside the existing receipt
+      // viewer modal; picking one opens it the normal way.
+      document.getElementById('receipt-viewer-title').textContent = resolved.isFallbackPool
+        ? 'Receipts on Liquidation Request'
+        : `Receipts (${resolved.candidates.length})`;
+      document.getElementById('receipt-viewer-body').innerHTML = `
+        <ul class="receipt-chooser-list">
+          ${resolved.candidates.map((c, i) => `
+            <li>
+              <span>${escapeHtml(c.name || 'Receipt')}</span>
+              <button type="button" class="btn-ledger" onclick="openSupportingReceiptCandidate('${escapeAttr(id)}', ${i})">View</button>
+            </li>`).join('')}
+        </ul>`;
+      document.getElementById('receiptViewerModal').style.display = 'flex';
+    }
+
+    function openSupportingReceiptCandidate(id, index) {
+      const record = supportingDocsExpenseMap.get(id);
+      const resolved = supportingDocsReceiptMap.get(id);
+      if (!record || !resolved || !resolved.candidates[index]) return;
+      closeReceiptViewer();
+      openReceiptCandidate(record, resolved.candidates[index]);
+    }
+
+    function openSupportingCountSheet(date) {
+      const groups = new Map();
+      // Rebuild from the last render's data via the sheet map + expense map
+      // isn't available here (income isn't cached) - instead this reads the
+      // sheets straight from supportingDocsSheetMap, keyed by whatever ids
+      // were shown for this date; a simpler direct approach is to look up
+      // every sheet whose own `date` field matches, which is equivalent and
+      // needs no extra state.
+      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date);
+      if (!sheets.length) return;
+      const allFiles = [];
+      sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push({ sheet, file: f })));
+      if (!allFiles.length) {
+        alert('This count sheet has no attached photo files.');
+        return;
+      }
+      document.getElementById('receipt-viewer-title').textContent = `Count Sheet — ${date}`;
+      document.getElementById('receipt-viewer-body').innerHTML = `
+        <ul class="receipt-chooser-list">
+          ${allFiles.map(({ file }, i) => `
+            <li>
+              <span>${escapeHtml(file.name || 'Count sheet photo')}</span>
+              <button type="button" class="btn-ledger" onclick="openCountSheetFile('${escapeAttr(date)}', ${i})">View</button>
+            </li>`).join('')}
+        </ul>`;
+      document.getElementById('receiptViewerModal').style.display = 'flex';
+    }
+
+    function openCountSheetFile(date, index) {
+      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date);
+      const allFiles = [];
+      sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+      const file = allFiles[index];
+      if (!file) return;
+      closeReceiptViewer();
+      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(file.name, file.url);
+      if (isPdf || !file.url) {
+        document.getElementById('receipt-viewer-title').textContent = file.name || 'Count sheet';
+        document.getElementById('receipt-viewer-body').innerHTML =
+          `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+             <p style="margin:0; color:#555;">${file.url ? 'PDF files open in a new browser tab for viewing.' : 'File not available.'}</p>
+             ${file.url ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">Open PDF in New Tab</a>` : ''}
+           </div>`;
+        document.getElementById('receiptViewerModal').style.display = 'flex';
+        return;
+      }
+      window.GraceBooksAnnotator.open({
+        title: file.name || 'Count sheet',
+        imageUrl: file.url,
+        fileName: file.name || '',
+        subtitle: `Count sheet — ${date}`,
+        annotations: [],
+        editable: false,
+        locked: true
       });
     }
 
