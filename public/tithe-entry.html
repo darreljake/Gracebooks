@@ -1105,7 +1105,7 @@
         <div class="cash-count-help">
           Attach a photo of the physical count sheet used for this Sunday's cash count (optional, but encouraged).
         </div>
-        <input type="file" accept="image/*,.pdf" multiple capture="environment" onchange="onCountSheetFilesSelected(this)">
+        <input type="file" accept="image/*,.pdf" multiple onchange="onCountSheetFilesSelected(this)">
         ${uploaded}${pending}
       </div>`;
   }
@@ -2141,45 +2141,94 @@
         }
         const sheetId = countSheetState.sheetId;
 
-        if (pendingCountSheetFiles.length) {
-          await uploadPendingCountSheetFiles(sheetId);
-        }
+        // The count sheet is best-effort: this is the Sunday income save,
+        // the weekly critical path, and a count-sheet problem (network,
+        // Storage, rules not yet deployed, etc.) must never be the reason
+        // the actual income doesn't get saved. Anything that fails inside
+        // this block is caught below instead of aborting the whole batch.
+        try {
+          if (pendingCountSheetFiles.length) {
+            await uploadPendingCountSheetFiles(sheetId);
+          }
 
-        // Only ever created once per sheetId (countSheetCreated-style flag,
-        // mirroring memberCreated above) - like the money counter member ID
-        // path, a repeat setDoc here would be an update, not a create.
-        if (!countSheetState.created) {
-          const cashTotalNow = draftRecords.filter(r => r.payment === 'Cash').reduce((s, r) => s + r.amount, 0);
-          const nonCashTotal = draftRecords.filter(r => r.payment !== 'Cash').reduce((s, r) => s + r.amount, 0);
-          const totalAmount = draftRecords.reduce((s, r) => s + r.amount, 0);
-          const sheetPayload = {
-            date: (draftRecords[0] && draftRecords[0].date) || new Date().toISOString().split('T')[0],
-            createdAt: new Date().toISOString(),
-            createdBy: {
-              uid: auth.currentUser.uid,
-              name: (activeUserProfile && activeUserProfile.name) || '',
-              role: (activeUserProfile && activeUserProfile.role) || ''
-            },
-            entryCount: draftRecords.length,
-            totalAmount,
-            cashTotal: cashTotalNow,
-            nonCashTotal,
-            denominations: { ...cashDenominationCounts },
-            files: countSheetState.files,
-            notes: ''
-          };
-          await setDoc(doc(db, 'countSheets', sheetId), sheetPayload);
+          // Only ever created once per sheetId (countSheetCreated-style flag,
+          // mirroring memberCreated above) - like the money counter member ID
+          // path, a repeat setDoc here would be an update, not a create.
+          if (!countSheetState.created) {
+            const cashTotalNow = draftRecords.filter(r => r.payment === 'Cash').reduce((s, r) => s + r.amount, 0);
+            const nonCashTotal = draftRecords.filter(r => r.payment !== 'Cash').reduce((s, r) => s + r.amount, 0);
+            const totalAmount = draftRecords.reduce((s, r) => s + r.amount, 0);
+            // The physically counted cash, from the same denomination
+            // counts the on-page Cash Denomination Check already collects -
+            // this is what report-workflow.html's Income section compares
+            // against the recorded cash income for the date. It is NOT the
+            // same as cashTotalNow above (which is just a sum of the same
+            // income docs being created here, and would trivially always
+            // "match" anything derived from it).
+            const countedCashTotal = DENOMINATIONS.reduce(
+              (s, denom) => s + denom.value * (cashDenominationCounts[denom.key] || 0), 0
+            );
+            const sheetPayload = {
+              date: (draftRecords[0] && draftRecords[0].date) || new Date().toISOString().split('T')[0],
+              createdAt: new Date().toISOString(),
+              createdBy: {
+                uid: auth.currentUser.uid,
+                name: (activeUserProfile && activeUserProfile.name) || '',
+                role: (activeUserProfile && activeUserProfile.role) || ''
+              },
+              entryCount: draftRecords.length,
+              totalAmount,
+              cashTotal: cashTotalNow,
+              nonCashTotal,
+              denominations: { ...cashDenominationCounts },
+              countedCashTotal,
+              files: countSheetState.files,
+              notes: ''
+            };
+            await setDoc(doc(db, 'countSheets', sheetId), sheetPayload);
+            await writeAuditLog(
+              'count_sheet_created',
+              'countSheets',
+              sheetId,
+              null,
+              sheetPayload,
+              `Recorded count sheet for ${sheetPayload.date} (${sheetPayload.entryCount} entries, ₱${fmt(totalAmount)})`
+            );
+            countSheetState.created = true;
+            saveCountSheetState();
+          }
+        } catch (sheetError) {
+          console.error('Count sheet save failed:', sheetError);
+          const proceed = confirm(
+            `The count sheet couldn't be saved (${sheetError && sheetError.message ? sheetError.message : sheetError}). `
+            + 'Save the income entries anyway? The Treasurer can attach the count sheet later from the Income Log.'
+          );
+          if (!proceed) {
+            // Stop here - drafts and the count sheet state (sheetId,
+            // whatever files already made it to Storage) are left exactly
+            // as they are, so "Confirm & Save All" can simply be retried:
+            // no re-upload of an already-uploaded file, and setDoc still
+            // fires at most once for this sheetId.
+            throw sheetError;
+          }
           await writeAuditLog(
-            'count_sheet_created',
+            'count_sheet_save_failed',
             'countSheets',
             sheetId,
             null,
-            sheetPayload,
-            `Recorded count sheet for ${sheetPayload.date} (${sheetPayload.entryCount} entries, ₱${fmt(totalAmount)})`
+            { error: (sheetError && sheetError.message) || String(sheetError) },
+            `Count sheet could not be saved for this batch (${draftRecords.length} entries) - saved the income entries without a count sheet link.`
           );
-          countSheetState.created = true;
-          saveCountSheetState();
+          // This batch is going out without a count sheet either way now -
+          // reset so the NEXT batch starts clean with a fresh sheetId,
+          // rather than retrying a sheet this batch already gave up on.
+          resetCountSheetState();
         }
+
+        // Only ever point an income doc at a countSheets doc that was
+        // actually setDoc'd - never a sheetId allocated but never created
+        // (e.g. the counter chose to proceed without one above).
+        const linkedSheetId = countSheetState.created ? sheetId : null;
 
         // Entries are removed from draftRecords as each one succeeds, not
         // after the whole loop finishes - if a later entry throws (network
@@ -2214,7 +2263,7 @@
                 notes: entry.notes || "",
                 targetAccount: mapTypeToAccount(entry.type, entry.payment),
                 timestamp: new Date().toISOString(),
-                countSheetId: sheetId,
+                ...(linkedSheetId ? { countSheetId: linkedSheetId } : {}),
                 ...(entry.pledgeTarget != null ? { pledgeTarget: entry.pledgeTarget } : {}),
                 ...(entry.pledgePaymentNo != null ? { pledgePaymentNo: entry.pledgePaymentNo } : {})
             };
