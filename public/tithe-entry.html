@@ -593,6 +593,26 @@
     }
     /* ─────────────────────────────────────────────────────────────────────── */
 
+
+    /* ── PHONE LAYOUT, full phone range (screen only) ── */
+    @media screen and (max-width: 600px) {
+      .topbar { position: static; padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 18px 14px; }
+      select, input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea { font-size: 16px; min-height: 44px; }
+      .row-year-date > *, .form-group { min-width: 0; }
+      .row-year-date { flex-direction: column; gap: 10px; }
+      .type-btn { min-height: 40px; }
+      .draft-table-wrap, .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      #records-body td:last-child, #total-amount, .rs-value, .rc-row span:last-child, .re-amount, .rh-amount, .rg-total, .rg-sub-total, .draft-amount { white-space: nowrap; }
+      .review-modal { max-width: 100vw; }
+      .denom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .denom-cell label { white-space: nowrap; }
+      .rg-toolbar { padding-right: 2px; }
+      .rg-toolbar-btn { flex: 1 1 0; padding: 5px 8px; min-height: 40px; font-size: 12px; white-space: nowrap; }
+    }
+
     .member-suggestions {
       position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
       background: white; border: 1px solid #ddd; border-radius: 8px;

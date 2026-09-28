@@ -219,6 +219,45 @@
     .wiz-cancel-btn:hover { background: #ddd; }
     .wiz-finalize-btn { background: #1e8449; color: white; }
     .wiz-finalize-btn:hover { background: #117a65; }
+  
+    /* ── PHONE LAYOUT (screen only; print untouched) ── */
+    @media screen and (max-width: 600px) { .kpi-value, .kpi-sub, td .amt, .period-btn, .tab-btn { white-space: nowrap; } }
+    @media screen and (max-width: 600px) {
+      body { padding-top: 0; }
+      .topbar { position: static; padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 16px 14px; }
+      .period-bar { gap: 8px; }
+      .period-bar select, .wizard-toolbar select, .wizard-toolbar input, .cat-modal select, .cat-modal input, .budget-row input, .wiz-input { font-size: 16px; min-height: 42px; }
+      .period-bar select { flex: 1 1 120px; min-width: 0; }
+      .period-btn, .cb-cad-btn, .tab-btn { min-height: 40px; }
+      .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .tab-btn { padding: 10px 14px; flex: 0 0 auto; }
+      .kpi-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .kpi-card { padding: 14px; }
+      .kpi-value { font-size: 22px; }
+      .budget-setup-grid, .month-grid { grid-template-columns: minmax(0, 1fr); }
+      .budget-row { flex-wrap: wrap; }
+      .budget-row label { flex: 1 1 100%; }
+      .budget-row input { flex: 1 1 100px; width: auto; min-width: 0; }
+      .table-scroll-wrapper, .tab-content { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      th, td { padding: 10px 8px; }
+      td:first-child { min-width: 130px; }
+      .tab-content td:not(:first-child), .tab-content th, #kpi-grid td, .budget-input-group div[style*="font-weight: 700"] { white-space: nowrap; }
+      #cash-budget-start-input, .tab-content input:not([type=checkbox]):not([type=radio]) { font-size: 16px !important; min-height: 40px; }
+      .cat-modal-content { width: 94%; max-width: 100vw; padding: 16px; max-height: 92vh; overflow-y: auto; }
+      .wizard-modal-overlay { padding: 0; }
+      .wizard-modal-content { max-width: 100vw; max-height: 100vh; border-radius: 0; }
+      .wizard-header { padding: 12px 14px; border-radius: 0; }
+      .wizard-header h2 { font-size: 16px; }
+      .wizard-toolbar { padding: 10px 14px; gap: 10px; }
+      .wizard-body { padding: 12px; }
+      .wiz-footer { padding: 12px 14px; flex-wrap: wrap; }
+      .wiz-footer-btn, .wiz-btn, .wizard-close { min-height: 40px; }
+      .wiz-table { display: block; overflow-x: auto; }
+      .wiz-input { width: 100px; }
+    }
   </style>
 </head>
 <body>
