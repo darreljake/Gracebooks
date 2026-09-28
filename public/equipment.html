@@ -111,7 +111,22 @@
       .modal-overlay { align-items: flex-end; padding: 0; }
       .form-row { grid-template-columns: 1fr; }
     }
-  </style>
+      /* PHONE LAYOUT (screen only, <=600px) - same approach as print-report.html: compact
+       non-overlapping topbar, no page-level sideways scroll, amounts never wrap, 16px inputs. */
+    @media screen and (max-width: 600px) {
+  .topbar { position: static; flex-wrap: wrap; padding: 8px 12px; gap: 6px 10px; }
+  .brand { gap: 10px; }
+  .brand img { height: 32px; width: auto; flex: 0 0 auto; }
+  .brand-text { font-size: 17px; }
+  .brand-sub { display: none; }
+  .top-actions { flex: 1 1 100%; width: 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  .top-actions > *, .top-actions .btn-action { flex: 0 0 auto; }
+  .btn-action { padding: 7px 11px; white-space: nowrap; width: auto; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select, textarea { font-size: 16px !important; min-height: 40px; }
+  #eq-tbody td:nth-child(5), #eq-tbody td:nth-child(6), .summary-card .value, .summary-card .num { white-space: nowrap; }
+    }
+    /* /PHONE LAYOUT */
+</style>
 </head>
 <body>
 <div class="topbar">

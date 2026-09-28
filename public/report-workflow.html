@@ -145,7 +145,22 @@
       .container { padding: 14px 10px 40px; }
       .card { padding: 12px; }
     }
-  </style>
+      /* PHONE LAYOUT (screen only, <=600px) - same approach as print-report.html: compact
+       non-overlapping topbar, no page-level sideways scroll, amounts never wrap, 16px inputs. */
+    @media screen and (max-width: 600px) {
+  .topbar { flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px 12px; gap: 6px 10px; }
+  .brand { gap: 10px; min-width: 0; flex: 1 1 auto; }
+  .brand img { width: 32px; height: 32px; flex: 0 0 auto; }
+  .brand h1 { font-size: 17px; }
+  .brand div div { display: none; }
+  .top-actions { width: auto; flex: 0 0 auto; flex-wrap: nowrap; }
+  .top-actions .btn { width: auto; white-space: nowrap; min-height: 36px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), select, textarea { font-size: 16px !important; min-height: 40px; }
+  .doc-table td { white-space: nowrap; }
+  .doc-table td.wrap-ok { white-space: normal; }
+    }
+    /* /PHONE LAYOUT */
+</style>
 </head>
 <body>
   <div class="topbar">
