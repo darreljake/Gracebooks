@@ -175,7 +175,7 @@
     }
   
     /* ── PHONE LAYOUT (screen only; print untouched) ── */
-    @media screen { table.reg-table td .amt-val, .total-row span, .voucher-table td.amt, .voucher-table .total-amt { white-space: nowrap; } }
+    @media screen and (max-width: 600px) { table.reg-table td .amt-val, .total-row span, .voucher-table td.amt, .voucher-table .total-amt { white-space: nowrap; } }
     @media screen and (max-width: 600px) {
       .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
       .topbar h2 { font-size: 17px; }

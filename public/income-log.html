@@ -96,7 +96,7 @@
     .empty { text-align: center; color: #aaa; padding: 30px; }
 
     /* ── PHONE LAYOUT (screen only; print/desktop untouched) ── */
-    @media screen { td strong, .s-num, #filtered-total, #stat-total { white-space: nowrap; } }
+    @media screen and (max-width: 600px) { td strong, .s-num, #filtered-total, #stat-total { white-space: nowrap; } }
     @media screen and (max-width: 600px) {
       .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
       .topbar h2 { font-size: 17px; }

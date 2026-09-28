@@ -124,7 +124,7 @@
     .btn-recurring { background: #d35400; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: 'Poppins', sans-serif; }
 
     /* ── PHONE LAYOUT (screen only; print/desktop untouched) ── */
-    @media screen { td strong, td.amt, .amount, .badge-paid, .badge-pending, .total-bar span:last-child { white-space: nowrap; } }
+    @media screen and (max-width: 600px) { td strong, td.amt, .amount, .badge-paid, .badge-pending, .total-bar span:last-child { white-space: nowrap; } }
     @media screen and (max-width: 600px) {
       .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
       .topbar h2 { font-size: 17px; }

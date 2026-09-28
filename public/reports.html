@@ -208,7 +208,7 @@
     .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
   
     /* ── PHONE LAYOUT (screen only; print untouched) ── */
-    @media screen { .kpi-amount, .kpi-sub, .month-pos, .month-neg, .weekly-amount, .badge, .period-btn, .tab-btn { white-space: nowrap; } }
+    @media screen and (max-width: 600px) { .kpi-amount, .kpi-sub, .month-pos, .month-neg, .weekly-amount, .badge, .period-btn, .tab-btn { white-space: nowrap; } }
     @media screen and (max-width: 600px) {
       .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
       .topbar h2 { font-size: 17px; }
