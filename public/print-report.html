@@ -17,9 +17,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="receipt-annotator.js"></script>
 
   <style>
     :root {
@@ -333,7 +335,7 @@
     /* Swap @page size via a dedicated stylesheet injected by JS */
 
     @media print {
-      .topbar, .controls-bar, .fullscreen-toolbar, .no-print { display: none !important; }
+      .topbar, .controls-bar, .fullscreen-toolbar, .no-print, .review-only { display: none !important; }
       body { background: white; }
       .report-wrapper { margin: 0; padding: 0; max-width: 100%; }
       .report-page { box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
@@ -374,6 +376,48 @@
       .fs-table.has-budget .col-pct   { font-size: 10px; }
       .obligation-table                { font-size: 10px; }
     }
+
+    /* ── REVIEW MODE (report-workflow.html embedded preview) ─────────────── */
+    .review-banner {
+      background: #fff7e0; border: 1px solid #e6c65c; color: #6b5a12;
+      padding: 10px 16px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
+      margin: 0 0 12px; display: flex; align-items: center; gap: 8px;
+    }
+    tr.review-line { cursor: pointer; }
+    tr.review-line:hover td { background: #fdf6e3; }
+    .review-clip {
+      display: inline-flex; align-items: center; gap: 3px; margin-left: 8px;
+      font-size: 11px; font-weight: 600; color: #8a6d00; background: #fdf0c4;
+      border-radius: 10px; padding: 1px 7px; vertical-align: middle;
+    }
+    .review-panel-row td { background: #fbfaf5; padding: 0 !important; }
+    .review-panel { padding: 10px 14px 14px 30px; font-size: 12px; color: #333; }
+    .review-panel-loading { color: #888; font-style: italic; padding: 8px 0; }
+    .review-entry {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px dashed #ddd;
+    }
+    .review-entry:last-child { border-bottom: none; }
+    .review-entry-main { flex: 1 1 260px; min-width: 0; }
+    .review-entry-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .review-date-group { margin-bottom: 10px; }
+    .review-date-head {
+      font-weight: 700; font-size: 12px; display: flex; align-items: center;
+      gap: 8px; flex-wrap: wrap; margin-bottom: 3px;
+    }
+    .rbtn {
+      border: none; border-radius: 5px; padding: 4px 9px; font-size: 11px;
+      font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif;
+    }
+    .rbtn-view   { background: #1a5276; color: #fff; }
+    .rbtn-upload { background: #1e8449; color: #fff; }
+    .rbtn-voucher{ background: #7a4a1e; color: #fff; }
+    .rbtn-refresh{ background: #888; color: #fff; }
+    .rbadge { font-size: 10.5px; font-weight: 700; border-radius: 9px; padding: 2px 8px; }
+    .rbadge-missing { background: #fbeaea; color: #b03a2e; }
+    .rbadge-awaiting { background: #fdf3d9; color: #8a6d00; }
+    .rbadge-mismatch { background: #fbeaea; color: #b03a2e; }
+    .rbadge-ok { background: #eafaf1; color: #1e8449; }
   </style>
 </head>
 <body>
@@ -574,10 +618,21 @@
 </div>
 
 <div class="report-wrapper">
+  <div id="review-banner-slot"></div>
   <div class="report-page" id="report-page">
     <div style="text-align:center; padding:60px; color:#aaa;">
       <i class="fas fa-spinner fa-spin" style="font-size:32px;"></i>
       <div style="margin-top:12px; font-size:14px;">Loading data from cloud...</div>
+    </div>
+  </div>
+</div>
+
+<div id="reviewReceiptViewerModal" class="modal no-print">
+  <div class="modal-content" style="width:640px;">
+    <div class="modal-header" id="review-receipt-viewer-title">Receipt</div>
+    <div id="review-receipt-viewer-body"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeReviewReceiptViewer()">Close</button>
     </div>
   </div>
 </div>
@@ -595,6 +650,7 @@
   
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const storage = firebase.storage();
 
   // Special Project spending only belongs in the church's regular reports when the
   // money actually left the General Fund - Cash on Hand or Cash in Bank. Project
@@ -683,6 +739,32 @@
   let generalFundAccounts = {};
   let reportZoom = 1;
   let workflowSignatures = {};
+
+  // ── Review mode (embedded in report-workflow.html's Report Preview card,
+  // or opened full screen from there) ────────────────────────────────────
+  // Lets a Treasurer/Auditor click a statement line to see the entries
+  // behind it (receipts/vouchers for expenses, count sheets for income),
+  // and lets the Treasurer fix a missing receipt/voucher/count sheet right
+  // there. Never affects the statement's own numbers, and the normal
+  // (non-review) page is completely unaffected - reviewMode stays false
+  // unless ?review=1 is present AND the gate below passes.
+  // (initialReviewRequested itself is set further down, right after
+  // initialReportParams is declared - see there.)
+  let initialReviewRequested = false;
+  let reviewMode = false;
+  let reviewGateChecked = false;
+  let currentWorkflowStatus = '';
+  let reviewIncGroups = null; // set by buildIncGroups(fInc) each render; entries kept per sub-line
+  let reviewExpGroups = null; // set by buildExpGroups(fExp) each render; entries kept per sub-line
+  let reviewIncLineEntries = {}; // 'inc|main|subKey' -> income docs for that displayed line
+  let reviewExpLineEntries = {}; // 'exp|main|subCategory' -> expense docs for that displayed line
+  let reviewLiquidationMap = new Map();
+  let reviewCountSheetMap = new Map();
+  let reviewDataLoadedForPeriod = '';
+  let reviewOpenPanelKeys = new Set();
+  let currentRole = (function () {
+    try { return sessionStorage.getItem('role') || ''; } catch (e) { return ''; }
+  })();
   const FINANCIAL_ACCOUNTS = [
     { id:'cash-hand',  name:'Cash on Hand' },
     { id:'cash-bank',  name:'Cash in Bank' },
@@ -841,6 +923,7 @@
   const now = new Date();
   const yrSel = document.getElementById('sel-year');
   const initialReportParams = new URLSearchParams(window.location.search);
+  initialReviewRequested = initialReportParams.get('review') === '1';
   document.getElementById('sel-month').value = now.getMonth();
 
   // ── KUNIN ANG AVAILABLE YEARS SA CLOUD (SYNCED SA BVA) ──
@@ -945,7 +1028,7 @@
 
   db.collection('income').get().then(s => {
     // Keep the complete income pool for Financial Overview account balances.
-    allIncomeData = s.docs.map(d => d.data()).filter(d => !d.isSpecialProject);
+    allIncomeData = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.isSpecialProject);
     incomeData = allIncomeData.filter(d => {
       // Skip transfers - a fund transfer is a cash movement between
       // accounts, not real income; generateReportHTML() nets transfers
@@ -966,7 +1049,7 @@
 
   db.collection('expenses').get().then(s => {
     // Keep the complete expense pool for Financial Overview account balances.
-    allExpenseData = s.docs.map(d => d.data());
+    allExpenseData = s.docs.map(d => ({ id: d.id, ...d.data() }));
     // Deduction-payment entries settle a liability already expensed at gross when
     // payroll was generated (the withheld amount is part of that gross figure).
     // Counting them again here would double the expense for the same cash outflow.
@@ -1084,11 +1167,26 @@
 
   async function render() {
     await loadWorkflowSignaturesForCurrentPeriod();
+    updateReviewModeGate();
     const budgetYear = parseInt(document.getElementById('sel-year').value);
     currentBudgets = Number.isInteger(budgetYear) ? await ensureBudgetsForYear(budgetYear) : null;
     if (reportType === 'monthly') renderMonthly();
     else if (reportType === 'annual') renderAnnual();
     else if (reportType === 'special-project') renderSpecialProject();
+    applyReviewModeUI();
+  }
+
+  // Review mode is enabled only when ALL hold: ?review=1 is present; the
+  // role is Treasurer, or Auditor with this period's reportReviews status
+  // past 'draft'; and the report type is monthly or annual. Otherwise the
+  // page behaves exactly as it always has.
+  function updateReviewModeGate() {
+    reviewGateChecked = true;
+    if (!initialReviewRequested) { reviewMode = false; return; }
+    if (reportType !== 'monthly' && reportType !== 'annual') { reviewMode = false; return; }
+    if (currentRole === 'Treasurer') { reviewMode = true; return; }
+    if (currentRole === 'Auditor') { reviewMode = !!currentWorkflowStatus && currentWorkflowStatus !== 'draft'; return; }
+    reviewMode = false;
   }
 
   function currentWorkflowId() {
@@ -1103,9 +1201,11 @@
     try {
       const doc = await db.collection('reportReviews').doc(currentWorkflowId()).get();
       workflowSignatures = doc.exists ? (doc.data().signatures || {}) : {};
+      currentWorkflowStatus = doc.exists ? (doc.data().status || '') : '';
     } catch (error) {
       console.warn('Unable to load report workflow signatures.', error);
       workflowSignatures = {};
+      currentWorkflowStatus = '';
     }
   }
 
@@ -1188,6 +1288,7 @@
 
   // ── CORE REPORT GENERATION ───────────────────────────────────────────────
   function generateReportHTML(year, month, isAnnual) {
+    if (reviewMode) { reviewIncLineEntries = {}; reviewExpLineEntries = {}; }
     const targetDate = isAnnual ? new Date(year, 0, 1) : new Date(year, month, 1);
     const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
     const dayBeforeStart = new Date(targetDate.getTime() - 1);
@@ -1690,7 +1791,7 @@
       // keep their exact budget wording as the key, unchanged.
       const subKey = finalMain === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted income') : sub;
       if (finalMain === MISC_MAIN && !group.sLabels[subKey]) group.sLabels[subKey] = sub;
-      if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {}, cnt: 0 };
+      if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {}, cnt: 0, entries: [] };
 
       let amt = parseFloat(d.amount || 0);
       let member = resolveMemberName(d);
@@ -1698,6 +1799,10 @@
 
       group.s[subKey].t += amt;
       group.s[subKey].cnt += 1;
+      // Review mode (see report-workflow.html's Report Preview): keeps the
+      // contributing income docs per display line so a click can show them
+      // without changing any of the amounts above.
+      group.s[subKey].entries.push(d);
 
       if (member.toLowerCase() !== 'general collection') {
         group.s[subKey].m[member] = (group.s[subKey].m[member] || 0) + amt;
@@ -1708,6 +1813,7 @@
     return incGroups;
     }
     const incGroups = buildIncGroups(fInc);
+    reviewIncGroups = incGroups; // review mode reads this period's entries; never affects amounts above
     // Item 7: YTD actual groups (annual: identical to incGroups, since the
     // whole year already is the YTD range).
     const ytdIncGroups = isAnnual ? incGroups : buildIncGroups(ytdIncomePool);
@@ -1764,9 +1870,17 @@
         // column as the member-detail amounts below - see the CLAUDE.md
         // note on report-line "levelling" for why.
         const entryCountHtml = isMisc ? ` <span class="entry-count">(${g.s[subKey].cnt} ${g.s[subKey].cnt === 1 ? 'entry' : 'entries'})</span>` : '';
+        // Review mode only: makes this line clickable to show the income
+        // entries behind it (see report-workflow.html's Report Preview /
+        // openReviewPanel()). reviewMode is false on the normal page, so
+        // this is a no-op there and the generated HTML is unchanged.
+        const incLineKey = 'inc|' + main + '|' + subKey;
+        if (reviewMode) reviewIncLineEntries[incLineKey] = g.s[subKey].entries;
+        const incReviewAttrs = reviewMode ? ` class="review-line" data-rk="${escapeAttr(incLineKey)}" onclick="toggleReviewPanel(this)"` : '';
+        const incReviewClip = reviewMode ? ` <span class="review-only review-clip" data-export-skip="1">📎 ${g.s[subKey].cnt}</span>` : '';
         incRows += `
-          <tr>
-            <td class="col-desc indent-2">${escapeHtml(subLabel)}${entryCountHtml}</td>
+          <tr${incReviewAttrs}>
+            <td class="col-desc indent-2">${escapeHtml(subLabel)}${entryCountHtml}${incReviewClip}</td>
             <td class="col-sub"></td>
             <td class="col-main" style="font-weight:600;">₱ ${fmt(g.s[subKey].t)}</td>
             ${budgetCellsHtml(isMisc ? 0 : (incBudgetSubTotals[main] || {})[subLabel], incActualForSub(ytdIncGroups, main, subLabel), false, isMisc)}
@@ -1871,19 +1985,25 @@
         sub = 'Others';
       }
 
-      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {}, subCounts: {} };
+      if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {}, subCounts: {}, subEntries: {} };
       const group = expGroups[main];
       const subKey = main === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted') : sub;
       if (main === MISC_MAIN && !group.subLabels[subKey]) group.subLabels[subKey] = sub;
       if (subKey) {
         group.subs[subKey] = (group.subs[subKey] || 0) + parseFloat(d.amount || 0);
         group.subCounts[subKey] = (group.subCounts[subKey] || 0) + 1;
+        // Review mode: keeps the contributing expense docs per raw budget
+        // sub-key, aggregated below (nestedSubs) to match the displayed
+        // sub-category line - never affects any amount above.
+        if (!group.subEntries[subKey]) group.subEntries[subKey] = [];
+        group.subEntries[subKey].push(d);
       }
       group.total += parseFloat(d.amount || 0);
     });
     return expGroups;
     }
     const expGroups = buildExpGroups(fExp);
+    reviewExpGroups = expGroups; // review mode reads this period's entries; never affects amounts above
 
     function getExpenseDisplayParts(main, sub) {
       let label = String(sub || '').trim();
@@ -1993,24 +2113,32 @@
         const parts = getExpenseDisplayParts(main, subLabel);
         let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
         if (!group) {
-          group = { subCategory: parts.subCategory, total: 0, rows: [], count: 0 };
+          group = { subCategory: parts.subCategory, total: 0, rows: [], count: 0, entries: [] };
           nestedSubs.push(group);
         }
         group.total += g.subs[subKey];
         group.count += (g.subCounts || {})[subKey] || 0;
         group.rows.push({ detail: parts.detail, amount: g.subs[subKey] });
+        // Review mode: aggregate the raw budget sub-keys' entries onto the
+        // displayed sub-category line - never affects any amount above.
+        (g.subEntries[subKey] || []).forEach(d => group.entries.push(d));
       });
 
       nestedSubs.forEach(group => {
         const hasDetails = group.rows.some(row => row.detail);
         const entryCountHtml = isMiscExp ? ` <span class="entry-count">(${group.count} ${group.count === 1 ? 'entry' : 'entries'})</span>` : '';
+        // Review mode only: see the income-side comment above.
+        const expLineKey = 'exp|' + main + '|' + group.subCategory;
+        if (reviewMode) reviewExpLineEntries[expLineKey] = group.entries;
+        const expReviewAttrs = reviewMode ? ` class="review-line" data-rk="${escapeAttr(expLineKey)}" onclick="toggleReviewPanel(this)"` : '';
+        const expReviewClip = reviewMode ? ` <span class="review-only review-clip" data-export-skip="1">📎 ${group.entries.length}</span>` : '';
         // Sub-category total now sits in col-main - the same column as the
         // main-category total above it - so its own detail (indent-3) rows
         // below, which stay in col-sub, are never stacked in the same
         // column as a total they're already part of.
         expRows += `
-          <tr>
-            <td class="col-desc indent-2">${escapeHtml(group.subCategory)}${entryCountHtml}</td>
+          <tr${expReviewAttrs}>
+            <td class="col-desc indent-2">${escapeHtml(group.subCategory)}${entryCountHtml}${expReviewClip}</td>
             <td class="col-sub"></td>
             <td class="col-main" style="font-weight:600;">₱ ${fmt(group.total)}</td>
             ${budgetCellsHtml(isMiscExp ? 0 : (expBudgetSubTotals[main] || {})[group.subCategory], expActualForSubCategory(ytdExpGroups, main, group.subCategory), true, isMiscExp)}
@@ -2645,15 +2773,30 @@
       if (!tds.length) return;
 
       const cls = tr.className || '';
+      // Review mode (report-workflow.html's embedded preview) inserts its
+      // own supporting-document panel rows into this same table and marks
+      // review-only bits (like the 📎 count clip appended to a line's
+      // label) with data-export-skip - neither should ever reach the
+      // export. A panel row is skipped outright here (same idea as the
+      // obligation-wrapper-row skip below); cellText() strips
+      // data-export-skip content out of an otherwise-real cell.
+      if (cls.includes('review-panel-row')) { return; }
+      const cellText = td => {
+        if (!td) return '';
+        if (!td.querySelector('[data-export-skip]')) return td.innerText.trim();
+        const clone = td.cloneNode(true);
+        clone.querySelectorAll('[data-export-skip]').forEach(el => el.remove());
+        return clone.innerText.trim();
+      };
       const tdCls0 = tds[0] ? (tds[0].className || '') : '';
-      const text0  = tds[0] ? tds[0].innerText.trim() : '';
-      const text1  = tds[1] ? tds[1].innerText.trim() : '';
-      const text2  = tds[2] ? tds[2].innerText.trim() : '';
+      const text0  = cellText(tds[0]);
+      const text1  = cellText(tds[1]);
+      const text2  = cellText(tds[2]);
       // Budget / % Used (Item 7) - only present (tds[3]/tds[4]) when the
       // "Show budget columns" toggle is on; a plain 3-column row simply has
       // no tds[3]/tds[4] and these come back empty.
-      const text3  = tds[3] ? tds[3].innerText.trim() : '';
-      const text4  = tds[4] ? tds[4].innerText.trim() : '';
+      const text3  = cellText(tds[3]);
+      const text4  = cellText(tds[4]);
 
       // Helper: parse peso text to number
       const parsePeso = t => parseFloat((t || '').replace(/[₱,\s]/g, '')) || null;
@@ -2926,6 +3069,613 @@
 
     XLSX.utils.book_append_sheet(wb, ws, 'Financial Report');
     XLSX.writeFile(wb, filename);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // REVIEW MODE — embedded statement review for report-workflow.html's
+  // Report Preview card (and its "Open full screen" link). See CLAUDE.md,
+  // "Report workflow" / "Print Report" sections. Everything below only
+  // ever runs when reviewMode is true (see updateReviewModeGate()); the
+  // normal page never calls any of it.
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Auditor picks up the auth-ready role slightly after this script first
+  // runs (sessionStorage is usually already warm from an earlier page in
+  // the same session, but this covers a cold/direct load too).
+  if (window.graceBooksAuthReady) {
+    window.graceBooksAuthReady.then(profile => {
+      if (profile && profile.role && profile.role !== currentRole) {
+        currentRole = profile.role;
+        updateReviewModeGate();
+        applyReviewModeUI();
+      }
+    }).catch(() => {});
+  }
+
+  function applyReviewModeUI() {
+    const slot = document.getElementById('review-banner-slot');
+    if (!slot) return;
+    if (!initialReviewRequested) { slot.innerHTML = ''; return; }
+    if (reviewMode) {
+      slot.innerHTML = `<div class="review-banner no-print">📎 Review mode — click a line to see its supporting documents.</div>`;
+    } else {
+      const reason = (reportType !== 'monthly' && reportType !== 'annual')
+        ? 'Review mode is only available for the Monthly and Annual statements.'
+        : (currentRole === 'Auditor'
+            ? 'Review mode appears once the Treasurer submits this report.'
+            : 'Review mode is not available for your role.');
+      slot.innerHTML = `<div class="review-banner no-print" style="background:#f3f3f3; border-color:#ddd; color:#777;">${escapeHtml(reason)}</div>`;
+    }
+    // Collapse any panel left open from a previous render (the table was
+    // just rebuilt from scratch by generateReportHTML).
+    reviewOpenPanelKeys.clear();
+  }
+
+  // ── One-time supporting data (liquidationRequests, countSheets) ────────
+  // Loaded once per period, the first time a panel is opened in review
+  // mode - never on page load, and never for the normal (non-review) page.
+  async function ensureReviewSupportData() {
+    const periodKey = currentWorkflowId();
+    if (reviewDataLoadedForPeriod === periodKey) return;
+    const liquidationIds = [...new Set(
+      (fExpForReview()).map(d => d.linkedLiquidationRequestId).filter(Boolean)
+    )];
+    const [liqSnaps, sheetSnap] = await Promise.all([
+      Promise.all(liquidationIds.map(id => db.collection('liquidationRequests').doc(id).get())),
+      db.collection('countSheets')
+        .where('date', '>=', reviewPeriodRange().start)
+        .where('date', '<=', reviewPeriodRange().end)
+        .get()
+        .catch(err => { console.warn('Unable to load count sheets for review mode.', err); return { docs: [] }; })
+    ]);
+    reviewLiquidationMap = new Map();
+    liqSnaps.forEach(snap => { if (snap.exists) reviewLiquidationMap.set(snap.id, { id: snap.id, ...snap.data() }); });
+    reviewCountSheetMap = new Map();
+    sheetSnap.docs.forEach(d => reviewCountSheetMap.set(d.id, { id: d.id, ...d.data() }));
+    reviewDataLoadedForPeriod = periodKey;
+  }
+
+  function fExpForReview() {
+    // The same General-Fund, period-filtered expense pool generateReportHTML
+    // built as fExp - recomputed cheaply from expenseData rather than piping
+    // an extra return value through generateReportHTML.
+    const year = parseInt(document.getElementById('sel-year').value);
+    const isAnnual = reportType === 'annual';
+    const month = parseInt(document.getElementById('sel-month').value);
+    return expenseData.filter(d => {
+      if (!d.date) return false;
+      const dt = new Date(d.date);
+      return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
+    });
+  }
+
+  function reviewPeriodRange() {
+    const year = parseInt(document.getElementById('sel-year').value);
+    if (reportType === 'annual') return { start: `${year}-01-01`, end: `${year}-12-31` };
+    const month = String(parseInt(document.getElementById('sel-month').value) + 1).padStart(2, '0');
+    return { start: `${year}-${month}-01`, end: `${year}-${month}-31` };
+  }
+
+  // ── Panel toggling ───────────────────────────────────────────────────
+  async function toggleReviewPanel(trEl) {
+    const rk = trEl.getAttribute('data-rk');
+    if (!rk) return;
+    const existing = trEl.nextElementSibling;
+    if (existing && existing.classList.contains('review-panel-row') && existing.getAttribute('data-panel-for') === rk) {
+      existing.remove();
+      reviewOpenPanelKeys.delete(rk);
+      return;
+    }
+    // Close any other open panel for this same row (defensive - shouldn't
+    // normally exist) and insert a loading placeholder immediately.
+    const colCount = trEl.querySelectorAll('td').length;
+    const panelRow = document.createElement('tr');
+    panelRow.className = 'review-panel-row review-only';
+    panelRow.setAttribute('data-panel-for', rk);
+    panelRow.innerHTML = `<td colspan="${colCount}"><div class="review-panel"><div class="review-panel-loading">Loading…</div></div></td>`;
+    trEl.parentNode.insertBefore(panelRow, trEl.nextSibling);
+    reviewOpenPanelKeys.add(rk);
+
+    try {
+      await ensureReviewSupportData();
+      const [type] = rk.split('|');
+      const html = type === 'exp' ? buildExpensePanelHtml(rk) : buildIncomePanelHtml(rk);
+      const cell = panelRow.querySelector('td > div');
+      if (cell) cell.innerHTML = html;
+    } catch (error) {
+      console.error(error);
+      const cell = panelRow.querySelector('td > div');
+      if (cell) cell.innerHTML = `<span style="color:#b03a2e;">Unable to load supporting documents: ${escapeHtml(error.message || 'Unknown error')}</span>`;
+    }
+  }
+
+  // ── Expense line panel (receipts / vouchers / payslips) ─────────────────
+  const LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
+
+  function liquidationReceiptPool(request) {
+    const existing = (request.liquidationReceipts || []).concat(request.supportingReceipts || []);
+    const seen = new Set();
+    const pool = [];
+    existing.forEach(receipt => {
+      const id = receipt.receiptId || receipt.receiptPath;
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      pool.push({ id, name: receipt.receiptName || 'Receipt', url: receipt.receiptUrl });
+    });
+    return pool;
+  }
+
+  function findMatchingLiquidationItem(request, expense) {
+    const items = request.liquidationItems || [];
+    if (!items.length) return null;
+    const matches = items.filter(item => {
+      const amountMatch = Math.abs(Number(item.amount || 0) - Number(expense.amount || 0)) < 0.01;
+      const descMatch = (item.description || '') === (expense.sub || '');
+      const dateMatch = !item.date || !expense.date || item.date === expense.date;
+      return amountMatch && descMatch && dateMatch;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  // Mirrors report-workflow.html's resolveExpenseReceipts() exactly (no
+  // shared JS modules in this repo - see CLAUDE.md).
+  function resolveExpenseReceipts(expense) {
+    const candidates = [];
+    if (expense.receiptUrl) {
+      candidates.push({
+        id: 'own', name: expense.receiptName || 'Receipt', url: expense.receiptUrl,
+        annotations: expense.receiptAnnotations || [], locked: !!expense.receiptAnnotationsLocked, source: 'expense'
+      });
+    }
+    const request = expense.linkedLiquidationRequestId ? reviewLiquidationMap.get(expense.linkedLiquidationRequestId) : null;
+    let isFallbackPool = false;
+    let awaitingLiquidation = false;
+    if (request) {
+      const isCashAdvanceRequest = request.type !== 'Reimbursement';
+      awaitingLiquidation = isCashAdvanceRequest
+        && ['Released', 'Liquidation Submitted'].includes(request.status)
+        && expense.category === LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY;
+      if (!candidates.length) {
+        const pool = liquidationReceiptPool(request);
+        const matchedItem = findMatchingLiquidationItem(request, expense);
+        if (matchedItem && (matchedItem.receiptIds || []).length) {
+          matchedItem.receiptIds.forEach(receiptId => {
+            const found = pool.find(p => p.id === receiptId);
+            if (found) {
+              candidates.push({
+                id: found.id, name: found.name, url: found.url,
+                annotations: (matchedItem.annotations || []).filter(a => a.receiptId === receiptId),
+                locked: !!matchedItem.annotationsLocked, source: 'item'
+              });
+            }
+          });
+        } else if (pool.length) {
+          isFallbackPool = true;
+          pool.forEach(p => candidates.push({ id: p.id, name: p.name, url: p.url, annotations: [], locked: false, source: 'pool' }));
+        }
+      }
+    }
+    const voucherId = expense.voucherId || (request && request.voucherId) || '';
+    const voucherNo = expense.voucherNo || (request && request.voucherNo) || '';
+    return { candidates, isFallbackPool, awaitingLiquidation, voucherId, voucherNo, requestId: request ? request.id : null };
+  }
+
+  // Keeps the last-rendered expense entries + their resolved receipts so
+  // the receipt viewer/chooser and the Treasurer action buttons can find
+  // them by id without re-resolving on every click.
+  let reviewExpenseById = new Map();
+  let reviewResolvedById = new Map();
+
+  function buildExpensePanelHtml(rk) {
+    const entries = (reviewExpLineEntries[rk] || []).slice().sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    if (!entries.length) return '<div class="muted">No entries.</div>';
+    return `<div data-rk="${escapeAttr(rk)}">` + entries.map(e => renderExpenseEntryHtml(e)).join('') + `</div>`;
+  }
+
+  function renderExpenseEntryHtml(e) {
+    reviewExpenseById.set(e.id, e);
+    const resolved = resolveExpenseReceipts(e);
+    reviewResolvedById.set(e.id, resolved);
+    let receiptCell;
+    if (resolved.candidates.length === 0) {
+      if (resolved.awaitingLiquidation) {
+        receiptCell = '<span class="rbadge rbadge-awaiting">Awaiting liquidation</span>';
+      } else {
+        receiptCell = '<span class="rbadge rbadge-missing">No receipt</span>';
+      }
+    } else {
+      const label = resolved.candidates.length === 1 && !resolved.isFallbackPool
+        ? 'View Receipt'
+        : (resolved.isFallbackPool ? `Receipts on liquidation request (${resolved.candidates.length})` : `View Receipts (${resolved.candidates.length})`);
+      receiptCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewReceipt('${escapeAttr(e.id)}')">${escapeHtml(label)}</button>`;
+    }
+    const voucherCell = resolved.voucherId
+      ? `<a href="cash-voucher.html?view=${encodeURIComponent(resolved.voucherId)}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">🧾 ${escapeHtml(resolved.voucherNo || 'View Voucher')}</a>`
+      : '<span class="rbadge rbadge-missing">No voucher</span>';
+    const liquidationLink = e.linkedLiquidationRequestId
+      ? ` <a href="liquidation-reimbursements.html" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view" title="Open Liquidation / Reimbursements">🔗 Liquidation</a>`
+      : '';
+    const payslipLink = e.isPayrollGenerated
+      ? ` <a href="payslips.html?period=monthly&month=${encodeURIComponent(e.payrollMonth || String(e.date || '').slice(0, 7))}&role=${encodeURIComponent(e.role || '')}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">View Payslip</a>`
+      : '';
+
+    let treasurerActions = '';
+    if (currentRole === 'Treasurer') {
+      const uploadLabel = resolved.candidates.length ? 'Replace' : 'Upload receipt';
+      treasurerActions = `
+        <label class="rbtn rbtn-upload" style="cursor:pointer;">
+          ${escapeHtml(uploadLabel)}
+          <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="handleReviewReceiptFile('${escapeAttr(e.id)}', this)">
+        </label>
+        ${!resolved.voucherId ? `<button type="button" class="rbtn rbtn-voucher" onclick="makeReviewVoucher('${escapeAttr(e.id)}')">Make voucher</button>` : ''}
+        <button type="button" class="rbtn rbtn-refresh" title="Refresh this entry" onclick="refreshReviewExpense('${escapeAttr(e.id)}')">↻</button>
+      `;
+    }
+
+    return `
+      <div class="review-entry" id="review-entry-${escapeAttr(e.id)}">
+        <div class="review-entry-main">
+          ${escapeHtml(e.date || '-')} · ${escapeHtml(e.payee || e.category || 'Expense')} · ₱ ${fmt(e.amount || 0)}
+        </div>
+        <div class="review-entry-actions">
+          ${receiptCell}
+          ${voucherCell}
+          ${liquidationLink}
+          ${payslipLink}
+          ${treasurerActions}
+        </div>
+      </div>`;
+  }
+
+  function refreshReviewEntryRow(id) {
+    const el = document.getElementById(`review-entry-${CSS.escape(id)}`);
+    if (!el) return;
+    const e = reviewExpenseById.get(id);
+    if (!e) return;
+    el.outerHTML = renderExpenseEntryHtml(e);
+  }
+
+  async function refreshReviewExpense(id) {
+    try {
+      const doc = await db.collection('expenses').doc(id).get();
+      if (!doc.exists) return;
+      const fresh = { id: doc.id, ...doc.data() };
+      const old = reviewExpenseById.get(id) || {};
+      Object.keys(old).forEach(k => delete old[k]);
+      Object.assign(old, fresh);
+      if (old.linkedLiquidationRequestId) {
+        const reqDoc = await db.collection('liquidationRequests').doc(old.linkedLiquidationRequestId).get();
+        if (reqDoc.exists) reviewLiquidationMap.set(reqDoc.id, { id: reqDoc.id, ...reqDoc.data() });
+      }
+      refreshReviewEntryRow(id);
+    } catch (error) {
+      console.error(error);
+      alert('Unable to refresh this entry: ' + (error.message || error));
+    }
+  }
+
+  // ── Treasurer: upload/replace a receipt ─────────────────────────────────
+  function generateStorageToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  function safeFileExtension(fileName) {
+    const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+    return match ? `.${match[1].toLowerCase()}` : '';
+  }
+  function receiptContentType(file) {
+    const fileType = (file && file.type || '').toLowerCase();
+    const fileName = (file && file.name || '').toLowerCase();
+    if (fileType.startsWith('image/') || fileType === 'application/pdf') return fileType;
+    if (fileName.endsWith('.pdf')) return 'application/pdf';
+    if (fileName.endsWith('.png')) return 'image/png';
+    if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg';
+    if (fileName.endsWith('.gif')) return 'image/gif';
+    if (fileName.endsWith('.webp')) return 'image/webp';
+    return '';
+  }
+
+  async function writeReviewAuditLog(action, docId, before, after, summary, collection) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action, collection: collection || 'expenses', docId, summary,
+      before: before || null, after: after || null,
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+      actorName: (window.graceBooksUser && window.graceBooksUser.name) || '',
+      actorRole: currentRole || '', createdAt: new Date().toISOString()
+    });
+  }
+
+  async function handleReviewReceiptFile(expenseId, inputEl) {
+    const file = inputEl.files && inputEl.files[0];
+    inputEl.value = '';
+    if (!file) return;
+    const contentType = receiptContentType(file);
+    if (!(contentType.startsWith('image/') || contentType === 'application/pdf')) {
+      alert('Receipt must be an image or PDF file.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Receipt must be 5 MB or smaller.');
+      return;
+    }
+    const e = reviewExpenseById.get(expenseId);
+    if (!e) return;
+    const oldPath = (!e.receiptSharedFromLiquidation && e.receiptPath) ? e.receiptPath : null;
+    let receiptPath = '';
+    try {
+      receiptPath = `expense-receipts/${expenseId}/${generateStorageToken()}${safeFileExtension(file.name)}`;
+      const ref = storage.ref(receiptPath);
+      await ref.put(file, { contentType });
+      const receiptUrl = await ref.getDownloadURL();
+      const payload = {
+        receiptName: file.name, receiptPath, receiptUrl,
+        receiptUploadedAt: new Date().toISOString()
+      };
+      if (oldPath) {
+        payload.receiptAnnotations = [];
+        payload.receiptAnnotationsLocked = firebase.firestore.FieldValue.delete();
+        payload.receiptAnnotationsUpdatedAt = firebase.firestore.FieldValue.delete();
+        payload.receiptAnnotationsUpdatedBy = firebase.firestore.FieldValue.delete();
+        payload.receiptSharedFromLiquidation = firebase.firestore.FieldValue.delete();
+      }
+      await db.collection('expenses').doc(expenseId).update(payload);
+      await writeReviewAuditLog(
+        oldPath ? 'receipt_replaced' : 'receipt_uploaded', expenseId,
+        oldPath ? { receiptPath: oldPath } : null,
+        { receiptName: file.name, receiptPath, fileSize: file.size, fileType: file.type },
+        oldPath ? `Replaced receipt for expense ${expenseId} (via Report Preview review mode)` : `Uploaded receipt for expense ${expenseId} (via Report Preview review mode)`
+      );
+      if (oldPath) { try { await storage.ref(oldPath).delete(); } catch (err) { console.warn(err); } }
+      Object.assign(e, payload, { receiptAnnotations: oldPath ? [] : (e.receiptAnnotations || []), receiptAnnotationsLocked: oldPath ? false : e.receiptAnnotationsLocked, receiptSharedFromLiquidation: oldPath ? false : e.receiptSharedFromLiquidation });
+      refreshReviewEntryRow(expenseId);
+    } catch (error) {
+      console.error(error);
+      if (receiptPath) {
+        alert('The receipt file uploaded, but saving it to the expense record failed. Please try again — the orphaned file will not appear anywhere else.\n\n' + (error.message || error));
+      } else {
+        alert('Unable to upload receipt: ' + (error.message || error));
+      }
+    }
+  }
+
+  function makeReviewVoucher(expenseId) {
+    const e = reviewExpenseById.get(expenseId);
+    if (!e) return;
+    const url = e.linkedLiquidationRequestId
+      ? `cash-voucher.html?liquidationId=${encodeURIComponent(e.linkedLiquidationRequestId)}`
+      : `cash-voucher.html?expenseId=${encodeURIComponent(expenseId)}`;
+    window.open(url, '_blank', 'noopener');
+    lastVoucherFlowExpenseId = expenseId;
+  }
+  let lastVoucherFlowExpenseId = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && lastVoucherFlowExpenseId && reviewMode) {
+      const id = lastVoucherFlowExpenseId;
+      lastVoucherFlowExpenseId = null;
+      refreshReviewExpense(id);
+    }
+  });
+
+  // ── Receipt viewer (review mode) ─────────────────────────────────────────
+  function openReviewReceipt(expenseId) {
+    const record = reviewExpenseById.get(expenseId);
+    const resolved = reviewResolvedById.get(expenseId);
+    if (!record || !resolved || !resolved.candidates.length) return;
+    if (resolved.candidates.length === 1) { openReviewReceiptCandidate(record, resolved.candidates[0]); return; }
+    document.getElementById('review-receipt-viewer-title').textContent = resolved.isFallbackPool
+      ? 'Receipts on Liquidation Request' : `Receipts (${resolved.candidates.length})`;
+    document.getElementById('review-receipt-viewer-body').innerHTML = `
+      <ul class="receipt-chooser-list" style="list-style:none; padding:0; margin:0;">
+        ${resolved.candidates.map((c, i) => `
+          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #eee;">
+            <span>${escapeHtml(c.name || 'Receipt')}</span>
+            <button type="button" class="rbtn rbtn-view" onclick="openReviewReceiptCandidateByIndex('${escapeAttr(expenseId)}', ${i})">View</button>
+          </li>`).join('')}
+      </ul>`;
+    document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+  }
+  function openReviewReceiptCandidateByIndex(expenseId, index) {
+    const record = reviewExpenseById.get(expenseId);
+    const resolved = reviewResolvedById.get(expenseId);
+    if (!record || !resolved || !resolved.candidates[index]) return;
+    closeReviewReceiptViewer();
+    openReviewReceiptCandidate(record, resolved.candidates[index]);
+  }
+  function openReviewReceiptCandidate(record, candidate) {
+    const isPdf = !window.GraceBooksAnnotator || !window.GraceBooksAnnotator.isAnnotatableUrl(candidate.name, candidate.url);
+    if (isPdf) {
+      document.getElementById('review-receipt-viewer-title').textContent = candidate.name || 'Receipt';
+      document.getElementById('review-receipt-viewer-body').innerHTML =
+        `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:150px;">
+           <p style="margin:0; color:#555;">PDF files open in a new browser tab for viewing.</p>
+           <a href="${escapeHtml(candidate.url)}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">Open PDF in New Tab</a>
+         </div>`;
+      document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+      return;
+    }
+    window.GraceBooksAnnotator.open({
+      title: candidate.name || 'Receipt', imageUrl: candidate.url, fileName: candidate.name || '',
+      subtitle: `${record.category || record.sub || 'Expense'} — ₱${fmt(record.amount || 0)}`,
+      annotations: candidate.annotations || [], editable: false, locked: !!candidate.locked
+    });
+  }
+  function closeReviewReceiptViewer() {
+    document.getElementById('review-receipt-viewer-body').innerHTML = '';
+    document.getElementById('reviewReceiptViewerModal').style.display = 'none';
+  }
+
+  // ── Income line panel (dates / entries / count sheets) ──────────────────
+  let reviewIncomeDateCache = new Map(); // date -> {sheets, entries}
+
+  function buildIncomePanelHtml(rk) {
+    const entries = reviewIncLineEntries[rk] || [];
+    if (!entries.length) return '<div class="muted">No entries.</div>';
+    const byDate = new Map();
+    entries.forEach(e => {
+      const date = e.date || 'Unknown date';
+      if (!byDate.has(date)) byDate.set(date, []);
+      byDate.get(date).push(e);
+    });
+    const dates = [...byDate.keys()].sort();
+    return dates.map(date => renderIncomeDateGroupHtml(date, byDate.get(date))).join('');
+  }
+
+  function renderIncomeDateGroupHtml(date, entries) {
+    reviewIncomeDateCache.set(date, entries);
+    const total = entries.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const cashTotal = entries.filter(r => r.payment === 'Cash').reduce((s, r) => s + Number(r.amount || 0), 0);
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    const linkedCount = entries.filter(r => r.countSheetId).length;
+
+    let sheetCell;
+    if (!sheets.length) {
+      sheetCell = '<span class="rbadge rbadge-missing">No count sheet</span>';
+      if (currentRole === 'Treasurer') {
+        sheetCell += ` <button type="button" class="rbtn rbtn-upload" onclick="openAttachCountSheetPrompt('${escapeAttr(date)}')">Attach count sheet</button>`;
+      }
+    } else {
+      const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
+      sheetCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
+      if (linkedCount < entries.length) sheetCell += ` <span style="font-size:11px; color:#888;">(${linkedCount}/${entries.length} entries linked)</span>`;
+      const sheetsWithCount = sheets.filter(sh => sh.countedCashTotal != null && Number(sh.countedCashTotal) > 0);
+      if (sheetsWithCount.length) {
+        const countedCashTotal = sheetsWithCount.reduce((s, sh) => s + Number(sh.countedCashTotal || 0), 0);
+        const cashMismatch = Math.abs(countedCashTotal - cashTotal) > 0.004;
+        sheetCell += cashMismatch
+          ? ` <span class="rbadge rbadge-mismatch">Cash counted ₱${fmt(countedCashTotal)} ≠ recorded ₱${fmt(cashTotal)}</span>`
+          : ` <span class="rbadge rbadge-ok">Cash counted ₱${fmt(countedCashTotal)}</span>`;
+      } else {
+        sheetCell += ` <span style="font-size:11px; color:#888;">No denomination count saved</span>`;
+      }
+    }
+
+    const rows = entries.map(e => `
+      <div class="review-entry">
+        <div class="review-entry-main">${escapeHtml(resolveMemberName(e))} · ₱ ${fmt(e.amount || 0)} · ${escapeHtml(e.payment || '-')}</div>
+      </div>`).join('');
+
+    return `
+      <div class="review-date-group" data-review-date="${escapeAttr(date)}">
+        <div class="review-date-head">${escapeHtml(date)} <span style="font-weight:400; color:#777;">(${entries.length} · ₱ ${fmt(total)})</span> ${sheetCell}</div>
+        ${rows}
+      </div>`;
+  }
+
+  function refreshIncomeDateGroup(date) {
+    const el = document.querySelector(`.review-date-group[data-review-date="${CSS.escape(date)}"]`);
+    if (!el) return;
+    const entries = reviewIncomeDateCache.get(date) || [];
+    el.outerHTML = renderIncomeDateGroupHtml(date, entries);
+  }
+
+  function openReviewCountSheet(date) {
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    if (!sheets.length) return;
+    const allFiles = [];
+    sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    if (!allFiles.length) { alert('This count sheet has no attached photo files.'); return; }
+    document.getElementById('review-receipt-viewer-title').textContent = `Count Sheet — ${date}`;
+    document.getElementById('review-receipt-viewer-body').innerHTML = `
+      <ul style="list-style:none; padding:0; margin:0;">
+        ${allFiles.map((f, i) => `
+          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #eee;">
+            <span>${escapeHtml(f.name || 'Count sheet photo')}</span>
+            <button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheetFile('${escapeAttr(date)}', ${i})">View</button>
+          </li>`).join('')}
+      </ul>`;
+    document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+  }
+  function openReviewCountSheetFile(date, index) {
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    const allFiles = [];
+    sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    const file = allFiles[index];
+    if (!file) return;
+    closeReviewReceiptViewer();
+    const isPdf = !window.GraceBooksAnnotator || !window.GraceBooksAnnotator.isAnnotatableUrl(file.name, file.url);
+    if (isPdf || !file.url) {
+      document.getElementById('review-receipt-viewer-title').textContent = file.name || 'Count sheet';
+      document.getElementById('review-receipt-viewer-body').innerHTML =
+        `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:150px;">
+           <p style="margin:0; color:#555;">${file.url ? 'PDF files open in a new browser tab for viewing.' : 'File not available.'}</p>
+           ${file.url ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">Open PDF in New Tab</a>` : ''}
+         </div>`;
+      document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+      return;
+    }
+    window.GraceBooksAnnotator.open({
+      title: file.name || 'Count sheet', imageUrl: file.url, fileName: file.name || '',
+      subtitle: `Count sheet — ${date}`, annotations: [], editable: false, locked: true
+    });
+  }
+
+  // ── Treasurer: attach a count sheet to a date with no linked entries ───
+  // Mirrors income-log.html's Attach Count Sheet flow exactly (no shared
+  // JS modules in this repo - see CLAUDE.md); only the entries for THIS
+  // date that don't already carry a countSheetId are linked.
+  function openAttachCountSheetPrompt(date) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.multiple = true;
+    input.onchange = () => saveReviewAttachCountSheet(date, Array.from(input.files || []));
+    input.click();
+  }
+
+  async function saveReviewAttachCountSheet(date, files) {
+    for (const file of files) {
+      const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+      if (!okType) return alert(`"${file.name}" must be an image or PDF.`);
+      if (file.size > 5 * 1024 * 1024) return alert(`"${file.name}" must be 5 MB or smaller.`);
+    }
+    try {
+      const snapshot = await db.collection('income').where('date', '==', date).get();
+      const unattached = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(r => !r.countSheetId && (r.type || '').toLowerCase() !== 'transfer');
+      if (!unattached.length) { alert('No income entries without a count sheet were found for this date.'); return; }
+
+      const uid = firebase.auth().currentUser.uid;
+      const sheetRef = db.collection('countSheets').doc();
+      const sheetId = sheetRef.id;
+      const uploaded = [];
+      for (const file of files) {
+        const fileId = generateStorageToken();
+        const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+        const fileRef = storage.ref(path);
+        await fileRef.put(file);
+        const url = await fileRef.getDownloadURL();
+        uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+      }
+      const cashTotal = unattached.filter(r => r.payment === 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const nonCashTotal = unattached.filter(r => r.payment !== 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const totalAmount = unattached.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const sheetPayload = {
+        date, createdAt: new Date().toISOString(),
+        createdBy: { uid, name: (window.graceBooksUser && window.graceBooksUser.name) || '', role: currentRole || '' },
+        entryCount: unattached.length, totalAmount, cashTotal, nonCashTotal,
+        denominations: {}, files: uploaded, notes: 'Attached from Report Preview (review mode).'
+      };
+      await sheetRef.set(sheetPayload);
+      await writeReviewAuditLog('count_sheet_created', sheetId, null, sheetPayload,
+        `Attached count sheet for ${date} to ${unattached.length} existing income entr${unattached.length === 1 ? 'y' : 'ies'} (via Report Preview review mode)`, 'countSheets');
+
+      const batch = db.batch();
+      unattached.forEach(r => batch.update(db.collection('income').doc(r.id), { countSheetId: sheetId }));
+      await batch.commit();
+      await writeReviewAuditLog('income_count_sheet_attached', sheetId, null,
+        { countSheetId: sheetId, incomeIds: unattached.map(r => r.id) },
+        `Linked ${unattached.length} income entr${unattached.length === 1 ? 'y' : 'ies'} on ${date} to count sheet ${sheetId}`, 'income');
+
+      reviewCountSheetMap.set(sheetId, { id: sheetId, ...sheetPayload });
+      const unattachedIds = new Set(unattached.map(r => r.id));
+      (reviewIncomeDateCache.get(date) || []).forEach(e => { if (unattachedIds.has(e.id)) e.countSheetId = sheetId; });
+      refreshIncomeDateGroup(date);
+      alert('Count sheet saved and linked.');
+    } catch (error) {
+      console.error(error);
+      alert('Error saving count sheet: ' + (error.message || error));
+    }
   }
 
   // ── Paper size switcher ─────────────────────────────────────────────────

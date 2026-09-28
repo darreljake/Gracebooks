@@ -210,6 +210,16 @@
           <div id="chain-list"></div>
         </div>
 
+        <div class="card" id="report-preview-card" style="display:none;">
+          <h2>Report Preview
+            <a id="report-preview-fullscreen-link" href="#" target="_blank" rel="noopener noreferrer"
+               style="float:right; font-size:12px; font-weight:600;">Open full screen ↗</a>
+          </h2>
+          <div class="muted" style="margin-bottom:8px;">Click a line in the statement below to see its supporting documents.</div>
+          <iframe id="report-preview-frame" title="Report Preview" src="about:blank"
+            style="width:100%; height:70vh; min-height:420px; border:1px solid #ddd; border-radius:8px; background:#fff;"></iframe>
+        </div>
+
         <div class="card" id="supporting-docs-card" style="display:none;">
           <h2>Supporting Documents</h2>
           <div id="supporting-docs-body"><div class="muted">Loading...</div></div>
@@ -348,7 +358,38 @@
       const doc = await db.collection('reportReviews').doc(workflowId()).get();
       workflow = doc.exists ? doc.data() : null;
       renderWorkflow();
+      loadReportPreview();
       await loadSupportingDocuments();
+    }
+
+    // Embeds the real statement (print-report.html, review=1) so the
+    // Treasurer/Auditor can review it line by line without leaving this
+    // page. Same-origin, so Firebase auth is already shared - no separate
+    // sign-in inside the iframe. Monthly/annual only (matches the
+    // Supporting Documents card); hidden for Special Projects and for any
+    // role other than Treasurer/Auditor. review=1's own gate in
+    // print-report.html (role + workflow status) is the real authority -
+    // this only decides whether to show the card at all.
+    function reviewPreviewUrl() {
+      const type = document.getElementById('report-type').value;
+      const year = document.getElementById('period-year').value;
+      if (type === 'annual') return `print-report.html?type=annual&year=${encodeURIComponent(year)}&review=1`;
+      const month = document.getElementById('period-month').value;
+      return `print-report.html?type=monthly&year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}&review=1`;
+    }
+
+    function loadReportPreview() {
+      const card = document.getElementById('report-preview-card');
+      const type = document.getElementById('report-type').value;
+      if (!profile || !SUPPORTING_DOCS_ROLES.includes(profile.role) || type === 'special-project') {
+        card.style.display = 'none';
+        document.getElementById('report-preview-frame').src = 'about:blank';
+        return;
+      }
+      card.style.display = 'block';
+      const url = reviewPreviewUrl();
+      document.getElementById('report-preview-frame').src = url;
+      document.getElementById('report-preview-fullscreen-link').href = url;
     }
 
     async function loadSignatureProfile() {
@@ -918,6 +959,12 @@
     let supportingDocsReceiptMap = new Map();
     // Sunday date -> that date's countSheets docs (see renderIncomeSection).
     let supportingDocsSheetMap = new Map();
+    // Kept so the Treasurer fix-it actions below (upload receipt / make
+    // voucher / attach count sheet) can resolve a liquidation-linked
+    // expense's request without re-fetching it, and so a successful action
+    // can simply re-run loadSupportingDocuments() to refresh the whole
+    // card (counts included) rather than hand-patching one row.
+    let supportingDocsLiquidationMap = new Map();
 
     // A cash advance's placeholder category, copied verbatim from
     // liquidation-reimbursements.html's PLACEHOLDER_ADVANCE_CATEGORY -
@@ -1152,6 +1199,8 @@
     function renderSupportingDocuments(rows, liquidationMap) {
       supportingDocsExpenseMap = new Map(rows.map(r => [r.id, r]));
       supportingDocsReceiptMap = new Map();
+      supportingDocsLiquidationMap = liquidationMap;
+      const isTreasurer = profile && profile.role === 'Treasurer';
       const payrollRows = rows.filter(r => r.isPayrollGenerated);
       const expenseRows = rows.filter(r => !r.isPayrollGenerated);
 
@@ -1166,27 +1215,41 @@
           ? `<span class="badge-highlight" title="${e.receiptAnnotationsLocked ? 'Highlights locked' : 'Highlights'}">${e.receiptAnnotationsLocked ? '🔒' : '🖍'} ${annotationCount}</span>`
           : '';
 
+        // Treasurer-only fix-it actions (see CLAUDE.md "Report workflow" -
+        // Treasurer fix-it actions): upload/replace a receipt right here,
+        // or open cash-voucher.html pre-filled for this expense (or its
+        // liquidation request, when linked - that's where the liquidation
+        // flow keeps its voucher). The Auditor never sees these controls.
+        const uploadAction = isTreasurer
+          ? `<label class="btn-ledger" style="cursor:pointer; display:inline-block;">${resolved.candidates.length ? 'Replace' : 'Upload receipt'}
+               <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="handleSupportingReceiptFile('${escapeAttr(e.id)}', this)">
+             </label>`
+          : '';
+        const voucherAction = (isTreasurer && !resolved.voucherId)
+          ? ` <button type="button" class="btn-ledger" onclick="makeSupportingVoucher('${escapeAttr(e.id)}')">Make voucher</button>`
+          : '';
+
         let receiptCell;
         if (resolved.candidates.length === 0) {
           if (resolved.awaitingLiquidation) {
             awaitingLiquidationCount++;
-            receiptCell = '<span class="badge-awaiting">Awaiting liquidation</span>';
+            receiptCell = `<span class="badge-awaiting">Awaiting liquidation</span> ${uploadAction}`;
           } else {
             missingReceipts++;
-            receiptCell = '<span class="badge-missing">No receipt</span>';
+            receiptCell = `<span class="badge-missing">No receipt</span> ${uploadAction}`;
           }
         } else if (resolved.candidates.length === 1 && !resolved.isFallbackPool) {
-          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">View Receipt</button>${highlightBadge}`;
+          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">View Receipt</button>${highlightBadge} ${uploadAction}`;
         } else {
           const label = resolved.isFallbackPool
             ? `Receipts on liquidation request (${resolved.candidates.length})`
             : `View Receipts (${resolved.candidates.length})`;
-          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">${escapeHtml(label)}</button>${highlightBadge}`;
+          receiptCell = `<button type="button" class="btn-ledger" onclick="openSupportingReceipt('${escapeAttr(e.id)}')">${escapeHtml(label)}</button>${highlightBadge} ${uploadAction}`;
         }
 
-        const voucherCell = resolved.voucherId
+        const voucherCell = (resolved.voucherId
           ? `<a href="cash-voucher.html?view=${encodeURIComponent(resolved.voucherId)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">🧾 ${escapeHtml(resolved.voucherNo || 'View')}</a>`
-          : '<span class="badge-missing">No voucher</span>';
+          : '<span class="badge-missing">No voucher</span>') + voucherAction;
         if (!resolved.voucherId) missingVouchers++;
 
         const liquidationBadge = e.linkedLiquidationRequestId
@@ -1268,7 +1331,10 @@
         let sheetCell;
         if (!sheets.length) {
           missingCount++;
-          sheetCell = '<span class="badge-missing">No count sheet</span>';
+          const attachAction = (profile && profile.role === 'Treasurer')
+            ? ` <button type="button" class="btn-ledger" onclick="openSupportingAttachCountSheet('${escapeAttr(date)}')">Attach count sheet</button>`
+            : '';
+          sheetCell = `<span class="badge-missing">No count sheet</span>${attachAction}`;
         } else {
           const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
           sheetCell = `<button type="button" class="btn-ledger" onclick="openSupportingCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
@@ -1479,6 +1545,168 @@
     function closeReceiptViewer() {
       document.getElementById('receipt-viewer-body').innerHTML = '';
       document.getElementById('receiptViewerModal').style.display = 'none';
+    }
+
+    // ══════════════ Treasurer fix-it actions (Supporting Documents) ═══════
+    // Upload/replace a receipt, make a cash voucher, or attach a count
+    // sheet without leaving this page. Treasurer only - mirrors
+    // expenses.html / cash-voucher.html / income-log.html exactly (no
+    // shared JS modules in this repo - see CLAUDE.md). After a successful
+    // action the whole card is reloaded (loadSupportingDocuments()) so the
+    // row and the summary counts both stay correct.
+    function generateStorageToken() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+    function safeFileExtension(fileName) {
+      const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+      return match ? `.${match[1].toLowerCase()}` : '';
+    }
+    function receiptContentType(file) {
+      const fileType = (file && file.type || '').toLowerCase();
+      const fileName = (file && file.name || '').toLowerCase();
+      if (fileType.startsWith('image/') || fileType === 'application/pdf') return fileType;
+      if (fileName.endsWith('.pdf')) return 'application/pdf';
+      if (fileName.endsWith('.png')) return 'image/png';
+      if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) return 'image/jpeg';
+      if (fileName.endsWith('.gif')) return 'image/gif';
+      if (fileName.endsWith('.webp')) return 'image/webp';
+      return '';
+    }
+    async function writeDocAuditLog(action, collection, docId, before, after, summary) {
+      const user = firebase.auth().currentUser;
+      await db.collection('auditLogs').add({
+        action, collection, docId, summary,
+        before: before || null, after: after || null,
+        actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+        actorName: profile ? profile.name : '', actorRole: profile ? profile.role : '',
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    async function handleSupportingReceiptFile(expenseId, inputEl) {
+      const file = inputEl.files && inputEl.files[0];
+      inputEl.value = '';
+      if (!file || !profile || profile.role !== 'Treasurer') return;
+      const contentType = receiptContentType(file);
+      if (!(contentType.startsWith('image/') || contentType === 'application/pdf')) { alert('Receipt must be an image or PDF file.'); return; }
+      if (file.size > 5 * 1024 * 1024) { alert('Receipt must be 5 MB or smaller.'); return; }
+      const e = supportingDocsExpenseMap.get(expenseId);
+      if (!e) return;
+      const oldPath = (!e.receiptSharedFromLiquidation && e.receiptPath) ? e.receiptPath : null;
+      let receiptPath = '';
+      try {
+        receiptPath = `expense-receipts/${expenseId}/${generateStorageToken()}${safeFileExtension(file.name)}`;
+        const ref = storage.ref(receiptPath);
+        await ref.put(file, { contentType });
+        const receiptUrl = await ref.getDownloadURL();
+        const payload = { receiptName: file.name, receiptPath, receiptUrl, receiptUploadedAt: new Date().toISOString() };
+        if (oldPath) {
+          payload.receiptAnnotations = [];
+          payload.receiptAnnotationsLocked = firebase.firestore.FieldValue.delete();
+          payload.receiptAnnotationsUpdatedAt = firebase.firestore.FieldValue.delete();
+          payload.receiptAnnotationsUpdatedBy = firebase.firestore.FieldValue.delete();
+          payload.receiptSharedFromLiquidation = firebase.firestore.FieldValue.delete();
+        }
+        await db.collection('expenses').doc(expenseId).update(payload);
+        await writeDocAuditLog(
+          oldPath ? 'receipt_replaced' : 'receipt_uploaded', 'expenses', expenseId,
+          oldPath ? { receiptPath: oldPath } : null,
+          { receiptName: file.name, receiptPath, fileSize: file.size, fileType: file.type },
+          oldPath ? `Replaced receipt for expense ${expenseId} (via Supporting Documents)` : `Uploaded receipt for expense ${expenseId} (via Supporting Documents)`
+        );
+        if (oldPath) { try { await storage.ref(oldPath).delete(); } catch (err) { console.warn(err); } }
+        await loadSupportingDocuments();
+      } catch (error) {
+        console.error(error);
+        if (receiptPath) {
+          alert('The receipt file uploaded, but saving it to the expense record failed. Please try again — the orphaned file will not appear anywhere else.\n\n' + (error.message || error));
+        } else {
+          alert('Unable to upload receipt: ' + (error.message || error));
+        }
+      }
+    }
+
+    let lastSupportingVoucherExpenseId = null;
+    function makeSupportingVoucher(expenseId) {
+      const e = supportingDocsExpenseMap.get(expenseId);
+      if (!e || !profile || profile.role !== 'Treasurer') return;
+      const url = e.linkedLiquidationRequestId
+        ? `cash-voucher.html?liquidationId=${encodeURIComponent(e.linkedLiquidationRequestId)}`
+        : `cash-voucher.html?expenseId=${encodeURIComponent(expenseId)}`;
+      window.open(url, '_blank', 'noopener');
+      lastSupportingVoucherExpenseId = expenseId;
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && lastSupportingVoucherExpenseId) {
+        lastSupportingVoucherExpenseId = null;
+        loadSupportingDocuments();
+      }
+    });
+
+    function openSupportingAttachCountSheet(date) {
+      if (!profile || profile.role !== 'Treasurer') return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,application/pdf';
+      input.multiple = true;
+      input.onchange = () => saveSupportingAttachCountSheet(date, Array.from(input.files || []));
+      input.click();
+    }
+
+    // Mirrors income-log.html's Attach Count Sheet flow exactly - only the
+    // entries for THIS date that don't already carry a countSheetId are
+    // linked.
+    async function saveSupportingAttachCountSheet(date, files) {
+      for (const file of files) {
+        const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+        if (!okType) return alert(`"${file.name}" must be an image or PDF.`);
+        if (file.size > 5 * 1024 * 1024) return alert(`"${file.name}" must be 5 MB or smaller.`);
+      }
+      try {
+        const snapshot = await db.collection('income').where('date', '==', date).get();
+        const unattached = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+          .filter(r => !r.countSheetId && (r.type || '').toLowerCase() !== 'transfer');
+        if (!unattached.length) { alert('No income entries without a count sheet were found for this date.'); return; }
+
+        const uid = firebase.auth().currentUser.uid;
+        const sheetRef = db.collection('countSheets').doc();
+        const sheetId = sheetRef.id;
+        const uploaded = [];
+        for (const file of files) {
+          const fileId = generateStorageToken();
+          const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+          const fileRef = storage.ref(path);
+          await fileRef.put(file);
+          const url = await fileRef.getDownloadURL();
+          uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+        }
+        const cashTotal = unattached.filter(r => r.payment === 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+        const nonCashTotal = unattached.filter(r => r.payment !== 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+        const totalAmount = unattached.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+        const sheetPayload = {
+          date, createdAt: new Date().toISOString(),
+          createdBy: { uid, name: profile.name || '', role: profile.role || '' },
+          entryCount: unattached.length, totalAmount, cashTotal, nonCashTotal,
+          denominations: {}, files: uploaded, notes: 'Attached from Report Workflow (Supporting Documents).'
+        };
+        await sheetRef.set(sheetPayload);
+        await writeDocAuditLog('count_sheet_created', 'countSheets', sheetId, null, sheetPayload,
+          `Attached count sheet for ${date} to ${unattached.length} existing income entr${unattached.length === 1 ? 'y' : 'ies'} (via Supporting Documents)`);
+
+        const batch = db.batch();
+        unattached.forEach(r => batch.update(db.collection('income').doc(r.id), { countSheetId: sheetId }));
+        await batch.commit();
+        await writeDocAuditLog('income_count_sheet_attached', 'income', sheetId, null,
+          { countSheetId: sheetId, incomeIds: unattached.map(r => r.id) },
+          `Linked ${unattached.length} income entr${unattached.length === 1 ? 'y' : 'ies'} on ${date} to count sheet ${sheetId}`);
+
+        alert('Count sheet saved and linked.');
+        await loadSupportingDocuments();
+      } catch (error) {
+        console.error(error);
+        alert('Error saving count sheet: ' + (error.message || error));
+      }
     }
 
     function openPrintReport() {
