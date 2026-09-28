@@ -299,6 +299,24 @@
     .modal-box .btn.cp-cancel:hover { background: #ececec; }
     .cp-success { color: #1e8449; font-size: 13px; margin-top: 10px; text-align: center; }
     #change-password-btn.shared-account { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── PHONE LAYOUT (screen only) ── */
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 12px; flex-wrap: wrap; gap: 8px 10px; }
+      .topbar-brand { gap: 10px; min-width: 0; }
+      .topbar-logo { width: 34px; height: 34px; flex: 0 0 auto; }
+      .topbar h2 { font-size: 18px; }
+      .topbar > div:last-child { flex: 1 1 100%; min-width: 0; justify-content: flex-end; gap: 8px !important; }
+      #role-label { margin-right: auto; white-space: nowrap; }
+      .logout-btn { min-height: 38px; white-space: nowrap; }
+      .notif-dropdown { position: fixed; left: 10px; right: 10px; top: 64px; width: auto; max-width: none; }
+      .welcome-bar { padding: 14px 16px; }
+      .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 18px 12px; }
+      .menu-card { padding: 22px 10px; min-width: 0; overflow-wrap: anywhere; }
+      .login-box { padding: 28px 20px; margin: 0 12px; width: auto; }
+      .modal-box { max-width: calc(100vw - 24px); padding: 22px 16px; }
+      input { min-height: 44px; }
+    }
   </style>
 </head>
 
