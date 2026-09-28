@@ -14,6 +14,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 <script src="auth.js"></script>
 <script>requireGraceBooksAuth();</script>
 
@@ -105,7 +106,10 @@
   <div class="card">
     <div class="card-header">
       <h3>Consolidated Daily Income</h3>
-      <button class="btn-export" onclick="exportCSV()">📥 Export CSV</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-export" id="btn-attach-sheet" style="background:#8B0000; display:none;" onclick="openAttachSheetModal()">📎 Attach Count Sheet</button>
+        <button class="btn-export" onclick="exportCSV()">📥 Export CSV</button>
+      </div>
     </div>
 
     <div class="stats-row">
@@ -164,6 +168,24 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="attachSheetModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000;">
+  <div style="background:white; border-radius:12px; padding:24px; width:min(520px,92vw); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="color:#8B0000;">Attach Count Sheet</h3>
+      <button onclick="closeAttachSheetModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">×</button>
+    </div>
+    <label style="font-size:12px; color:#555;">Service Date</label>
+    <input type="date" id="attach-sheet-date" onchange="loadUnattachedIncomeForDate()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 14px;">
+    <div id="attach-sheet-entries" class="muted" style="font-size:13px; color:#888; margin-bottom:14px;">Pick a date to see its income entries without a count sheet.</div>
+    <label style="font-size:12px; color:#555;">Count Sheet Photo(s)</label>
+    <input type="file" id="attach-sheet-files" accept="image/*,.pdf" multiple style="width:100%; margin:6px 0 14px;">
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn-export" style="background:#999;" onclick="closeAttachSheetModal()">Cancel</button>
+      <button class="btn-export" id="attach-sheet-save-btn" onclick="saveAttachSheet()">Save Count Sheet</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
@@ -176,9 +198,34 @@
 
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const storage = firebase.storage();
 
   let rawRecords = [];
   let consolidatedData = [];
+  let activeProfile = null;
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: collectionName,
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeProfile ? activeProfile.name : '',
+      actorRole: activeProfile ? activeProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
 
   // Dinagdag: Para i-setup ang Default Year at Month
   function initFilters() {
@@ -293,9 +340,142 @@
     a.click();
   }
 
+  // ── Attach Count Sheet (Treasurer only) ──────────────────────────────────
+  // Lets the Treasurer photograph and attach a past Sunday's paper count
+  // sheet after the fact, for income already saved without one (e.g. a
+  // Money Counter who forgot, or entries keyed before this feature existed).
+  function generateStorageToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  function safeFileExtension(fileName) {
+    const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+    return match ? `.${match[1].toLowerCase()}` : '';
+  }
+
+  let unattachedForDate = [];
+
+  window.openAttachSheetModal = function() {
+    if (!activeProfile || activeProfile.role !== 'Treasurer') return;
+    document.getElementById('attach-sheet-date').value = '';
+    document.getElementById('attach-sheet-files').value = '';
+    document.getElementById('attach-sheet-entries').textContent = 'Pick a date to see its income entries without a count sheet.';
+    unattachedForDate = [];
+    document.getElementById('attachSheetModal').style.display = 'flex';
+  };
+
+  window.closeAttachSheetModal = function() {
+    document.getElementById('attachSheetModal').style.display = 'none';
+  };
+
+  window.loadUnattachedIncomeForDate = async function() {
+    const date = document.getElementById('attach-sheet-date').value;
+    const box = document.getElementById('attach-sheet-entries');
+    unattachedForDate = [];
+    if (!date) {
+      box.textContent = 'Pick a date to see its income entries without a count sheet.';
+      return;
+    }
+    box.textContent = 'Loading...';
+    try {
+      const snapshot = await db.collection('income').where('date', '==', date).get();
+      unattachedForDate = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(r => !r.countSheetId && (r.type || '').toLowerCase() !== 'transfer');
+      if (!unattachedForDate.length) {
+        box.innerHTML = '<span style="color:#c0392b;">No income entries without a count sheet for this date (either none exist, or they already have one).</span>';
+        return;
+      }
+      const total = unattachedForDate.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      box.innerHTML = `<strong>${unattachedForDate.length}</strong> entr${unattachedForDate.length === 1 ? 'y' : 'ies'} totaling <strong>₱${fmt(total)}</strong> will be linked to this count sheet:<br>` +
+        unattachedForDate.map(r => `&nbsp;&nbsp;• ${escapeHtml(r.member || r.type || 'Entry')} — ₱${fmt(r.amount)}`).join('<br>');
+    } catch (error) {
+      console.error(error);
+      box.textContent = 'Unable to load income entries for this date: ' + (error.message || error);
+    }
+  };
+
+  window.saveAttachSheet = async function() {
+    if (!activeProfile || activeProfile.role !== 'Treasurer') return;
+    const date = document.getElementById('attach-sheet-date').value;
+    if (!date) return alert('Please pick a date.');
+    if (!unattachedForDate.length) return alert('No income entries without a count sheet were found for this date.');
+    const files = Array.from(document.getElementById('attach-sheet-files').files || []);
+    if (!files.length && !confirm('No photo selected. Save a count sheet record for this date without a photo?')) return;
+    for (const file of files) {
+      const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+      if (!okType) return alert(`"${file.name}" must be an image or PDF.`);
+      if (file.size > 5 * 1024 * 1024) return alert(`"${file.name}" must be 5 MB or smaller.`);
+    }
+
+    const btn = document.getElementById('attach-sheet-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      const uid = firebase.auth().currentUser.uid;
+      const sheetRef = db.collection('countSheets').doc();
+      const sheetId = sheetRef.id;
+
+      const uploaded = [];
+      for (const file of files) {
+        const fileId = generateStorageToken();
+        const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+        const fileRef = storage.ref(path);
+        await fileRef.put(file);
+        const url = await fileRef.getDownloadURL();
+        uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+      }
+
+      const cashTotal = unattachedForDate.filter(r => r.payment === 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const nonCashTotal = unattachedForDate.filter(r => r.payment !== 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const totalAmount = unattachedForDate.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const sheetPayload = {
+        date,
+        createdAt: new Date().toISOString(),
+        createdBy: { uid, name: activeProfile.name || '', role: activeProfile.role || '' },
+        entryCount: unattachedForDate.length,
+        totalAmount,
+        cashTotal,
+        nonCashTotal,
+        denominations: {},
+        files: uploaded,
+        notes: 'Attached after the fact from Income Log.'
+      };
+      await sheetRef.set(sheetPayload);
+      await writeAuditLog('count_sheet_created', 'countSheets', sheetId, null, sheetPayload,
+        `Attached count sheet for ${date} to ${unattachedForDate.length} existing income entr${unattachedForDate.length === 1 ? 'y' : 'ies'}`);
+
+      const batch = db.batch();
+      unattachedForDate.forEach(r => {
+        batch.update(db.collection('income').doc(r.id), { countSheetId: sheetId });
+      });
+      await batch.commit();
+      await writeAuditLog('income_count_sheet_attached', 'income', sheetId, null,
+        { countSheetId: sheetId, incomeIds: unattachedForDate.map(r => r.id) },
+        `Linked ${unattachedForDate.length} income entr${unattachedForDate.length === 1 ? 'y' : 'ies'} on ${date} to count sheet ${sheetId}`);
+
+      closeAttachSheetModal();
+      alert('Count sheet saved and linked.');
+      setupListener();
+    } catch (error) {
+      console.error(error);
+      alert('Error saving count sheet: ' + (error.message || error));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Count Sheet';
+    }
+  };
+
   // Idinagdag sa initialization para tumakbo agad yung Date Sorter
   initFilters();
   setupListener();
+  if (window.graceBooksAuthReady) {
+    window.graceBooksAuthReady.then(profile => {
+      activeProfile = profile;
+      const btn = document.getElementById('btn-attach-sheet');
+      if (btn) btn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
+    });
+  }
 </script>
   <script>
     if ('serviceWorker' in navigator) {

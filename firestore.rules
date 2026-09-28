@@ -188,6 +188,18 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
+    match /countSheets/{docId} {
+      // One doc per Sunday counting session (tithe-entry.html), holding the
+      // counted denomination breakdown and any photographed count-sheet
+      // files - see CLAUDE.md. Money Counter is create-only here exactly as
+      // it is on income: it can save the sheet it just counted but never
+      // revise one afterward, and it has no read access at all (matching
+      // its lack of read on income).
+      allow read: if hasRole(['Treasurer', 'Auditor', 'Pastor', 'Finance Chair', 'Chairperson', 'Finance Committee']);
+      allow create: if hasRole(['Treasurer', 'Money Counter']);
+      allow update, delete: if hasRole(['Treasurer']);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

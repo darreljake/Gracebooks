@@ -65,6 +65,19 @@ service firebase.storage {
       allow delete: if isTreasurer();
     }
 
+    // Photographed paper count sheets (tithe-entry.html / income-log.html).
+    // Ownership is verified from the storage path's own uid segment, not a
+    // firestore.get() lookup - the same pattern as liquidation-receipts
+    // above, and for the same reason: a firestore.get() here previously
+    // broke non-Treasurer uploads elsewhere. Money Counter and Treasurer
+    // both count Sundays, so both may create/update under their own uid;
+    // only the Treasurer deletes (e.g. replacing a bad photo later).
+    match /count-sheets/{sheetId}/{uid}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid && validReceiptFile();
+      allow delete: if isTreasurer();
+    }
+
     // Cash voucher "Received by" signatures (cash-voucher.html). Distinct from
     // signatures/{uid}/... above - the receiver is usually not a system user
     // (a vendor, a driver), so their signature is captured on the Treasurer's

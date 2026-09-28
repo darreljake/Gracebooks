@@ -992,6 +992,17 @@
           createdAt: now,
           updatedAt: now
         };
+        // A reimbursement's receipt(s) live on the liquidationRequests doc
+        // (attached at submission), not on this expense - copy the first
+        // one over exactly like the reconcile flow does for a liquidated
+        // item, so expenses.html's ledger and report-workflow.html's
+        // Supporting Documents card both see it without a special case.
+        if (!advance && row.receiptUrl) {
+          expensePayload.receiptName = row.receiptName || '';
+          expensePayload.receiptPath = row.receiptPath || '';
+          expensePayload.receiptUrl = row.receiptUrl;
+          expensePayload.receiptSharedFromLiquidation = true;
+        }
         const expenseRef = await db.collection('expenses').add(expensePayload);
         await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, expensePayload,
           `Recorded payout for ${typeLabel(row).toLowerCase()}: ${row.title || ''}`);

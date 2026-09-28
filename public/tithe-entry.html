@@ -819,11 +819,12 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
-    getFirestore, collection, addDoc, doc, getDoc,
+    getFirestore, collection, addDoc, doc, getDoc, setDoc,
     query, where, getDocs, limit, runTransaction
   } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
   import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check.js";
+  import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
@@ -842,6 +843,7 @@
   }
   const db  = getFirestore(app);
   const auth = getAuth(app);
+  const storage = getStorage(app);
 
   // Counters reload this page mid-batch (slow connection, accidental refresh,
   // etc.) - persist drafts so a reload can't silently wipe entered amounts and
@@ -863,6 +865,43 @@
       console.error('Failed to save drafts', e);
     }
   }
+
+  // The paper count sheet photo(s) counters/Treasurer take of a Sunday's
+  // cash denomination count. Persisted alongside the drafts so a mid-batch
+  // reload/retry reuses the SAME sheetId and never calls setDoc twice on it
+  // (a second setDoc on an existing countSheets doc is an *update*, which
+  // Money Counter cannot do per firestore.rules). Uploaded file objects
+  // themselves can't survive a reload (not JSON-serializable) - only their
+  // already-uploaded metadata is persisted, matching the entryCreated/
+  // memberCreated "what's already committed" pattern used for drafts.
+  const COUNT_SHEET_STORAGE_KEY = 'graceBooksCountSheetState';
+  function loadCountSheetState() {
+    try {
+      const saved = sessionStorage.getItem(COUNT_SHEET_STORAGE_KEY);
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (parsed && parsed.sheetId) return parsed;
+    } catch (e) {
+      console.error('Failed to restore count sheet state', e);
+    }
+    return { sheetId: null, created: false, files: [] };
+  }
+  function saveCountSheetState() {
+    try {
+      sessionStorage.setItem(COUNT_SHEET_STORAGE_KEY, JSON.stringify(countSheetState));
+    } catch (e) {
+      console.error('Failed to save count sheet state', e);
+    }
+  }
+  function resetCountSheetState() {
+    countSheetState = { sheetId: null, created: false, files: [] };
+    pendingCountSheetFiles = [];
+    saveCountSheetState();
+  }
+
+  let countSheetState = loadCountSheetState();
+  // In-memory only File objects the user picked but hasn't uploaded yet -
+  // never persisted (see comment above).
+  let pendingCountSheetFiles = [];
 
   let draftRecords   = loadDraftsFromStorage();
   let selectedType   = 'Source of Funds';
@@ -989,6 +1028,86 @@
       actorRole: activeUserProfile ? activeUserProfile.role : '',
       createdAt: new Date().toISOString()
     });
+  }
+
+  // ── COUNT SHEET UPLOAD HELPERS ──────────────────────────────────────────
+  function generateStorageToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function safeFileExtension(fileName) {
+    const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+    return match ? `.${match[1].toLowerCase()}` : '';
+  }
+
+  function validateCountSheetFile(file) {
+    const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+    if (!okType) {
+      alert(`"${file.name}" must be an image or PDF.`);
+      return false;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert(`"${file.name}" must be 5 MB or smaller.`);
+      return false;
+    }
+    return true;
+  }
+
+  window.onCountSheetFilesSelected = function(input) {
+    const files = Array.from(input.files || []).filter(validateCountSheetFile);
+    pendingCountSheetFiles = pendingCountSheetFiles.concat(files);
+    input.value = '';
+    renderReviewBody();
+  };
+
+  window.removePendingCountSheetFile = function(index) {
+    pendingCountSheetFiles.splice(index, 1);
+    renderReviewBody();
+  };
+
+  // Uploads every not-yet-uploaded file (pendingCountSheetFiles) to
+  // count-sheets/{sheetId}/{uid}/{token}{ext}, never trusting the original
+  // filename for the storage path itself, and appends each result to
+  // countSheetState.files - persisted after every single upload so a
+  // mid-batch failure can't re-upload (and duplicate) a file that already
+  // made it to Storage.
+  async function uploadPendingCountSheetFiles(sheetId) {
+    const uid = auth.currentUser.uid;
+    while (pendingCountSheetFiles.length > 0) {
+      const file = pendingCountSheetFiles[0];
+      const fileId = generateStorageToken();
+      const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+      const fileRef = storageRef(storage, path);
+      await uploadBytes(fileRef, file);
+      const url = await getDownloadURL(fileRef);
+      countSheetState.files.push({
+        fileId, name: file.name, path, url,
+        contentType: file.type || '', size: file.size || 0
+      });
+      pendingCountSheetFiles.shift();
+      saveCountSheetState();
+    }
+  }
+
+  function buildCountSheetAttachHtml() {
+    const uploaded = countSheetState.files.map((f, i) =>
+      `<div class="denom-cell" style="grid-column:1/-1;">✅ ${f.name ? f.name.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) : 'Uploaded file'} <span style="color:#1e8449;">(uploaded)</span></div>`
+    ).join('');
+    const pending = pendingCountSheetFiles.map((f, i) =>
+      `<div class="denom-cell" style="grid-column:1/-1;">📎 ${f.name.replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}
+        <button type="button" onclick="removePendingCountSheetFile(${i})" style="margin-left:8px;">Remove</button>
+      </div>`
+    ).join('');
+    return `
+      <div class="cash-count-card">
+        <h5>📷 Attach Count Sheet Photo(s)</h5>
+        <div class="cash-count-help">
+          Attach a photo of the physical count sheet used for this Sunday's cash count (optional, but encouraged).
+        </div>
+        <input type="file" accept="image/*,.pdf" multiple onchange="onCountSheetFilesSelected(this)">
+        ${uploaded}${pending}
+      </div>`;
   }
 
   document.getElementById('entry-date').value = new Date().toISOString().split('T')[0];
@@ -1841,6 +1960,8 @@
 
       ${cashCountHTML}
 
+      ${buildCountSheetAttachHtml()}
+
       <div class="review-confirm-section" style="margin-top:14px;">
         <h5>✅ Summary</h5>
         <div class="rc-row"><span>Total Entries:</span> <span>${filteredRecords.length}</span></div>
@@ -1999,12 +2120,116 @@
       alert('Cash denomination count must match the Cash total before saving.');
       return;
     }
-    
+    if (!countSheetState.files.length && !pendingCountSheetFiles.length
+      && !confirm('No count sheet photo attached. Continue saving without one?')) {
+      return;
+    }
+
     const btn = document.querySelector('.btn-confirm-income');
     btn.innerHTML = '⏳ Saving to Cloud...';
     btn.disabled = true;
 
     try {
+        // Allocate the count sheet's id ONCE per batch and persist it right
+        // away, so a mid-batch reload/retry reuses the SAME sheetId instead
+        // of ever creating a second countSheets doc for one counting
+        // session - a second setDoc on an existing doc is an *update*,
+        // which Money Counter cannot do per firestore.rules.
+        if (!countSheetState.sheetId) {
+          countSheetState.sheetId = doc(collection(db, 'countSheets')).id;
+          saveCountSheetState();
+        }
+        const sheetId = countSheetState.sheetId;
+
+        // The count sheet is best-effort: this is the Sunday income save,
+        // the weekly critical path, and a count-sheet problem (network,
+        // Storage, rules not yet deployed, etc.) must never be the reason
+        // the actual income doesn't get saved. Anything that fails inside
+        // this block is caught below instead of aborting the whole batch.
+        try {
+          if (pendingCountSheetFiles.length) {
+            await uploadPendingCountSheetFiles(sheetId);
+          }
+
+          // Only ever created once per sheetId (countSheetCreated-style flag,
+          // mirroring memberCreated above) - like the money counter member ID
+          // path, a repeat setDoc here would be an update, not a create.
+          if (!countSheetState.created) {
+            const cashTotalNow = draftRecords.filter(r => r.payment === 'Cash').reduce((s, r) => s + r.amount, 0);
+            const nonCashTotal = draftRecords.filter(r => r.payment !== 'Cash').reduce((s, r) => s + r.amount, 0);
+            const totalAmount = draftRecords.reduce((s, r) => s + r.amount, 0);
+            // The physically counted cash, from the same denomination
+            // counts the on-page Cash Denomination Check already collects -
+            // this is what report-workflow.html's Income section compares
+            // against the recorded cash income for the date. It is NOT the
+            // same as cashTotalNow above (which is just a sum of the same
+            // income docs being created here, and would trivially always
+            // "match" anything derived from it).
+            const countedCashTotal = DENOMINATIONS.reduce(
+              (s, denom) => s + denom.value * (cashDenominationCounts[denom.key] || 0), 0
+            );
+            const sheetPayload = {
+              date: (draftRecords[0] && draftRecords[0].date) || new Date().toISOString().split('T')[0],
+              createdAt: new Date().toISOString(),
+              createdBy: {
+                uid: auth.currentUser.uid,
+                name: (activeUserProfile && activeUserProfile.name) || '',
+                role: (activeUserProfile && activeUserProfile.role) || ''
+              },
+              entryCount: draftRecords.length,
+              totalAmount,
+              cashTotal: cashTotalNow,
+              nonCashTotal,
+              denominations: { ...cashDenominationCounts },
+              countedCashTotal,
+              files: countSheetState.files,
+              notes: ''
+            };
+            await setDoc(doc(db, 'countSheets', sheetId), sheetPayload);
+            await writeAuditLog(
+              'count_sheet_created',
+              'countSheets',
+              sheetId,
+              null,
+              sheetPayload,
+              `Recorded count sheet for ${sheetPayload.date} (${sheetPayload.entryCount} entries, ₱${fmt(totalAmount)})`
+            );
+            countSheetState.created = true;
+            saveCountSheetState();
+          }
+        } catch (sheetError) {
+          console.error('Count sheet save failed:', sheetError);
+          const proceed = confirm(
+            `The count sheet couldn't be saved (${sheetError && sheetError.message ? sheetError.message : sheetError}). `
+            + 'Save the income entries anyway? The Treasurer can attach the count sheet later from the Income Log.'
+          );
+          if (!proceed) {
+            // Stop here - drafts and the count sheet state (sheetId,
+            // whatever files already made it to Storage) are left exactly
+            // as they are, so "Confirm & Save All" can simply be retried:
+            // no re-upload of an already-uploaded file, and setDoc still
+            // fires at most once for this sheetId.
+            throw sheetError;
+          }
+          await writeAuditLog(
+            'count_sheet_save_failed',
+            'countSheets',
+            sheetId,
+            null,
+            { error: (sheetError && sheetError.message) || String(sheetError) },
+            `Count sheet could not be saved for this batch (${draftRecords.length} entries) - saved the income entries without a count sheet link.`
+          );
+          // This batch is going out without a count sheet either way now -
+          // reset so the NEXT batch starts clean with a fresh sheetId,
+          // rather than retrying a sheet this batch already gave up on.
+          resetCountSheetState();
+        }
+
+        // Only ever point an income doc at a countSheets doc that was
+        // actually setDoc'd - never a sheetId allocated but never created
+        // (e.g. the counter chose to proceed without one above).
+        const linkedSheetId = countSheetState.created ? sheetId : null;
+
         // Entries are removed from draftRecords as each one succeeds, not
         // after the whole loop finishes - if a later entry throws (network
         // blip), retrying "Confirm & Save All" only resubmits what's left
@@ -2038,6 +2263,7 @@
                 notes: entry.notes || "",
                 targetAccount: mapTypeToAccount(entry.type, entry.payment),
                 timestamp: new Date().toISOString(),
+                ...(linkedSheetId ? { countSheetId: linkedSheetId } : {}),
                 ...(entry.pledgeTarget != null ? { pledgeTarget: entry.pledgeTarget } : {}),
                 ...(entry.pledgePaymentNo != null ? { pledgePaymentNo: entry.pledgePaymentNo } : {})
             };
@@ -2061,6 +2287,7 @@
 
         draftRecords = [];
         updateUI();
+        resetCountSheetState();
 
         // Only the Treasurer (and the other reading roles) can read the
         // `income` collection, so sending a Money Counter to income-log.html
