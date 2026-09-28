@@ -94,6 +94,25 @@
       border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold;
     }
     .empty { text-align: center; color: #aaa; padding: 30px; }
+
+    /* ── PHONE LAYOUT (screen only; print/desktop untouched) ── */
+    @media screen { td strong, .s-num, #filtered-total, #stat-total { white-space: nowrap; } }
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 16px; }
+      .stat-box { padding: 10px 8px; min-width: 0; flex: 1 1 30%; }
+      .stat-box .s-num { font-size: 16px; }
+      .filter-bar select, .filter-bar input { font-size: 16px; min-height: 42px; flex: 1 1 140px; min-width: 0; }
+      .total-bar { gap: 10px; font-size: 14px; }
+      .table-wrap { -webkit-overflow-scrolling: touch; }
+      th, td { padding: 10px 8px; }
+      td:first-child { white-space: nowrap; }
+      .btn-export { padding: 11px 14px; min-height: 40px; }
+      .modal-overlay input:not([type=file]):not([type=checkbox]), .modal-overlay select, .modal-overlay textarea { font-size: 16px; min-height: 42px; }
+      .modal-overlay > div { max-width: 100vw; }
+    }
   </style>
 </head>
 <body>
