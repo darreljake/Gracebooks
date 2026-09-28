@@ -117,6 +117,30 @@
       body:not(.printing-payslip) .modal-overlay { display: none !important; }
       .btn { display: none; }
     }
+  
+    /* ── PHONE LAYOUT (screen only). The payslip sheet itself (#payslip-detail) is
+       deliberately left alone: Download PDF renders that live element, so its
+       look must not depend on the viewer's screen width. ── */
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 16px 14px; }
+      .filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .filters > * { min-width: 0; }
+      .filters > :last-child, .filters > :has(input[type=month]), .filters > :has(input[type=number]) { grid-column: 1 / -1; }
+      .filters select, .filters input { width: 100%; }
+      select, input:not([type=checkbox]):not([type=radio]) { font-size: 16px; min-height: 42px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .summary-box { padding: 12px 10px; min-width: 0; }
+      .summary-box .num { font-size: 16px; white-space: nowrap; }
+      .badge { white-space: nowrap; }
+      .btn { min-height: 38px; }
+      td:first-child, td:nth-child(2) { white-space: nowrap; }
+      .modal-overlay { padding: 8px; }
+      .payslip-sheet { margin: 8px 0; }
+      .payslip-toolbar { flex-wrap: wrap; padding: 10px 12px; }
+    }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
