@@ -135,6 +135,15 @@
       .top-actions, .btn { width: 100%; }
       .controls { align-items: stretch; }
       .field { width: 100%; }
+      /* Grid items default to min-width:auto, so a wide child (the
+         Supporting Documents tables, the Report Preview iframe) used to
+         stretch the single column - and with it the whole page - past the
+         phone screen. min-width:0 lets .doc-table-wrap scroll instead. */
+      .grid > *, .status-card > * { min-width: 0; }
+    }
+    @media (max-width: 600px) {
+      .container { padding: 14px 10px 40px; }
+      .card { padding: 12px; }
     }
   </style>
 </head>

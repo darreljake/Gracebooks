@@ -19,7 +19,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
 <script src="auth.js"></script>
-<script>requireGraceBooksAuth();</script>
+<script>requireGraceBooksAuth();
+try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) document.documentElement.classList.add('embedded-review'); } catch (e) { document.documentElement.classList.add('embedded-review'); }</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="receipt-annotator.js"></script>
 
@@ -377,6 +378,44 @@
       .obligation-table                { font-size: 10px; }
     }
 
+    /* ── PHONE LAYOUT (screen only - print output is untouched) ───────────
+       At <=600px the topbar is a compact, non-sticky, full-width bar whose
+       buttons scroll horizontally in one row, and the report "paper" is
+       auto-fitted to the screen: fitReportToScreen() measures the table's
+       natural width and publishes --fit-width / --fit-zoom, which only this
+       screen rule consumes (so printing from a phone stays at full size). */
+    @media screen {
+      /* Amounts never wrap; give the 5-column (budget) layout a little more
+         room on screen so the description column doesn't pay for it. Print
+         keeps its own max-width:100% rule. */
+      .siksik-container:has(.fs-table.has-budget) { max-width: 640px; }
+      .col-sub, .col-main, .col-budget, .col-pct,
+      .obligation-table td.ob-num, .rpeso { white-space: nowrap; }
+    }
+    @media screen and (max-width: 600px) {
+      .topbar { position: static; flex-wrap: wrap; padding: 8px 12px; gap: 6px 10px; }
+      .brand { gap: 10px; }
+      .brand img { height: 32px; width: auto; flex: 0 0 auto; }
+      .brand-text { font-size: 17px; }
+      .brand-sub { display: none; }
+      .top-actions { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+      .top-actions > * { flex: 0 0 auto; }
+      .btn-action { padding: 7px 11px; white-space: nowrap; }
+      .controls-bar { padding: 10px 12px; gap: 10px; }
+      .report-type-tabs { flex-wrap: wrap; }
+      .report-wrapper { margin: 10px auto 0; padding: 0 6px 40px; }
+      /* Embedded as report-workflow's Report Preview (iframe + review=1): the
+         parent already owns period/type selection and offers "Open full
+         screen", so on a phone the iframe shows just the statement instead
+         of spending most of its small height on toolbars. */
+      html.embedded-review .topbar, html.embedded-review .controls-bar { display: none; }
+      body:not(.report-fullscreen) .report-page {
+        padding: 22px 14px 22px 20px;
+        width: var(--fit-width, auto);
+        zoom: var(--fit-zoom, 1);
+      }
+    }
+
     /* ── REVIEW MODE (report-workflow.html embedded preview) ─────────────── */
     .review-banner {
       background: #fff7e0; border: 1px solid #e6c65c; color: #6b5a12;
@@ -413,6 +452,7 @@
     .rbtn-upload { background: #1e8449; color: #fff; }
     .rbtn-voucher{ background: #7a4a1e; color: #fff; }
     .rbtn-refresh{ background: #888; color: #fff; }
+    .review-sub-head { font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--red); margin: 8px 0 2px; }
     .rbadge { font-size: 10.5px; font-weight: 700; border-radius: 9px; padding: 2px 8px; }
     .rbadge-missing { background: #fbeaea; color: #b03a2e; }
     .rbadge-awaiting { background: #fdf3d9; color: #8a6d00; }
@@ -758,6 +798,7 @@
   let reviewExpGroups = null; // set by buildExpGroups(fExp) each render; entries kept per sub-line
   let reviewIncLineEntries = {}; // 'inc|main|subKey' -> income docs for that displayed line
   let reviewExpLineEntries = {}; // 'exp|main|subCategory' -> expense docs for that displayed line
+  let reviewRestrictedEntries = {}; // 'rst|accountId' -> {name, income, expense, transferIn, transferOut} for that restricted account
   let reviewLiquidationMap = new Map();
   let reviewCountSheetMap = new Map();
   let reviewDataLoadedForPeriod = '';
@@ -1174,6 +1215,7 @@
     else if (reportType === 'annual') renderAnnual();
     else if (reportType === 'special-project') renderSpecialProject();
     applyReviewModeUI();
+    fitReportToScreen();
   }
 
   // Review mode is enabled only when ALL hold: ?review=1 is present; the
@@ -1242,12 +1284,14 @@
   function openReportFullscreen() {
     document.body.classList.add('report-fullscreen');
     updateReportZoom();
+    fitReportToScreen();
     const page = document.getElementById('report-page');
     if (page && page.scrollIntoView) page.scrollIntoView({ block: 'start' });
   }
 
   function closeReportFullscreen() {
     document.body.classList.remove('report-fullscreen');
+    fitReportToScreen();
   }
 
   function changeReportZoom(delta) {
@@ -1267,6 +1311,37 @@
   });
 
   updateReportZoom();
+
+  // Phone auto-fit (screen only). The paper is laid out at a "design width"
+  // wide enough for the whole table (budget columns included, amounts never
+  // wrapping), then scaled down with CSS zoom to the viewport width, so the
+  // full statement is visible as a scaled page (pinch to zoom in). The CSS
+  // reads --fit-width/--fit-zoom only inside a screen media query, so print
+  // and desktop are unaffected. Runs inside the report-workflow iframe too
+  // (its own viewport is what matters).
+  function fitReportToScreen() {
+    const page = document.getElementById('report-page');
+    if (!page) return;
+    const root = document.documentElement.style;
+    const phone = window.matchMedia('(max-width: 600px)').matches && !document.body.classList.contains('report-fullscreen');
+    if (!phone) { root.removeProperty('--fit-width'); root.removeProperty('--fit-zoom'); return; }
+    // Measure at natural (unzoomed) size: let the paper grow to whatever the
+    // table needs, starting from a readable minimum.
+    root.setProperty('--fit-zoom', '1');
+    root.setProperty('--fit-width', '420px');
+    const table = document.getElementById('export-table');
+    const cs = getComputedStyle(page);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    let needed = 420;
+    if (table) needed = Math.max(needed, Math.ceil(table.scrollWidth + padX));
+    root.setProperty('--fit-width', needed + 'px');
+    const wrapper = page.parentElement;
+    const wcs = getComputedStyle(wrapper);
+    const avail = document.documentElement.clientWidth - parseFloat(wcs.paddingLeft) - parseFloat(wcs.paddingRight);
+    root.setProperty('--fit-zoom', Math.min(1, avail / needed).toFixed(4));
+  }
+  window.addEventListener('resize', fitReportToScreen);
+  window.addEventListener('orientationchange', fitReportToScreen);
 
   function getObligationPaidAmount(o) {
     if (o.paidAmount !== undefined) return Math.max(0, parseFloat(o.paidAmount) || 0);
@@ -1288,7 +1363,7 @@
 
   // ── CORE REPORT GENERATION ───────────────────────────────────────────────
   function generateReportHTML(year, month, isAnnual) {
-    if (reviewMode) { reviewIncLineEntries = {}; reviewExpLineEntries = {}; }
+    if (reviewMode) { reviewIncLineEntries = {}; reviewExpLineEntries = {}; reviewRestrictedEntries = {}; }
     const targetDate = isAnnual ? new Date(year, 0, 1) : new Date(year, month, 1);
     const periodEndDate = isAnnual ? new Date(year, 11, 31, 23, 59, 59) : new Date(year, month + 1, 0, 23, 59, 59);
     const dayBeforeStart = new Date(targetDate.getTime() - 1);
@@ -1590,12 +1665,36 @@
       const transferNet = transferInAmt - transferOutAmt;
       const inAmt = realInAmt + transferInAmt;
       const outAmt = realOutAmt + transferOutAmt;
-      return { name: a.name, realInAmt, realOutAmt, transferNet, inAmt, outAmt, net: inAmt - outAmt };
+      return { id: a.id, name: a.name, realInAmt, realOutAmt, transferNet, inAmt, outAmt, net: inAmt - outAmt };
     }).filter(row => Math.abs(row.inAmt) >= 0.01 || Math.abs(row.outAmt) >= 0.01);
+    // Review mode only: the account's own name row becomes the clickable
+    // line (one panel per restricted account, listing its income, expense
+    // and transfer docs together) - see buildRestrictedPanelHtml(). The
+    // contributing docs are collected here, additively, exactly like
+    // reviewIncLineEntries/reviewExpLineEntries; nothing below changes any
+    // amount. reviewMode is false on the normal page, so none of this
+    // markup is emitted there.
+    function restrictedReviewAttrs(row) {
+      if (!reviewMode) return { attrs: '', clip: '' };
+      const rk = 'rst|' + row.id;
+      const entries = {
+        name: row.name,
+        income: restrictedIncomeRows.filter(d => getIncomeAccountId(d) === row.id),
+        expense: restrictedExpenseRows.filter(d => getExpenseAccountId(d) === row.id),
+        transferIn: periodTransferIn.filter(d => getIncomeAccountId(d) === row.id),
+        transferOut: periodTransferOut.filter(d => getExpenseAccountId(d) === row.id)
+      };
+      reviewRestrictedEntries[rk] = entries;
+      const n = entries.income.length + entries.expense.length + entries.transferIn.length + entries.transferOut.length;
+      return {
+        attrs: ` class="review-line" data-rk="${escapeAttr(rk)}" onclick="toggleReviewPanel(this)"`,
+        clip: ` <span class="review-only review-clip" data-export-skip="1">📎 ${n}</span>`
+      };
+    }
     const restrictedActivityHtml = restrictedActivityRows.length
-      ? restrictedActivityRows.map(row => `
-        <tr>
-          <td class="col-desc indent-1">${escapeHtml(row.name)}</td>
+      ? restrictedActivityRows.map(row => { const rv = restrictedReviewAttrs(row); return `
+        <tr${rv.attrs}>
+          <td class="col-desc indent-1">${escapeHtml(row.name)}${rv.clip}</td>
           <td class="col-sub"></td>
           <td class="col-main"></td>
           ${emptyBudgetCells}
@@ -1624,7 +1723,7 @@
           <td class="col-sub"></td>
           <td class="col-main ${row.net < 0 ? 'amount-negative' : ''}">₱ ${fmt(row.net)}</td>
           ${emptyBudgetCells}
-        </tr>`).join('')
+        </tr>`; }).join('')
       : `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No restricted fund activity this period.</td></tr>`;
 
     // expOrderMain / expOrderSub use the EXACT original strings from accountOrder.expense
@@ -3179,7 +3278,7 @@
     try {
       await ensureReviewSupportData();
       const [type] = rk.split('|');
-      const html = type === 'exp' ? buildExpensePanelHtml(rk) : buildIncomePanelHtml(rk);
+      const html = type === 'exp' ? buildExpensePanelHtml(rk) : (type === 'rst' ? buildRestrictedPanelHtml(rk) : buildIncomePanelHtml(rk));
       const cell = panelRow.querySelector('td > div');
       if (cell) cell.innerHTML = html;
     } catch (error) {
@@ -3315,7 +3414,7 @@
     return `
       <div class="review-entry" id="review-entry-${escapeAttr(e.id)}">
         <div class="review-entry-main">
-          ${escapeHtml(e.date || '-')} · ${escapeHtml(e.payee || e.category || 'Expense')} · ₱ ${fmt(e.amount || 0)}
+          ${escapeHtml(e.date || '-')} · ${escapeHtml(e.payee || e.category || 'Expense')} · <span class="rpeso">₱ ${fmt(e.amount || 0)}</span>
         </div>
         <div class="review-entry-actions">
           ${receiptCell}
@@ -3523,10 +3622,17 @@
 
   function renderIncomeDateGroupHtml(date, entries) {
     reviewIncomeDateCache.set(date, entries);
-    const total = entries.reduce((s, r) => s + Number(r.amount || 0), 0);
-    const cashTotal = entries.filter(r => r.payment === 'Cash').reduce((s, r) => s + Number(r.amount || 0), 0);
+    const lineTotal = entries.reduce((s, r) => s + Number(r.amount || 0), 0);
+    // A count sheet covers the whole Sunday, not just the report line that
+    // was clicked, so every count-sheet check below (linked count, cash
+    // counted vs recorded, entries changed since count) runs against ALL of
+    // that date's income entries - the rows listed still show only this
+    // line's entries.
+    const dayEntries = reviewDayEntries(date, entries);
+    const total = dayEntries.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const cashTotal = dayEntries.filter(r => r.payment === 'Cash').reduce((s, r) => s + Number(r.amount || 0), 0);
     const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
-    const linkedCount = entries.filter(r => r.countSheetId).length;
+    const linkedCount = dayEntries.filter(r => r.countSheetId).length;
 
     let sheetCell;
     if (!sheets.length) {
@@ -3537,29 +3643,81 @@
     } else {
       const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
       sheetCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
-      if (linkedCount < entries.length) sheetCell += ` <span style="font-size:11px; color:#888;">(${linkedCount}/${entries.length} entries linked)</span>`;
+      if (linkedCount < dayEntries.length) sheetCell += ` <span style="font-size:11px; color:#888;">(${linkedCount}/${dayEntries.length} entries linked)</span>`;
       const sheetsWithCount = sheets.filter(sh => sh.countedCashTotal != null && Number(sh.countedCashTotal) > 0);
       if (sheetsWithCount.length) {
         const countedCashTotal = sheetsWithCount.reduce((s, sh) => s + Number(sh.countedCashTotal || 0), 0);
         const cashMismatch = Math.abs(countedCashTotal - cashTotal) > 0.004;
         sheetCell += cashMismatch
-          ? ` <span class="rbadge rbadge-mismatch">Cash counted ₱${fmt(countedCashTotal)} ≠ recorded ₱${fmt(cashTotal)}</span>`
-          : ` <span class="rbadge rbadge-ok">Cash counted ₱${fmt(countedCashTotal)}</span>`;
+          ? ` <span class="rbadge rbadge-mismatch">Cash counted <span class="rpeso">₱${fmt(countedCashTotal)}</span> ≠ recorded <span class="rpeso">₱${fmt(cashTotal)}</span></span>`
+          : ` <span class="rbadge rbadge-ok">Cash counted <span class="rpeso">₱${fmt(countedCashTotal)}</span></span>`;
       } else {
         sheetCell += ` <span style="font-size:11px; color:#888;">No denomination count saved</span>`;
+      }
+
+      // Separate note: have the LINKED entries themselves changed (edited
+      // or deleted) since the sheet was saved? Copied from
+      // report-workflow.html's Supporting Documents card (no shared JS
+      // modules here): only checked when every entry for the date is
+      // linked, compared against the sheets' own saved totalAmount.
+      if (linkedCount === dayEntries.length) {
+        const linkedNowTotal = dayEntries.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const sheetRecordedTotal = sheets.reduce((s, sh) => s + Number(sh.totalAmount || 0), 0);
+        if (Math.abs(linkedNowTotal - sheetRecordedTotal) > 0.004) {
+          sheetCell += ` <span class="rbadge rbadge-mismatch">Entries changed since count (<span class="rpeso">₱${fmt(sheetRecordedTotal)}</span> at count, <span class="rpeso">₱${fmt(linkedNowTotal)}</span> now)</span>`;
+        }
       }
     }
 
     const rows = entries.map(e => `
       <div class="review-entry">
-        <div class="review-entry-main">${escapeHtml(resolveMemberName(e))} · ₱ ${fmt(e.amount || 0)} · ${escapeHtml(e.payment || '-')}</div>
+        <div class="review-entry-main">${escapeHtml(resolveMemberName(e))} · <span class="rpeso">₱ ${fmt(e.amount || 0)}</span> · ${escapeHtml(e.payment || '-')}</div>
       </div>`).join('');
 
     return `
       <div class="review-date-group" data-review-date="${escapeAttr(date)}">
-        <div class="review-date-head">${escapeHtml(date)} <span style="font-weight:400; color:#777;">(${entries.length} · ₱ ${fmt(total)})</span> ${sheetCell}</div>
+        <div class="review-date-head">${escapeHtml(date)} <span style="font-weight:400; color:#777;">(${entries.length} · <span class="rpeso">₱ ${fmt(lineTotal)}</span>${dayEntries.length > entries.length ? ` · whole day ${dayEntries.length} · <span class="rpeso">₱ ${fmt(total)}</span>` : ''})</span> ${sheetCell}</div>
         ${rows}
       </div>`;
+  }
+
+  // All of a date's income entries (same pool the Supporting Documents card
+  // uses: period income, transfers excluded) - falls back to the line's own
+  // entries if the pool has none for that exact date string.
+  function reviewDayEntries(date, fallback) {
+    const day = incomeData.filter(r => r.date === date);
+    return day.length ? day : fallback;
+  }
+
+  // ── Restricted Fund Activity panel (one per restricted account) ─────────
+  // The account's name row is the clickable line. Lists its income (grouped
+  // by date with count-sheet status, same renderer as the income panels),
+  // its expenses (same renderer as the expense panels: receipts, voucher,
+  // badges, Treasurer actions) and its transfer docs (no receipts exist).
+  function buildRestrictedPanelHtml(rk) {
+    const r = reviewRestrictedEntries[rk];
+    if (!r) return '<div class="muted">No entries.</div>';
+    const byDate = (a, b) => String(a.date || '').localeCompare(String(b.date || ''));
+    let html = '';
+    if (r.income.length) {
+      const groups = new Map();
+      r.income.forEach(e => { const d = e.date || 'Unknown date'; if (!groups.has(d)) groups.set(d, []); groups.get(d).push(e); });
+      html += `<div class="review-sub-head">Receipts In</div>` + [...groups.keys()].sort().map(d => renderIncomeDateGroupHtml(d, groups.get(d))).join('');
+    }
+    if (r.expense.length) {
+      html += `<div class="review-sub-head">Disbursements Out</div>` + `<div data-rk="${escapeAttr(rk)}">` + r.expense.slice().sort(byDate).map(e => renderExpenseEntryHtml(e)).join('') + `</div>`;
+    }
+    const transfers = r.transferIn.map(e => ({ e, from: e.fromAccount || 'another account', to: r.name, note: e.member }))
+      .concat(r.transferOut.map(e => ({ e, from: r.name, to: e.toAccount || 'another account', note: e.sub })))
+      .sort((a, b) => byDate(a.e, b.e));
+    if (transfers.length) {
+      html += `<div class="review-sub-head">Transfers</div>` + transfers.map(t => `
+        <div class="review-entry">
+          <div class="review-entry-main">${escapeHtml(String(t.e.date || '-').slice(0, 10))} · ${escapeHtml(t.from)} → ${escapeHtml(t.to)} · <span class="rpeso">₱ ${fmt(t.e.amount || 0)}</span>${t.note ? ` · ${escapeHtml(t.note)}` : ''}</div>
+          <div class="review-entry-actions"><span class="rbadge rbadge-ok" style="background:#eef1f4; color:#556;">Transfer - no receipt</span></div>
+        </div>`).join('') + `<div style="font-size:11px; color:#888; padding-top:4px;">Fund transfers move cash between accounts and carry no receipt.</div>`;
+    }
+    return html || '<div class="muted">No entries.</div>';
   }
 
   function refreshIncomeDateGroup(date) {
@@ -3670,6 +3828,7 @@
       reviewCountSheetMap.set(sheetId, { id: sheetId, ...sheetPayload });
       const unattachedIds = new Set(unattached.map(r => r.id));
       (reviewIncomeDateCache.get(date) || []).forEach(e => { if (unattachedIds.has(e.id)) e.countSheetId = sheetId; });
+      incomeData.forEach(e => { if (unattachedIds.has(e.id)) e.countSheetId = sheetId; });
       refreshIncomeDateGroup(date);
       alert('Count sheet saved and linked.');
     } catch (error) {
