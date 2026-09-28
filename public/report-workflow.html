@@ -1274,12 +1274,37 @@
           sheetCell = `<button type="button" class="btn-ledger" onclick="openSupportingCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
           if (linkedCount < entries.length) {
             sheetCell += ` <span class="muted" style="font-size:11px;">(${linkedCount}/${entries.length} entries linked)</span>`;
+          }
+
+          // Cash denomination check: compares what was physically counted
+          // against the date's RECORDED cash income (payment === 'Cash'),
+          // never against the sheet's own totalAmount - that figure is
+          // derived from the very same income docs the sheet is attached
+          // to, so comparing against it would always trivially "match" and
+          // catch nothing. Only shown when a real count was saved (some
+          // pages/older sheets have no denominations recorded at all).
+          const sheetsWithCount = sheets.filter(sh => sh.countedCashTotal != null && Number(sh.countedCashTotal) > 0);
+          if (sheetsWithCount.length) {
+            const countedCashTotal = sheetsWithCount.reduce((s, sh) => s + Number(sh.countedCashTotal || 0), 0);
+            const cashMismatch = Math.abs(countedCashTotal - cashTotal) > 0.004;
+            sheetCell += cashMismatch
+              ? ` <span class="badge-mismatch">Cash counted ₱${peso(countedCashTotal)} ≠ recorded ₱${peso(cashTotal)}</span>`
+              : ` <span class="muted" style="font-size:11px;">Cash counted ₱${peso(countedCashTotal)}</span>`;
           } else {
-            const countedTotal = sheets.reduce((s, sh) => s + Number(sh.totalAmount || 0), 0);
-            const mismatch = Math.abs(countedTotal - total) > 0.004;
-            sheetCell += mismatch
-              ? ` <span class="badge-mismatch">Counted ₱${peso(countedTotal)} ≠ income ₱${peso(total)}</span>`
-              : ` <span class="muted" style="font-size:11px;">Counted ₱${peso(countedTotal)}</span>`;
+            sheetCell += ` <span class="muted" style="font-size:11px;">No denomination count saved</span>`;
+          }
+
+          // Separate note: have the LINKED entries themselves changed
+          // (edited or deleted) since the sheet was saved? This is
+          // independent of the cash-count check above - a sheet's own
+          // totalAmount is a snapshot taken at save time, so it can only
+          // ever drift if the Treasurer edits/removes an entry afterward.
+          if (linkedCount === entries.length) {
+            const linkedNowTotal = entries.reduce((s, r) => s + Number(r.amount || 0), 0);
+            const sheetRecordedTotal = sheets.reduce((s, sh) => s + Number(sh.totalAmount || 0), 0);
+            if (Math.abs(linkedNowTotal - sheetRecordedTotal) > 0.004) {
+              sheetCell += ` <span class="badge-mismatch">Entries changed since count (₱${peso(sheetRecordedTotal)} at count, ₱${peso(linkedNowTotal)} now)</span>`;
+            }
           }
         }
 
