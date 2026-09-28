@@ -105,6 +105,30 @@
       color: #8B0000; margin: 14px 0 4px; border-bottom: 1px solid #edf2f5; padding-bottom: 4px;
     }
     @media (max-width: 700px) { .span-2 { grid-column: span 1; } .detail-grid { grid-template-columns: 1fr; } }
+  
+    /* ── PHONE LAYOUT (screen only) ── */
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 16px 14px; }
+      .form-grid, .summary-grid { grid-template-columns: minmax(0, 1fr); }
+      .form-grid > *, .summary-grid > * { min-width: 0; }
+      .span-2 { grid-column: span 1; }
+      input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea { font-size: 16px; min-height: 44px; }
+      textarea { min-height: 84px; }
+      .btn { min-height: 42px; }
+      .btn-small { min-height: 38px; }
+      .summary-box .num { white-space: nowrap; }
+      .card-header > div { min-width: 0; flex: 1 1 100%; }
+      .modal-overlay { padding: 8px; }
+      .modal-box { padding: 16px 14px; margin: 8px 0; max-width: 100%; }
+      .modal-box.wide { max-width: 100%; }
+      .modal-actions { flex-wrap: wrap; }
+      .modal-actions .btn { flex: 1 1 auto; }
+      .detail-grid .v { white-space: nowrap; }
+      table:not(.inner-table) td:first-child { white-space: nowrap; }
+    }
   </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
