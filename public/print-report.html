@@ -409,11 +409,55 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
          screen", so on a phone the iframe shows just the statement instead
          of spending most of its small height on toolbars. */
       html.embedded-review .topbar, html.embedded-review .controls-bar { display: none; }
+      /* The paper is laid out at a fixed "design width" (--fit-width, measured
+         by fitReportToScreen() from the table's real min-content width) and
+         then scaled to the screen with transform: scale() - not CSS zoom,
+         whose layout behaviour differs between Chrome versions. Scaling
+         leaves the layout box at design size, so the wrapper's height
+         (--fit-h) is set to the scaled height to avoid a blank tail. */
+      body:not(.report-fullscreen) .report-wrapper { height: var(--fit-h, auto); }
       body:not(.report-fullscreen) .report-page {
         padding: 22px 14px 22px 20px;
         width: var(--fit-width, auto);
-        zoom: var(--fit-zoom, 1);
+        transform: scale(var(--fit-zoom, 1));
+        transform-origin: 0 0;
+        -webkit-text-size-adjust: none; text-size-adjust: none;
       }
+      body:not(.report-fullscreen) .siksik-container,
+      body:not(.report-fullscreen) .siksik-container:has(.fs-table.has-budget) { max-width: none; }
+      /* Column proportions: the numeric columns shrink-wrap their (nowrap)
+         content and the description column takes everything left, so
+         member-name detail rows are not squeezed into a sliver. */
+      body:not(.report-fullscreen) .fs-table .col-desc,
+      body:not(.report-fullscreen) .fs-table.has-budget .col-desc { width: auto; }
+      body:not(.report-fullscreen) .fs-table .col-sub,
+      body:not(.report-fullscreen) .fs-table .col-main,
+      body:not(.report-fullscreen) .fs-table .col-budget,
+      body:not(.report-fullscreen) .fs-table .col-pct,
+      body:not(.report-fullscreen) .fs-table.has-budget .col-sub,
+      body:not(.report-fullscreen) .fs-table.has-budget .col-main { width: 1%; }
+      body:not(.report-fullscreen) .fs-table .col-sub { padding-right: 6px; }
+      body:not(.report-fullscreen) .fs-table .col-budget,
+      body:not(.report-fullscreen) .fs-table .col-pct { padding-right: 4px; padding-left: 4px; }
+      body:not(.report-fullscreen) .fs-table td.col-desc { overflow-wrap: break-word; }
+      body:not(.report-fullscreen) .fs-table .indent-1 { padding-left: 10px !important; }
+      body:not(.report-fullscreen) .fs-table .indent-2 { padding-left: 20px !important; }
+      body:not(.report-fullscreen) .fs-table .indent-3,
+      body:not(.report-fullscreen) .fs-table td.col-desc[style*="padding-left:54px"] { padding-left: 30px !important; }
+      /* "General Fund accounts vs Ending Balance" verdict: it sits in the
+         (nowrap) Amount cell and would widen that whole column. With budget
+         columns on, lay it out in a fixed-width block whose negative margin
+         cancels its width for column sizing, so the text runs on across the
+         empty Budget/% cells to its right instead. Without them the same
+         zero-net-width trick floats it against the right edge. */
+      body:not(.report-fullscreen) .reconcile-row .col-main:has(> .reconcile-ok, > .reconcile-bad) { white-space: normal; text-align: left; }
+      body:not(.report-fullscreen) .fs-table.has-budget .reconcile-row .col-main > .reconcile-ok,
+      body:not(.report-fullscreen) .fs-table.has-budget .reconcile-row .col-main > .reconcile-bad { display: block; width: 19em; margin-right: -19em; }
+      body:not(.report-fullscreen) .fs-table:not(.has-budget) .reconcile-row .col-main > .reconcile-ok,
+      body:not(.report-fullscreen) .fs-table:not(.has-budget) .reconcile-row .col-main > .reconcile-bad { float: right; width: 15em; margin-left: -15em; text-align: right; }
+      body:not(.report-fullscreen) .obligation-table { font-size: 10px; }
+      body:not(.report-fullscreen) .obligation-table td { padding: 3px 3px; }
+      body:not(.report-fullscreen) .obligation-table td.ob-status { white-space: nowrap; }
     }
 
     /* ── REVIEW MODE (report-workflow.html embedded preview) ─────────────── */
@@ -1313,35 +1357,62 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   updateReportZoom();
 
   // Phone auto-fit (screen only). The paper is laid out at a "design width"
-  // wide enough for the whole table (budget columns included, amounts never
-  // wrapping), then scaled down with CSS zoom to the viewport width, so the
-  // full statement is visible as a scaled page (pinch to zoom in). The CSS
-  // reads --fit-width/--fit-zoom only inside a screen media query, so print
-  // and desktop are unaffected. Runs inside the report-workflow iframe too
-  // (its own viewport is what matters).
+  // (--fit-width) wide enough for the statement's REAL content, then scaled
+  // down to the viewport width with transform: scale() (--fit-zoom), so the
+  // whole statement is visible as a scaled page (pinch to zoom in). The CSS
+  // reads these vars only inside a screen media query, so print and desktop
+  // are unaffected. Runs inside the report-workflow iframe too.
+  //
+  // The design width is the table's min-content width, measured by briefly
+  // collapsing the paper so the table shrinks to the narrowest layout its
+  // nowrap columns, longest word and obligations sub-table allow. (Measuring
+  // table.scrollWidth at a preset width - the earlier approach - only ever
+  // reports the width the table was GIVEN, so it never noticed that real
+  // data overflowed it.) Because it measures rendered content, it adapts to
+  // long names, budget columns, the obligations table and larger system fonts.
+  const FIT_MIN_DESIGN_WIDTH = 480;
+  let fitRaf = 0, fitBusy = false;
   function fitReportToScreen() {
     const page = document.getElementById('report-page');
-    if (!page) return;
-    const root = document.documentElement.style;
-    const phone = window.matchMedia('(max-width: 600px)').matches && !document.body.classList.contains('report-fullscreen');
-    if (!phone) { root.removeProperty('--fit-width'); root.removeProperty('--fit-zoom'); return; }
-    // Measure at natural (unzoomed) size: let the paper grow to whatever the
-    // table needs, starting from a readable minimum.
-    root.setProperty('--fit-zoom', '1');
-    root.setProperty('--fit-width', '420px');
-    const table = document.getElementById('export-table');
-    const cs = getComputedStyle(page);
-    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-    let needed = 420;
-    if (table) needed = Math.max(needed, Math.ceil(table.scrollWidth + padX));
-    root.setProperty('--fit-width', needed + 'px');
-    const wrapper = page.parentElement;
-    const wcs = getComputedStyle(wrapper);
-    const avail = document.documentElement.clientWidth - parseFloat(wcs.paddingLeft) - parseFloat(wcs.paddingRight);
-    root.setProperty('--fit-zoom', Math.min(1, avail / needed).toFixed(4));
+    if (!page || fitBusy) return;
+    fitBusy = true;
+    try {
+      const root = document.documentElement.style;
+      const wrapper = page.parentElement;
+      const phone = window.matchMedia('(max-width: 600px)').matches && !document.body.classList.contains('report-fullscreen');
+      if (!phone) { ['--fit-width', '--fit-zoom', '--fit-h'].forEach(k => root.removeProperty(k)); return; }
+      root.setProperty('--fit-zoom', '1');
+      root.setProperty('--fit-h', 'auto');
+      root.setProperty('--fit-width', '1px');   // table collapses to min-content
+      const table = document.getElementById('export-table');
+      const cs = getComputedStyle(page);
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      let content = FIT_MIN_DESIGN_WIDTH;
+      if (table) content = Math.max(content, Math.ceil(table.getBoundingClientRect().width) + 4);
+      const needed = content + padX;
+      root.setProperty('--fit-width', needed + 'px');
+      const wcs = getComputedStyle(wrapper);
+      const avail = document.documentElement.clientWidth - parseFloat(wcs.paddingLeft) - parseFloat(wcs.paddingRight);
+      const zoom = Math.min(1, avail / needed);
+      root.setProperty('--fit-zoom', zoom.toFixed(4));
+      root.setProperty('--fit-h', Math.ceil(page.offsetHeight * zoom) + 'px');
+    } finally { fitBusy = false; }
   }
-  window.addEventListener('resize', fitReportToScreen);
-  window.addEventListener('orientationchange', fitReportToScreen);
+  function scheduleFit() {
+    if (fitRaf) cancelAnimationFrame(fitRaf);
+    fitRaf = requestAnimationFrame(() => { fitRaf = 0; fitReportToScreen(); });
+  }
+  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('orientationchange', () => setTimeout(scheduleFit, 200));
+  window.addEventListener('load', scheduleFit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleFit);
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', scheduleFit);
+  // Content changes (render, budget toggle, paper size, review panels opening)
+  // change the paper's height; re-fit whenever its box changes size.
+  if (window.ResizeObserver) {
+    const pageEl = document.getElementById('report-page');
+    if (pageEl) new ResizeObserver(scheduleFit).observe(pageEl);
+  }
 
   function getObligationPaidAmount(o) {
     if (o.paidAmount !== undefined) return Math.max(0, parseFloat(o.paidAmount) || 0);
