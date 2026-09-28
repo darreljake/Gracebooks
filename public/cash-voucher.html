@@ -173,6 +173,32 @@
       .voucher-print-slot { break-inside: avoid; page-break-inside: avoid; margin-bottom: 3mm; }
       @page { size: A4; margin: 10mm; }
     }
+  
+    /* ── PHONE LAYOUT (screen only; print untouched) ── */
+    @media screen and (max-width: 600px) { table.reg-table td .amt-val, .total-row span, .voucher-table td.amt, .voucher-table .total-amt { white-space: nowrap; } }
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+      .topbar h2 { font-size: 17px; }
+      .container { margin: 14px auto; padding: 0 10px; }
+      .card { padding: 16px 14px; }
+      .card-header { flex-wrap: wrap; gap: 8px; }
+      .form-group { min-width: 0; flex: 1 1 100%; }
+      .form-group input[type="text"], .form-group input[type="date"], .form-group input[type="number"], .form-group select,
+      .filter-bar input, .filter-bar select, .particulars-editor input,
+      .modal-content input:not([type=checkbox]):not([type=radio]):not([type=file]), .modal-content select, .modal-content textarea { font-size: 16px; min-height: 42px; }
+      .filter-bar { padding: 10px; }
+      .filter-bar .filter-group { min-width: 0; flex: 1 1 100%; }
+      .btn-save { min-height: 42px; }
+      .particulars-editor { display: block; overflow-x: auto; }
+      .particulars-editor input.part-amt { min-width: 110px; }
+      .modal-content { width: 100%; max-width: 100vw; padding: 14px; }
+      .modal-content.print-modal-content { max-width: 100vw; }
+      .voucher-block { min-width: 0; }
+      #voucher-preview { overflow-x: auto; }
+      .voucher-field .value { min-width: 0; }
+      .pad { max-width: 100%; }
+      table.reg-table td:first-child { white-space: nowrap; }
+    }
   </style>
 </head>
 <body>
