@@ -252,6 +252,21 @@
       </div>
     </div>
 
+    <div class="card" id="legacy-return-card" style="display:none;">
+      <div class="card-header">
+        <div>
+          <h3 id="legacy-return-title">Legacy cash advance return entries</h3>
+          <div class="muted">Older reconciliations recorded the unspent balance as an income "Cash Advance Return" entry on top of replacing the advance expense with the spent amount, so the returned cash was credited to the fund twice. The Print Report already ignores these. Remove each duplicate once you have reviewed it; nothing is deleted automatically.</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="inner-table">
+          <thead><tr><th>Date</th><th>Requester</th><th>Linked request</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+          <tbody id="legacy-return-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header">
         <div>
@@ -778,6 +793,7 @@
       requestRows.sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')));
       await flagDuplicateExpenses();
       renderRequests();
+      loadLegacyReturns();
     }
 
     async function submitRequest() {
@@ -966,6 +982,75 @@
     function isLegacyAutoReimbursement(row) {
       return isAutoReimbursement(row) && !hasReimbursementItems(row);
     }
+    // Legacy "Cash Advance Return" income docs (Treasurer only). See
+    // confirmReconcile(): the old code added one on top of replacing the
+    // placeholder expense, double-crediting the fund. Only an ITEMIZED
+    // reconcile replaced the placeholder; a paper reconcile (no
+    // liquidationItems) kept it, so its return is legitimate and only shown
+    // as "keep". Nothing here deletes anything without a confirm().
+    let legacyReturnRows = [];
+    function isReturnItemized(reqId) {
+      const req = requestRows.find(r => r.id === reqId);
+      return !!(req && Array.isArray(req.liquidationItems) && req.liquidationItems.length);
+    }
+    async function loadLegacyReturns() {
+      legacyReturnRows = [];
+      const card = document.getElementById('legacy-return-card');
+      if (!card) return;
+      card.style.display = 'none';
+      if (!roleIs('Treasurer')) return;
+      try {
+        const snaps = await Promise.all(['category', 'budgetCategory', 'type'].map(f =>
+          db.collection('income').where(f, '==', 'Cash Advance Return').get()));
+        const byId = new Map();
+        snaps.forEach(sn => sn.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() })));
+        legacyReturnRows = [...byId.values()].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      } catch (error) {
+        console.warn('Unable to load legacy cash advance returns', error);
+        return;
+      }
+      renderLegacyReturns();
+    }
+    function renderLegacyReturns() {
+      const card = document.getElementById('legacy-return-card');
+      const rows = legacyReturnRows.map(d => ({ d, dup: !!d.linkedLiquidationRequestId && isReturnItemized(d.linkedLiquidationRequestId) }));
+      const dupCount = rows.filter(r => r.dup).length;
+      if (!dupCount) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+      document.getElementById('legacy-return-title').textContent = `Legacy cash advance return entries (${dupCount}) double-count returned cash`;
+      document.getElementById('legacy-return-body').innerHTML = rows.map(({ d, dup }) => {
+        const req = requestRows.find(r => r.id === d.linkedLiquidationRequestId);
+        const reqLabel = req ? `${escapeHtml(req.title || req.id)}` : (d.linkedLiquidationRequestId ? escapeHtml(d.linkedLiquidationRequestId) : '<span class="muted">not linked</span>');
+        const who = (req && (req.requesterName || req.requesterRole)) || String(d.member || '').replace(/^Unused cash advance returned - /, '');
+        return `<tr>
+          <td>${escapeHtml(d.date || '')}</td>
+          <td>${escapeHtml(who)}</td>
+          <td>${reqLabel}</td>
+          <td class="amount">₱${fmt(d.amount)}</td>
+          <td>${dup
+            ? `<button class="btn btn-small btn-danger" onclick="removeLegacyReturn('${escapeHtml(d.id)}')">Remove duplicate return entry</button>`
+            : `<span class="muted">${d.linkedLiquidationRequestId ? 'Keep — paper reconcile (no itemized liquidation), the advance expense was not replaced, so this return is legitimate' : 'Keep — not linked to a request, so it cannot be verified as a duplicate'}</span>`}</td>
+        </tr>`;
+      }).join('');
+    }
+    async function removeLegacyReturn(id) {
+      if (!roleIs('Treasurer')) return;
+      const entry = legacyReturnRows.find(d => d.id === id);
+      if (!entry || !isReturnItemized(entry.linkedLiquidationRequestId)) return;
+      if (!confirm(`Remove this duplicate return entry of ₱${fmt(entry.amount)} dated ${entry.date || ''}?\n\nThe advance's expense was already reduced to the amount actually spent, so this income entry credits the fund a second time. This cannot be undone (a copy is kept in the audit log).`)) return;
+      try {
+        const ref = db.collection('income').doc(id);
+        const snap = await ref.get();
+        const before = snap.exists ? snap.data() : entry;
+        await ref.delete();
+        await writeAuditLog('income_deleted', 'income', id, before, null,
+          `Removed duplicate legacy cash advance return of ₱${fmt(before.amount)} (${before.member || ''}) linked to request ${entry.linkedLiquidationRequestId}: the advance expense was already reduced to the spent amount, so the return double-counted the fund`);
+        await loadLegacyReturns();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
     // Legacy auto-reimbursements already released WITH an expense were
     // double-counted by the old code. Map of request id -> duplicate expense
     // amount, filled (Treasurer only) by flagDuplicateExpenses().
@@ -1806,7 +1891,7 @@
       const balance = Number(row.amount || 0) - spent;
       document.getElementById('reconcile-summary').innerHTML = row.liquidationSubmittedAt
         ? `Released: <strong>₱${fmt(row.amount)}</strong> · Liquidated: <strong>₱${fmt(spent)}</strong> · ` +
-          (balance > 0.004 ? `Unspent, will be returned to fund: <strong>₱${fmt(balance)}</strong>`
+          (balance > 0.004 ? `Unspent: <strong>₱${fmt(balance)}</strong> — returned to the fund silently (the advance expense is reduced to the amount actually spent; no income entry is created)`
             : balance < -0.004 ? `Overspent, additional reimbursement owed: <strong>₱${fmt(Math.abs(balance))}</strong>`
             : '<strong>Fully liquidated — no balance.</strong>')
         : `Released: <strong>₱${fmt(row.amount)}</strong> · No itemized liquidation submitted in the system — confirm the paper liquidation before reconciling.`;
@@ -1949,7 +2034,8 @@
         const now = new Date().toISOString();
         const fund = row.releasedFund || 'cash-hand';
         const classifiedExpenseIds = [];
-        let returnedIncomeId = null;
+        let returnedIncomeId = null; // legacy field; no return income is created any more
+        let returnedAmount = 0;
         let topupRequestId = null;
 
         if (categorizedItems.length) {
@@ -2033,32 +2119,20 @@
           }
 
           if (balance > 0.004) {
-            const incomePayload = {
-              amount: balance,
-              member: `Unused cash advance returned - ${row.requesterName || row.requesterRole || ''}`,
-              // type: 'transfer' is the app's existing convention for a
-              // balance-only movement (see the Transfer Funds feature in
-              // financial-overview.html): it still credits the fund
-              // balance there (isIncomeTransfer), but reports.html,
-              // print-report.html, budget-vs-actual.html, and
-              // income-log.html all already exclude type==='transfer'
-              // from their income totals. An unspent cash advance
-              // returning isn't new income, so it should only move the
-              // fund balance, not inflate reported income anywhere.
-              type: 'transfer',
-              category: 'Cash Advance Return',
-              budgetCategory: 'Cash Advance Return',
-              payment: fund,
-              targetAccount: fund,
-              targetAccId: fund,
-              date: now.slice(0, 10),
-              linkedLiquidationRequestId: row.id,
-              postedAt: now
-            };
-            const incomeRef = await db.collection('income').add(incomePayload);
-            returnedIncomeId = incomeRef.id;
-            await writeAuditLog('income_created_from_liquidation_return', 'income', incomeRef.id, null, incomePayload,
-              `Recorded ₱${fmt(balance)} unused cash advance returned by ${row.requesterName || row.requesterRole || ''}`);
+            // The unspent balance is returned to the fund SILENTLY - no
+            // income entry. The placeholder expense (full advance) was just
+            // deleted and replaced by item expenses for the spent amount
+            // only, which already restores the unspent money to the fund's
+            // records. An extra type:'transfer' "Cash Advance Return" income
+            // doc used to be added here as well; Financial Overview adds
+            // income-transfers to the account balance, so that credited the
+            // fund a second time (advance 10,000, spent 8,000: records showed
+            // -6,000 instead of the true -8,000) and Print Report counted it
+            // as a transfer into the General Fund. returnedAmount below keeps
+            // the figure for display and audit.
+            returnedAmount = balance;
+            await writeAuditLog('liquidation_unspent_returned', 'liquidationRequests', row.id, null, { returnedAmount: balance },
+              `unspent ₱${fmt(balance)} returned to fund (no income entry — placeholder expense reduced to spent amount) for "${row.title || row.id}"`);
           } else if (balance < -0.004) {
             // The employee spent more than what was released. Rather than
             // silently paying this out as a raw expense, auto-create a
@@ -2146,6 +2220,7 @@
             : categorizedItems;
           after.classifiedExpenseIds = classifiedExpenseIds;
           after.returnedIncomeId = returnedIncomeId;
+          after.returnedAmount = returnedAmount;
           after.topupRequestId = topupRequestId;
           after.linkedExpenseId = null;
         }
@@ -2282,8 +2357,8 @@
           </table>
         </div>` : '';
       const balance = Number(row.amount || 0) - Number(row.liquidationTotal || 0);
-      const settlementHtml = row.status === 'Reconciled' && row.returnedIncomeId
-        ? `Unspent balance of <strong>₱${fmt(balance)}</strong> was recorded as returned to the fund.`
+      const settlementHtml = row.status === 'Reconciled' && (row.returnedIncomeId || Number(row.returnedAmount) > 0)
+        ? `Unspent balance of <strong>₱${fmt(balance)}</strong> was returned to the fund (no income entry; the advance expense was reduced to the amount spent).`
         : row.status === 'Reconciled' && row.topupRequestId
           ? `An additional reimbursement request for <strong>₱${fmt(Math.abs(balance))}</strong> was automatically created for the overspent amount — check the requests list for its release status.`
           : '';
