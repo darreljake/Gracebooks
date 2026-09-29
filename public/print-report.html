@@ -1479,8 +1479,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // isGeneralFundAccount() reads the Treasurer's own per-account setting
     // (Financial Overview > Beginning Balances), so which of the six
     // FINANCIAL_ACCOUNTS count as "General Fund" here is configurable, not
-    // hardcoded - Building/Mission/Investment default to General Fund unless
-    // the Treasurer explicitly excludes them.
+    // hardcoded - Mission/Investment default to General Fund unless the
+    // Treasurer explicitly excludes them. The Building Fund is the exception:
+    // it is treated as a separate fund with its own reporting, so it is ALWAYS
+    // restricted here regardless of that setting (isGeneralFundAccount()), and
+    // any income/expense that is Building Fund money by explicit account OR by
+    // its category/type text (isBuildingFundEntry()) is kept out of the General
+    // Fund Receipts/Disbursements and reported only under Restricted Fund
+    // Activity. Building Fund cash that physically sits in a General Fund
+    // account (posted to / paid from cash-hand or cash-bank) is carried as its
+    // own reconciling item - see buildingFundHeldInGfThrough().
     const gfAccounts = FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id));
     const restrictedAccounts = FINANCIAL_ACCOUNTS.filter(a => !isGeneralFundAccount(a.id));
     const gfIds = gfAccounts.map(a => a.id);
@@ -1535,9 +1543,36 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       });
       return withheld - remitted;
     }
+    // Building Fund money held in General Fund accounts: a Building Fund
+    // entry posted to (or paid from) a GENERAL FUND account (cash-hand,
+    // cash-bank...) moves that account's true cash balance but is NOT part
+    // of this statement's General Fund receipts/disbursements (it is reported
+    // under Restricted Fund Activity instead). Exactly like the payroll
+    // withholdings above, that cash is earmarked rather than free General
+    // Fund cash, so the cumulative net (Building Fund income on GF accounts
+    // minus Building Fund expenses on GF accounts, expenses at the same gross
+    // d.amount the period math uses) is subtracted from BOTH the beginning
+    // balance and the reconciliation comparison point. Same adjustment at
+    // both ends, so begBal + netChange + netTransferGF still equals
+    // gfTrueEndBalance - withholdings - buildingHeld, and Ending Balance
+    // carries over into the next period's Beginning Balance.
+    function buildingFundHeldInGfThrough(throughDate) {
+      let held = 0;
+      incomeData.forEach(d => {
+        if (!d.date || new Date(d.date) > throughDate) return;
+        if (isBuildingFundEntry(d) && isGeneralFundAccount(getIncomeAccountId(d))) held += parseFloat(d.amount || 0);
+      });
+      expenseData.forEach(d => {
+        if (!d.date || new Date(d.date) > throughDate) return;
+        if (isBuildingFundEntry(d) && isGeneralFundAccount(getExpenseAccountId(d))) held -= parseFloat(d.amount || 0);
+      });
+      return held;
+    }
     const outstandingWithholdingsBeforePeriod = outstandingWithholdingsThrough(dayBeforeStart);
     const outstandingWithholdingsAtEnd = outstandingWithholdingsThrough(periodEndDate);
-    const begBal = sumIds(beginningAccountBalances, gfIds) - outstandingWithholdingsBeforePeriod;
+    const buildingHeldBeforePeriod = buildingFundHeldInGfThrough(dayBeforeStart);
+    const buildingHeldAtEnd = buildingFundHeldInGfThrough(periodEndDate);
+    const begBal = sumIds(beginningAccountBalances, gfIds) - outstandingWithholdingsBeforePeriod - buildingHeldBeforePeriod;
 
     // ── Period pools: real (non-transfer) income/expense records ────────────
     // Kept whole (both General Fund and restricted) so the new Restricted
@@ -1555,10 +1590,10 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       return isAnnual ? dt.getFullYear() === year : (dt.getFullYear() === year && dt.getMonth() === month);
     });
 
-    const fInc = periodIncome.filter(d => isGeneralFundAccount(getIncomeAccountId(d)));
-    const fExp = periodExpense.filter(d => isGeneralFundAccount(getExpenseAccountId(d)));
-    const restrictedIncomeRows = periodIncome.filter(d => !isGeneralFundAccount(getIncomeAccountId(d)));
-    const restrictedExpenseRows = periodExpense.filter(d => !isGeneralFundAccount(getExpenseAccountId(d)));
+    const fInc = periodIncome.filter(isGeneralFundIncome);
+    const fExp = periodExpense.filter(isGeneralFundExpense);
+    const restrictedIncomeRows = periodIncome.filter(d => !isGeneralFundIncome(d));
+    const restrictedExpenseRows = periodExpense.filter(d => !isGeneralFundExpense(d));
 
     // Item 7 (monthly YTD % Used): a separate Year-to-Date pool (January
     // through the selected month), General-Fund-basis like fInc/fExp, used
@@ -1569,12 +1604,12 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       if (!d.date) return false;
       const dt = new Date(d.date);
       return dt.getFullYear() === year && dt.getMonth() <= month;
-    }).filter(d => isGeneralFundAccount(getIncomeAccountId(d)));
+    }).filter(isGeneralFundIncome);
     const ytdExpensePool = isAnnual ? fExp : expenseData.filter(d => {
       if (!d.date) return false;
       const dt = new Date(d.date);
       return dt.getFullYear() === year && dt.getMonth() <= month;
-    }).filter(d => isGeneralFundAccount(getExpenseAccountId(d)));
+    }).filter(isGeneralFundExpense);
     const ytdTotalIn = ytdIncomePool.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
     const ytdTotalOut = ytdExpensePool.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
 
@@ -1636,7 +1671,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // should always reconcile to zero - a genuine mismatch here (red ✗)
     // means something outside this accounting (a data issue, a
     // misclassified account, etc.) needs investigating.
-    const reconcileDiff = (gfTrueEndBalance - outstandingWithholdingsAtEnd) - endBal;
+    const reconcileDiff = (gfTrueEndBalance - outstandingWithholdingsAtEnd - buildingHeldAtEnd) - endBal;
     const reconcileIsClean = Math.abs(reconcileDiff) < 0.01;
 
     const periodObligations = obligationsData.filter(o => {
@@ -1729,8 +1764,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // line above for the mirror-image General Fund side of the same
     // transfers).
     const restrictedActivityRows = restrictedAccounts.map(a => {
-      const realInAmt = restrictedIncomeRows.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
-      const realOutAmt = restrictedExpenseRows.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const realInAmt = restrictedIncomeRows.filter(d => getIncomeReportAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const realOutAmt = restrictedExpenseRows.filter(d => getExpenseReportAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
       const transferInAmt = periodTransferIn.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
       const transferOutAmt = periodTransferOut.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
       const transferNet = transferInAmt - transferOutAmt;
@@ -1750,8 +1785,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       const rk = 'rst|' + row.id;
       const entries = {
         name: row.name,
-        income: restrictedIncomeRows.filter(d => getIncomeAccountId(d) === row.id),
-        expense: restrictedExpenseRows.filter(d => getExpenseAccountId(d) === row.id),
+        income: restrictedIncomeRows.filter(d => getIncomeReportAccountId(d) === row.id),
+        expense: restrictedExpenseRows.filter(d => getExpenseReportAccountId(d) === row.id),
         transferIn: periodTransferIn.filter(d => getIncomeAccountId(d) === row.id),
         transferOut: periodTransferOut.filter(d => getExpenseAccountId(d) === row.id)
       };
@@ -1805,7 +1840,14 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // catKeyToSub:  maps the raw category key -> canonical sub name
     const catKeyToMain = {};
     const catKeyToSub  = {};
-    const expAllKeys = accountOrder.expense || [];
+    // Budget keys naming the Building Fund are left out of both sides: it is
+    // a separate fund with its own reporting, so its budget line must not
+    // appear in (or inflate the Budget/% Used columns of) the General Fund
+    // statement any more than its actuals do.
+    const isBuildingFundKey = k => String(k || '').toLowerCase().includes('building fund');
+    const gfExpenseKeys = (accountOrder.expense || []).filter(k => !isBuildingFundKey(k));
+    const gfIncomeKeys = (accountOrder.income || []).filter(k => !isBuildingFundKey(k));
+    const expAllKeys = gfExpenseKeys;
     // Helper: resolve correct main group for a key given all sibling keys
     function resolveMainGroup(k, allKeys) {
       if (!k.includes(' - ')) return k;
@@ -1841,7 +1883,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // actuals below are grouped into.
     const incKeyToMain = {};
     const incKeyToSub = {};
-    (accountOrder.income || []).forEach(k => {
+    gfIncomeKeys.forEach(k => {
       let parts = k.split(' - ');
       let m = formatCategoryName(parts[0].trim());
       let s = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : 'Others';
@@ -1856,7 +1898,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // actual income would.
     const incBudgetMainTotals = {};
     const incBudgetSubTotals = {};
-    (accountOrder.income || []).forEach(k => {
+    gfIncomeKeys.forEach(k => {
       const main = incKeyToMain[k];
       const sub = incKeyToSub[k];
       const amt = budgetForIncomeKey(k);
@@ -2340,8 +2382,21 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           ${emptyBudgetCells}
         </tr>`
       : '';
+    const buildingHeldLineHtml = Math.abs(buildingHeldAtEnd) >= 0.01
+      ? `
+        <tr class="reconcile-row">
+          <td class="col-desc">Building Fund money held in General Fund accounts (cumulative)</td>
+          <td class="col-sub"></td>
+          <td class="col-main ${buildingHeldAtEnd < 0 ? 'amount-negative' : ''}">₱ ${fmt(buildingHeldAtEnd)}</td>
+          ${emptyBudgetCells}
+        </tr>`
+      : '';
+    const reconcileNetOf = [
+      Math.abs(outstandingWithholdingsAtEnd) >= 0.01 ? 'payroll withholdings held for remittance' : '',
+      Math.abs(buildingHeldAtEnd) >= 0.01 ? 'Building Fund money held' : ''
+    ].filter(Boolean).join(' and ');
     const reconcileCheckHtml = reconcileIsClean
-      ? `<span class="reconcile-ok">✓ Matches${Math.abs(outstandingWithholdingsAtEnd) >= 0.01 ? ' (net of payroll withholdings held for remittance)' : ''}</span>`
+      ? `<span class="reconcile-ok">✓ Matches${reconcileNetOf ? ` (net of ${reconcileNetOf})` : ''}</span>`
       : `<span class="reconcile-bad">✗ Off by ₱ ${fmt(Math.abs(reconcileDiff))}</span>`;
 
     // Item 7: Total Budget / % Used on the Total Cash Receipts / Total
@@ -2488,6 +2543,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
             ${emptyBudgetCells}
           </tr>
           ${reconcileLineHtml}
+          ${buildingHeldLineHtml}
           <tr class="reconcile-row">
             <td class="col-desc">General Fund accounts vs Ending Balance</td>
             <td class="col-sub"></td>
@@ -2767,8 +2823,47 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     return KNOWN_ACCOUNT_IDS.has(raw) ? raw : '';
   }
 
+  // The Building Fund is ALWAYS a restricted fund in this statement, whatever
+  // the Treasurer's per-account "General Fund" setting says: it is reported
+  // separately (Restricted Fund Activity) and never mixed into the General
+  // Fund Receipts/Disbursements. Every other account still follows the
+  // setting (default: General Fund).
   function isGeneralFundAccount(id) {
+    if (id === 'building') return false;
     return generalFundAccounts[id] !== false;
+  }
+
+  // Is this income/expense entry Building Fund money? True for an explicit
+  // 'building' account, or when its budgetCategory/type/category names the
+  // Building Fund (same "building fund" text test budget-vs-actual.html's
+  // isBuildingFund() uses, applied to each field so it doesn't matter which
+  // one carries it). Used wherever an income/expense ENTRY is classified as
+  // General Fund vs restricted - the account alone is not enough, because a
+  // Building Fund entry can be posted to (or paid from) cash-on-hand/bank.
+  // Fund transfers (type:'transfer') are not classified by this: they are
+  // pure account-to-account movements, decided by their account alone.
+  function isBuildingFundEntry(d) {
+    if (!d) return false;
+    if ((normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount)) === 'building') return true;
+    return [d.budgetCategory, d.type, d.category].some(v => String(v || '').toLowerCase().includes('building fund'));
+  }
+  function isGeneralFundIncome(d) {
+    return !isBuildingFundEntry(d) && isGeneralFundAccount(getIncomeAccountId(d));
+  }
+  function isGeneralFundExpense(d) {
+    return !isBuildingFundEntry(d) && isGeneralFundAccount(getExpenseAccountId(d));
+  }
+  // The account a restricted-side entry is REPORTED under in Restricted Fund
+  // Activity. Building Fund money sitting in a General Fund account (e.g.
+  // cash-hand) is reported under 'building'; anything else stays under the
+  // account it was actually posted to.
+  function getIncomeReportAccountId(d) {
+    const id = getIncomeAccountId(d);
+    return (isBuildingFundEntry(d) && isGeneralFundAccount(id)) ? 'building' : id;
+  }
+  function getExpenseReportAccountId(d) {
+    const id = getExpenseAccountId(d);
+    return (isBuildingFundEntry(d) && isGeneralFundAccount(id)) ? 'building' : id;
   }
 
   function getGeneralFundBeginningBalance() {
