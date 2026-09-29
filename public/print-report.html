@@ -1111,9 +1111,46 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     render();
   });
 
-  db.collection('income').get().then(s => {
+  // ── Legacy "Cash Advance Return" income docs ───────────────────────────
+  // Before liquidation-reimbursements.html stopped creating them, an
+  // itemized reconcile of an UNDERSPENT cash advance (a) deleted the
+  // release-time placeholder expense for the full advance and replaced it
+  // with item expenses for the spent amount only - which already restores the
+  // unspent money to the fund - and then (b) ALSO added a type:'transfer'
+  // "Cash Advance Return" income doc for the unspent balance, crediting the
+  // fund a second time (financial-overview.html adds income-transfers to the
+  // account balance). Per the owner the return must be silent: not income,
+  // not shown here. So such a doc is dropped from EVERY income-side pool in
+  // this report (incomeData, transfer netting, account balances used by the
+  // reconciliation, Restricted Fund Activity, review panels, Excel), which
+  // keeps both sides of the reconciliation on the same basis.
+  // A return whose linked request was reconciled on paper (no
+  // liquidationItems, placeholder expense kept) is legitimate and stays.
+  const CASH_ADVANCE_RETURN_LABEL = 'cash advance return';
+  const PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
+  let rawIncomeDocs = null;            // every income doc as loaded
+  let liquidationItemizedById = null;  // Map reqId -> true/false once liquidationRequests were readable
+  function isCashAdvanceReturnDoc(d) {
+    return !!d && [d.category, d.budgetCategory, d.type].some(v => String(v || '').trim().toLowerCase() === CASH_ADVANCE_RETURN_LABEL);
+  }
+  // True when the return's linked request was reconciled with itemized
+  // expenses (so the placeholder was replaced and the return double-counts).
+  function requestWasItemized(reqId) {
+    if (!reqId) return false;
+    if (liquidationItemizedById) return liquidationItemizedById.get(reqId) === true;
+    // liquidationRequests not readable for this role (e.g. Finance
+    // Committee): infer from expenses - an itemized reconcile leaves
+    // categorized expenses linked to the request, a paper one only leaves the
+    // placeholder.
+    return allExpenseData.some(e => e.linkedLiquidationRequestId === reqId && e.category !== PLACEHOLDER_ADVANCE_CATEGORY);
+  }
+  function isDuplicateCashAdvanceReturn(d) {
+    return isCashAdvanceReturnDoc(d) && requestWasItemized(d.linkedLiquidationRequestId);
+  }
+  function rebuildIncomeData() {
+    if (!rawIncomeDocs) return;
     // Keep the complete income pool for Financial Overview account balances.
-    allIncomeData = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => !d.isSpecialProject);
+    allIncomeData = rawIncomeDocs.filter(d => !d.isSpecialProject && !isDuplicateCashAdvanceReturn(d));
     incomeData = allIncomeData.filter(d => {
       // Skip transfers - a fund transfer is a cash movement between
       // accounts, not real income; generateReportHTML() nets transfers
@@ -1129,7 +1166,25 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       if (d.isSpecialProject) return false;
       return true;
     });
+  }
+
+  db.collection('income').get().then(s => {
+    rawIncomeDocs = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    rebuildIncomeData();
     render();
+  });
+
+  // One-time read, only to tell itemized reconciles from paper ones (see
+  // above). Roles that cannot read liquidationRequests fall back to the
+  // expense-based inference in requestWasItemized().
+  db.collection('liquidationRequests').get().then(s => {
+    liquidationItemizedById = new Map();
+    s.forEach(doc => { const d = doc.data() || {}; liquidationItemizedById.set(doc.id, Array.isArray(d.liquidationItems) && d.liquidationItems.length > 0); });
+    rebuildIncomeData();
+    render();
+  }).catch(err => {
+    console.warn('liquidationRequests not readable; inferring itemized reconciles from expenses', err && err.message);
+    liquidationItemizedById = null;
   });
 
   db.collection('expenses').get().then(s => {
@@ -1142,6 +1197,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     // of Cash on Hand / Cash in Bank (see helper above); allExpenseData keeps the
     // complete pool so account balances and the project report stay accurate.
     expenseData = allExpenseData.filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment' && isReportableSpecialProjectExpense(d));
+    rebuildIncomeData(); // the expense-based fallback in requestWasItemized() needs these
     render();
   });
 
