@@ -1088,8 +1088,11 @@
           const receiptPool = source ? (source.liquidationReceipts || []).concat(source.supportingReceipts || []) : [];
           const payee = row.requesterName || row.requesterRole || '';
           for (const it of items) {
+            // Dated on the item's own (receipt) date; the release date is only
+            // a fallback for an item with no usable date.
+            const itemDate = /^\d{4}-\d{2}-\d{2}$/.test(String(it.date || '').slice(0, 10)) ? String(it.date).slice(0, 10) : now.slice(0, 10);
             const payload = {
-              date: now.slice(0, 10),
+              date: itemDate,
               category: it.category,
               budgetCategory: it.category,
               sub: it.description || '',
@@ -1103,8 +1106,8 @@
               sourceLiquidationRequestId: row.sourceLiquidationRequestId,
               liquidationItemIndex: it.index,
               liquidationSplit: 'reimburse',
-              budgetYear: now.slice(0, 4),
-              expenseMonth: now.slice(0, 7),
+              budgetYear: itemDate.slice(0, 4),
+              expenseMonth: itemDate.slice(0, 7),
               postedAt: now,
               createdAt: now,
               updatedAt: now
