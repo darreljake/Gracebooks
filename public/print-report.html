@@ -256,12 +256,12 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
     /* Miscellaneous (Unbudgeted) helper note + entry counts */
     .misc-note { color: #888; font-size: 10.5px; font-style: italic; }
-    .entry-count { color: #999; font-size: 10px; font-weight: 400; }
+    .entry-count { color: #6b6b6b; font-size: 10.5px; font-weight: 400; }
 
     /* Church Obligations compact sub-table (Item 6) */
-    .obligation-table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 2px 0 4px; }
-    .obligation-table td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: middle; }
-    .obligation-table .obligation-header-row td {
+    .obligation-table, .unbudgeted-table { width: 100%; border-collapse: collapse; font-size: 11px; margin: 2px 0 4px; }
+    .obligation-table td, .unbudgeted-table td { padding: 3px 5px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    .obligation-table .obligation-header-row td, .unbudgeted-table .unbudgeted-header-row td {
       font-weight: 700; font-size: 10px; text-transform: uppercase; color: var(--red);
       border-bottom: 1px solid var(--red); padding-top: 4px !important; padding-bottom: 4px !important;
     }
@@ -270,6 +270,9 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     }
     .obligation-table td.ob-num { text-align: right; }
     .obligation-table td.ob-status { text-align: center; white-space: nowrap; }
+    .unbudgeted-table td.ub-num { text-align: right; white-space: nowrap; }
+    .unbudgeted-table td.ub-side { white-space: nowrap; }
+    .unbudgeted-note { color: #888; font-size: 10.5px; font-style: italic; padding: 2px 0 4px; }
 
     .section-header td {
       font-weight: 700;
@@ -353,7 +356,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       .sig-section      { break-inside: avoid; page-break-inside: avoid;
                           break-before: auto; page-break-before: auto; }
       .rpt-footer       { break-inside: avoid; page-break-inside: avoid; }
-      .obligation-table { break-inside: avoid; page-break-inside: avoid; }
+      .obligation-table, .unbudgeted-table { break-inside: avoid; page-break-inside: avoid; }
 
       /* ── Font scaling per paper size ── */
       /* Long bond — default, comfortable */
@@ -375,7 +378,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       .fs-table.has-budget            { font-size: 11px; }
       .fs-table.has-budget .col-budget,
       .fs-table.has-budget .col-pct   { font-size: 10px; }
-      .obligation-table                { font-size: 10px; }
+      .obligation-table, .unbudgeted-table { font-size: 10px; }
     }
 
     /* ── PHONE LAYOUT (screen only - print output is untouched) ───────────
@@ -455,8 +458,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       body:not(.report-fullscreen) .fs-table.has-budget .reconcile-row .col-main > .reconcile-bad { display: block; width: 19em; margin-right: -19em; }
       body:not(.report-fullscreen) .fs-table:not(.has-budget) .reconcile-row .col-main > .reconcile-ok,
       body:not(.report-fullscreen) .fs-table:not(.has-budget) .reconcile-row .col-main > .reconcile-bad { float: right; width: 15em; margin-left: -15em; text-align: right; }
-      body:not(.report-fullscreen) .obligation-table { font-size: 10px; }
-      body:not(.report-fullscreen) .obligation-table td { padding: 3px 3px; }
+      body:not(.report-fullscreen) .obligation-table, body:not(.report-fullscreen) .unbudgeted-table { font-size: 10px; }
+      body:not(.report-fullscreen) .obligation-table td, body:not(.report-fullscreen) .unbudgeted-table td { padding: 3px 3px; }
       body:not(.report-fullscreen) .obligation-table td.ob-status { white-space: nowrap; }
     }
 
@@ -942,6 +945,63 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   // survive rather than being re-derived from a lowercased key.
   function normalizeGroupKey(s) {
     return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  // ── Miscellaneous (Unbudgeted) labelling helpers ───────────────────────
+  // The unbudgeted lines are what the Finance Committee reads when deciding
+  // next year's budget, so a line must say WHAT it was. Generic words
+  // ("Source of Funds", "Not in the budget / Miscellaneous", "Others"...)
+  // are not labels; the label is the most specific human text on the entry.
+  const MISC_GENERIC_PHRASES = new Set(['source of funds', 'occasional offering', 'special offering', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'n a', 'na', 'none', 'general', '']);
+  const MISC_GENERIC_WORDS = new Set(['source', 'of', 'funds', 'occasional', 'offering', 'special', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'na', 'n', 'a', 'none', 'general']);
+  // Strips "not in (the) budget" and edge punctuation; returns '' when what is
+  // left is only generic words (case/punctuation-insensitive).
+  function cleanMiscLabel(text) {
+    const cleaned = String(text || '').replace(/not in( the)? budget/ig, ' ')
+      .replace(/^[\s\-\:\/\.,;]+|[\s\-\:\/\.,;]+$/g, '').replace(/\s+/g, ' ').trim();
+    const norm = cleaned.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (MISC_GENERIC_PHRASES.has(norm)) return '';
+    if (norm.split(' ').every(w => MISC_GENERIC_WORDS.has(w))) return '';
+    return cleaned;
+  }
+  // First candidate that survives cleanMiscLabel(); a candidate may be a
+  // plain string (formatted like every other category label) or
+  // {text, raw:true} for a person's name, which is shown exactly as stored.
+  function pickMiscLabel(candidates, fallback) {
+    for (const cand of candidates) {
+      const raw = cand && typeof cand === 'object';
+      const cleaned = cleanMiscLabel(raw ? cand.text : cand);
+      if (cleaned) return raw ? cleaned : formatCategoryName(cleaned);
+    }
+    return fallback;
+  }
+  const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // "Mar, Jun, Sep" for an annual report; "5, 19 Sep" for a monthly one.
+  function miscWhen(entries, isAnnual) {
+    const parsed = entries.map(e => String(e.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/)).filter(Boolean)
+      .map(m => ({ mo: parseInt(m[2], 10) - 1, day: parseInt(m[3], 10) }));
+    if (!parsed.length) return '';
+    if (isAnnual) {
+      return [...new Set(parsed.map(p => p.mo))].sort((a, b) => a - b).map(mo => SHORT_MONTHS[mo]).join(', ');
+    }
+    const days = [...new Set(parsed.map(p => p.day))].sort((a, b) => a - b);
+    return `${days.join(', ')} ${SHORT_MONTHS[parsed[0].mo]}`;
+  }
+  // The single entry's payer/payee when it adds information beyond the label.
+  function miscSingleExtra(entries, label, who) {
+    if (entries.length !== 1) return '';
+    const name = String(who || '').trim();
+    if (!name || name.toLowerCase() === 'general collection') return '';
+    return normalizeGroupKey(name) === normalizeGroupKey(label) ? '' : name;
+  }
+  function miscDetailText(entries, isAnnual, extra) {
+    const parts = [`${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`];
+    const when = miscWhen(entries, isAnnual);
+    if (when) parts.push(when);
+    if (extra) parts.push(extra);
+    return parts.join(' · ');
   }
 
   // Adds `amt` to a Miscellaneous-style group keyed by the case/whitespace
@@ -2004,22 +2064,15 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
         finalMain = MISC_MAIN;
 
-        // Label source order (deterministic, most-structured field first):
-        // the budget category text, then the income type, then free-text
-        // notes/details last - notes previously went first, which produced
-        // an unpredictable label depending on what the Treasurer happened to
-        // type that day.
-        let candidates = [budgetCat, mainType, details];
-        let subName = 'Other Unbudgeted Income';
-
-        for (let cand of candidates) {
-           if (!cand) continue;
-           let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
-           if (cleaned && cleaned.toLowerCase() !== 'others' && cleaned.toLowerCase() !== 'miscellaneous') {
-               subName = formatCategoryName(cleaned);
-               break;
-           }
-        }
+        // Label source order: the most specific human text. A budget
+        // category that says something ("Not in the budget - Youth Camp")
+        // wins; the generic "Not in the budget / Miscellaneous" is skipped,
+        // and so are generic words like "Source of Funds". Then budgetDetails,
+        // notes, the member/payer name (unless "General Collection"), and the
+        // generic income type only as the very last resort.
+        const memberName = resolveMemberName(d);
+        let subName = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: memberName }, mainType], '');
+        if (!subName) subName = 'Other Unbudgeted Income (no details recorded)';
         sub = subName;
 
       } else {
@@ -2048,7 +2101,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           finalMain = MISC_MAIN;
           // Same label source order as above: budget category text first,
           // notes/details last.
-          sub = budgetCat ? formatCategoryName(budgetCat) : formatCategoryName(details || 'Other Unbudgeted Income');
+          sub = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: resolveMemberName(d) }, mainType], 'Other Unbudgeted Income (no details recorded)');
       }
 
       if (!incGroups[finalMain]) incGroups[finalMain] = { t: 0, s: {}, sLabels: {} };
@@ -2091,6 +2144,9 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     }
 
     let incRows = '';
+    // Annual only: every Miscellaneous (Unbudgeted) line, both sides, for the
+    // "Unbudgeted items to consider for next year's budget" block.
+    const unbudgetedItems = [];
     const sortedIncMainKeys = Object.keys(incGroups).sort((a, b) => {
        if (a === MISC_MAIN) return 1;
        if (b === MISC_MAIN) return -1;
@@ -2137,7 +2193,13 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         // main-category total above), so it's never stacked in the same
         // column as the member-detail amounts below - see the CLAUDE.md
         // note on report-line "levelling" for why.
-        const entryCountHtml = isMisc ? ` <span class="entry-count">(${g.s[subKey].cnt} ${g.s[subKey].cnt === 1 ? 'entry' : 'entries'})</span>` : '';
+        let entryCountHtml = '';
+        if (isMisc) {
+          const miscEntries = g.s[subKey].entries;
+          const miscWho = miscSingleExtra(miscEntries, subLabel, miscEntries.length === 1 ? resolveMemberName(miscEntries[0]) : '');
+          entryCountHtml = ` <span class="entry-count">(${escapeHtml(miscDetailText(miscEntries, isAnnual, miscWho))})</span>`;
+          unbudgetedItems.push({ label: subLabel, who: miscWho, side: 'Income', count: miscEntries.length, months: miscWhen(miscEntries, true), total: g.s[subKey].t });
+        }
         // Review mode only: makes this line clickable to show the income
         // entries behind it (see report-workflow.html's Report Preview /
         // openReviewPanel()). reviewMode is false on the normal page, so
@@ -2227,23 +2289,11 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       // getExpenseDisplayParts()) - free-text payee/notes never split an
       // unbudgeted line into further sub-buckets here.
       if (main === MISC_MAIN) {
-        let rSub = (d.sub || '').trim();
-        let rNotes = (d.notes || '').trim();
-        let rPayee = (d.payee || '').trim();
-        let subName = 'Other Unbudgeted';
-        // Label source order (deterministic, most-structured field first):
-        // the budget category text (rawVal, "not in budget" stripped), then
-        // the free-text particular (d.sub), then payee, then notes last -
-        // notes previously went first, which produced an unpredictable
-        // label depending on what the Treasurer happened to type that day.
-        for (let cand of [rawVal, rSub, rPayee, rNotes]) {
-          if (!cand) continue;
-          let cleaned = cand.replace(/not in( the)? budget/ig, '').replace(/^[\s\-\:\/]+|[\s\-\:\/]+$/g, '').trim();
-          if (cleaned && !['others', 'miscellaneous', 'unbudgeted'].includes(cleaned.toLowerCase())) {
-            subName = formatCategoryName(cleaned);
-            break;
-          }
-        }
+        // Label source order: the most specific human text - the
+        // particulars (d.sub), then notes, then payee, then the category text
+        // (generic words like "Not in the budget / Miscellaneous" never
+        // count as a label).
+        const subName = pickMiscLabel([d.sub, d.notes, d.payee, rawVal], 'Other Unbudgeted');
         sub = subName;
       } else if (!sub || sub.toLowerCase() === 'n/a') {
         // ── Budgeted: sub comes straight from the budget's own key, never
@@ -2378,7 +2428,9 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       const nestedSubs = [];
       sortedSubKeys.forEach(subKey => {
         const subLabel = g.subLabels[subKey] || subKey;
-        const parts = getExpenseDisplayParts(main, subLabel);
+        // A Miscellaneous label is free text and shown whole: never split at
+        // " - " into a sub-category plus a detail row.
+        const parts = main === MISC_MAIN ? { subCategory: subLabel, detail: '' } : getExpenseDisplayParts(main, subLabel);
         let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
         if (!group) {
           group = { subCategory: parts.subCategory, total: 0, rows: [], count: 0, entries: [] };
@@ -2394,7 +2446,12 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
       nestedSubs.forEach(group => {
         const hasDetails = group.rows.some(row => row.detail);
-        const entryCountHtml = isMiscExp ? ` <span class="entry-count">(${group.count} ${group.count === 1 ? 'entry' : 'entries'})</span>` : '';
+        let entryCountHtml = '';
+        if (isMiscExp) {
+          const miscWho = miscSingleExtra(group.entries, group.subCategory, group.entries.length === 1 ? group.entries[0].payee : '');
+          entryCountHtml = ` <span class="entry-count">(${escapeHtml(miscDetailText(group.entries, isAnnual, miscWho))})</span>`;
+          unbudgetedItems.push({ label: group.subCategory, who: miscWho, side: 'Expense', count: group.entries.length, months: miscWhen(group.entries, true), total: group.total });
+        }
         // Review mode only: see the income-side comment above.
         const expLineKey = 'exp|' + main + '|' + group.subCategory;
         if (reviewMode) reviewExpLineEntries[expLineKey] = group.entries;
@@ -2425,6 +2482,39 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         });
       });
     });
+
+    // Annual only: a compact table of the unbudgeted lines above, biggest
+    // first, so the Finance Committee can weigh them for next year's budget.
+    // Nested in one colspan cell like the Church Obligations table; the
+    // unbudgeted-*-row classes let exportToExcel() pick it apart explicitly.
+    const unbudgetedBlockHtml = (isAnnual && unbudgetedItems.length)
+      ? `
+          <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
+          <tr class="section-header">
+            <td colspan="${COLSPAN}">Unbudgeted items to consider for next year's budget</td>
+          </tr>
+          <tr class="unbudgeted-wrapper-row">
+            <td colspan="${COLSPAN}">
+              <table class="unbudgeted-table">
+                <tr class="unbudgeted-header-row">
+                  <td>Item</td>
+                  <td class="ub-side">Side</td>
+                  <td class="ub-num">Entries</td>
+                  <td>Months</td>
+                  <td class="ub-num">Total</td>
+                </tr>
+                ${unbudgetedItems.slice().sort((x, y) => (y.total - x.total) || x.label.localeCompare(y.label)).map(it => `
+                <tr class="unbudgeted-row">
+                  <td>${escapeHtml(it.label)}${it.who ? ` <span class="entry-count">(${escapeHtml(it.who)})</span>` : ''}</td>
+                  <td class="ub-side">${it.side}</td>
+                  <td class="ub-num">${it.count}</td>
+                  <td>${escapeHtml(it.months)}</td>
+                  <td class="ub-num">₱ ${fmt(it.total)}</td>
+                </tr>`).join('')}
+              </table>
+            </td>
+          </tr>`
+      : '';
 
     const periodText = isAnnual ? `For the Year ${year}` : `For the Month of ${MONTHS[month]} ${year}`;
     const footerText = isAnnual ? `${year}` : `${MONTHS[month]} ${year}`;
@@ -2606,6 +2696,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
             <td class="col-main">${reconcileCheckHtml}</td>
             ${emptyBudgetCells}
           </tr>
+          ${unbudgetedBlockHtml}
           <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
           <tr class="section-header">
@@ -3147,6 +3238,23 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       // meaningless cell); the nested table's own rows are still visited by
       // this same querySelectorAll('tr') walk right after it, in document
       // order, and are handled by the three branches below instead. ──
+      // ── Unbudgeted items block (annual): same nested-table treatment. ──
+      if (cls.includes('unbudgeted-wrapper-row')) { return; }
+      if (cls.includes('unbudgeted-header-row')) {
+        const ubCols = [tds[0], tds[1], tds[2], tds[3], tds[4]].map(td => td ? td.innerText.trim() : '');
+        ubCols.forEach((t, i) => cell(R, i, t, { font: fontSection, fill: { patternType: 'solid', fgColor: { rgb: RED } }, alignment: (i === 2 || i === 4) ? alignR : alignL }));
+        R++; return;
+      }
+      if (cls.includes('unbudgeted-row')) {
+        cell(R, 0, tds[0] ? tds[0].innerText.trim() : '', { font: fontBase, alignment: { ...alignL, wrapText: true } });
+        cell(R, 1, tds[1] ? tds[1].innerText.trim() : '', { font: fontBase, alignment: alignL });
+        const ubCount = parseInt((tds[2] ? tds[2].innerText : '').trim(), 10);
+        if (Number.isFinite(ubCount)) cell(R, 2, ubCount, { font: fontBase, alignment: alignR });
+        cell(R, 3, tds[3] ? tds[3].innerText.trim() : '', { font: fontBase, alignment: { ...alignL, wrapText: true } });
+        const ubAmt = parsePesoStrict(tds[4] ? tds[4].innerText.trim() : '');
+        if (ubAmt !== null) cell(R, 4, ubAmt, sAmount());
+        R++; return;
+      }
       if (cls.includes('obligation-wrapper-row')) { return; }
       if (cls.includes('obligation-header-row')) {
         const obCols = [tds[0], tds[1], tds[2], tds[3], tds[4], tds[5]].map(td => td ? td.innerText.trim() : '');
