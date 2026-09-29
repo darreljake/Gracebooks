@@ -1093,7 +1093,7 @@
         // instead of wrongly flagging every one as "No receipt". Treasurer
         // and Auditor both have Firestore read access to liquidationRequests
         // (see firestore.rules).
-        const liquidationIds = [...new Set(reportableRows.map(r => r.linkedLiquidationRequestId).filter(Boolean))];
+        const liquidationIds = [...new Set(reportableRows.flatMap(r => [r.linkedLiquidationRequestId, r.sourceLiquidationRequestId]).filter(Boolean))];
         const liquidationSnaps = await Promise.all(
           liquidationIds.map(reqId => db.collection('liquidationRequests').doc(reqId).get())
         );
@@ -1149,6 +1149,15 @@
     function findMatchingLiquidationItem(request, expense) {
       const items = request.liquidationItems || [];
       if (!items.length) return null;
+      // Split expenses from an overspent cash advance carry only a partial
+      // amount, so the amount match below can't find them - prefer the
+      // explicit item index written at reconcile/release time. The description
+      // guard keeps a stale index from binding to the wrong item.
+      const idx = expense.liquidationItemIndex;
+      if (Number.isInteger(idx) && idx >= 0 && idx < items.length
+        && (!expense.sub || !items[idx].description || items[idx].description === expense.sub)) {
+        return items[idx];
+      }
       const matches = items.filter(item => {
         const amountMatch = Math.abs(Number(item.amount || 0) - Number(expense.amount || 0)) < 0.01;
         const descMatch = (item.description || '') === (expense.sub || '');
@@ -1188,9 +1197,14 @@
           && ['Released', 'Liquidation Submitted'].includes(request.status)
           && expense.category === LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY;
 
+        // The reimbursed part of an overspent cash advance is paid through the
+        // auto-created reimbursement request, but its receipts/items live on
+        // the SOURCE cash advance request.
+        const itemRequest = (expense.liquidationSplit === 'reimburse' && expense.sourceLiquidationRequestId
+          && liquidationMap.get(expense.sourceLiquidationRequestId)) || request;
         if (!candidates.length) {
-          const pool = liquidationReceiptPool(request);
-          const matchedItem = findMatchingLiquidationItem(request, expense);
+          const pool = liquidationReceiptPool(itemRequest);
+          const matchedItem = findMatchingLiquidationItem(itemRequest, expense);
           if (matchedItem && (matchedItem.receiptIds || []).length) {
             matchedItem.receiptIds.forEach(receiptId => {
               const found = pool.find(p => p.id === receiptId);
