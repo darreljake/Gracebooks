@@ -255,6 +255,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     .pct-under { color: #b8860b; font-weight: 700; }
 
     /* Miscellaneous (Unbudgeted) helper note + entry counts */
+    .screen-only-note { color: #a04000; font-size: 11px; font-style: italic; padding-top: 4px; }
     .misc-note { color: #888; font-size: 10.5px; font-style: italic; }
     .entry-count { color: #6b6b6b; font-size: 10.5px; font-weight: 400; }
 
@@ -357,6 +358,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
                           break-before: auto; page-break-before: auto; }
       .rpt-footer       { break-inside: avoid; page-break-inside: avoid; }
       .obligation-table, .unbudgeted-table { break-inside: avoid; page-break-inside: avoid; }
+      .screen-only-note-row { display: none !important; }
 
       /* ── Font scaling per paper size ── */
       /* Long bond — default, comfortable */
@@ -1229,7 +1231,9 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   }
 
   db.collection('income').get().then(s => {
-    rawIncomeDocs = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    // A doc with no date counts as 2026-01-01, exactly as Financial Overview
+    // treats it, so the two never disagree about an undated entry.
+    rawIncomeDocs = s.docs.map(d => ({ id: d.id, ...d.data() })).map(d => d.date ? d : { ...d, date: '2026-01-01', dateDefaulted: true });
     rebuildIncomeData();
     render();
   });
@@ -1249,7 +1253,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
   db.collection('expenses').get().then(s => {
     // Keep the complete expense pool for Financial Overview account balances.
-    allExpenseData = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    allExpenseData = s.docs.map(d => ({ id: d.id, ...d.data() })).map(d => d.date ? d : { ...d, date: '2026-01-01', dateDefaulted: true }); // undated = 2026-01-01, as in Financial Overview
     // Deduction-payment entries settle a liability already expensed at gross when
     // payroll was generated (the withheld amount is part of that gross figure).
     // Counting them again here would double the expense for the same cash outflow.
@@ -1623,6 +1627,19 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     const accountBalances = getAccountBalancesThrough(periodEndDate);
     const gfTrueEndBalance = sumIds(accountBalances, gfIds);
     const restrictedTrueEndBalance = sumIds(accountBalances, restrictedIds);
+    // Duplicate legacy "Cash Advance Return" income docs are excluded from
+    // every pool here (see isDuplicateCashAdvanceReturn()) but Financial
+    // Overview still counts them, so its balances run high by exactly their
+    // total until the Treasurer removes them. Shown as a screen-only note.
+    const excludedReturnTotal = (rawIncomeDocs || [])
+      .filter(d => !d.isSpecialProject && d.date && new Date(d.date) <= periodEndDate && isDuplicateCashAdvanceReturn(d))
+      .reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+    const excludedReturnNoteHtml = excludedReturnTotal >= 0.01
+      ? `
+          <tr class="screen-only-note-row">
+            <td class="col-desc screen-only-note" colspan="${COLSPAN}">Financial Overview still includes ₱ ${fmt(excludedReturnTotal)} of duplicate cash advance return entries — remove them from Liquidation &amp; Reimbursements.</td>
+          </tr>`
+      : '';
 
     // ── Beginning/Ending Balance basis ──────────────────────────────────────
     // This statement's Beginning and Ending Balance must be on the SAME
@@ -1676,11 +1693,11 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       let held = 0;
       incomeData.forEach(d => {
         if (!d.date || new Date(d.date) > throughDate) return;
-        if (isBuildingFundEntry(d) && isGeneralFundAccount(getIncomeAccountId(d))) held += parseFloat(d.amount || 0);
+        if (isBuildingFundEntry(d, false) && isGeneralFundAccount(getIncomeAccountId(d))) held += parseFloat(d.amount || 0);
       });
       expenseData.forEach(d => {
         if (!d.date || new Date(d.date) > throughDate) return;
-        if (isBuildingFundEntry(d) && isGeneralFundAccount(getExpenseAccountId(d))) held -= parseFloat(d.amount || 0);
+        if (isBuildingFundEntry(d, true) && isGeneralFundAccount(getExpenseAccountId(d))) held -= parseFloat(d.amount || 0);
       });
       return held;
     }
@@ -2695,7 +2712,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
             <td class="col-sub"></td>
             <td class="col-main">${reconcileCheckHtml}</td>
             ${emptyBudgetCells}
-          </tr>
+          </tr>${excludedReturnNoteHtml}
           ${unbudgetedBlockHtml}
           <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
 
@@ -2989,16 +3006,18 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   // Building Fund entry can be posted to (or paid from) cash-on-hand/bank.
   // Fund transfers (type:'transfer') are not classified by this: they are
   // pure account-to-account movements, decided by their account alone.
-  function isBuildingFundEntry(d) {
+  function isBuildingFundEntry(d, isExpense) {
     if (!d) return false;
-    if ((normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount)) === 'building') return true;
+    // The entry's account as Financial Overview resolves it (an income's
+    // typed Building Fund already resolves to 'building').
+    if ((isExpense ? getExpenseAccountId(d) : getIncomeAccountId(d)) === 'building') return true;
     return [d.budgetCategory, d.type, d.category].some(v => String(v || '').toLowerCase().includes('building fund'));
   }
   function isGeneralFundIncome(d) {
-    return !isBuildingFundEntry(d) && isGeneralFundAccount(getIncomeAccountId(d));
+    return !isBuildingFundEntry(d, false) && isGeneralFundAccount(getIncomeAccountId(d));
   }
   function isGeneralFundExpense(d) {
-    return !isBuildingFundEntry(d) && isGeneralFundAccount(getExpenseAccountId(d));
+    return !isBuildingFundEntry(d, true) && isGeneralFundAccount(getExpenseAccountId(d));
   }
   // The account a restricted-side entry is REPORTED under in Restricted Fund
   // Activity. Building Fund money sitting in a General Fund account (e.g.
@@ -3006,11 +3025,11 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   // account it was actually posted to.
   function getIncomeReportAccountId(d) {
     const id = getIncomeAccountId(d);
-    return (isBuildingFundEntry(d) && isGeneralFundAccount(id)) ? 'building' : id;
+    return (isBuildingFundEntry(d, false) && isGeneralFundAccount(id)) ? 'building' : id;
   }
   function getExpenseReportAccountId(d) {
     const id = getExpenseAccountId(d);
-    return (isBuildingFundEntry(d) && isGeneralFundAccount(id)) ? 'building' : id;
+    return (isBuildingFundEntry(d, true) && isGeneralFundAccount(id)) ? 'building' : id;
   }
 
   function getGeneralFundBeginningBalance() {
@@ -3019,21 +3038,30 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       .reduce((sum, account) => sum + (parseFloat(beginningAccounts[account.id]) || 0), 0);
   }
 
+  // Account resolution mirrors financial-overview.html's own rules EXACTLY
+  // (its income/expense listeners), because this statement's balances must
+  // tally with Financial Overview's Grand Total and each account balance.
+  // Income: a typed fund (Building Fund / Mission Fund / Investment Income)
+  // OVERRIDES any explicit account; otherwise the doc's `targetAccount` (NOT
+  // `targetAccId` - every income writer, tithe-entry and special-projects
+  // included, sets targetAccount; Financial Overview's own transfers set
+  // both), else Cash in Bank when paid by Bank Transfer, else Cash on Hand.
+  // An id that is not one of the six known accounts stays as-is and is
+  // simply skipped by getAccountBalancesThrough(), as Financial Overview
+  // skips it.
   function getIncomeAccountId(d) {
-    const explicitAccount = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
-    if (explicitAccount) return explicitAccount;
     if (d.type === 'Building Fund') return 'building';
     if (d.type === 'Mission Fund') return 'mission';
     if (d.type === 'Investment Income') return 'investment';
+    if (d.targetAccount) return d.targetAccount;
     return d.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
   }
 
+  // Expense: `targetAccId`, else the payment mapping (Bank Transfer ->
+  // Cash in Bank, Petty Cash -> Petty Cash Fund), else Cash on Hand - the same
+  // as Financial Overview's expense listener.
   function getExpenseAccountId(d) {
-    const explicitAccount = normalizeAccountId(d.targetAccId) || normalizeAccountId(d.targetAccount);
-    if (explicitAccount) return explicitAccount;
-    if (d.payment === 'Bank Transfer') return 'cash-bank';
-    if (d.payment === 'Petty Cash') return 'petty-cash';
-    return 'cash-hand';
+    return d.targetAccId || (d.payment === 'Bank Transfer' ? 'cash-bank' : d.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
   }
 
   function getExpenseCashImpact(d) {
@@ -3047,6 +3075,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     return hasNetPayroll ? Math.max(0, netPay) : (parseFloat(d.amount) || 0);
   }
 
+  // The true per-account cash balances through `endDate`. Deliberately the
+  // same rules as financial-overview.html's combineAndRender(): every income
+  // doc except special-project inflows (INCLUDING type:'transfer' credits),
+  // every expense doc (including transfers, deduction-payments and special-
+  // project costs) at its net cash impact, an entry with a missing date
+  // counted as 2026-01-01 (done where the docs are loaded), and an entry
+  // whose account is not one of the six known ones skipped. The only
+  // deliberate difference is the duplicate legacy "Cash Advance Return"
+  // income docs, which are dropped from allIncomeData (see above) until the
+  // Treasurer removes them in Liquidation & Reimbursements.
   function getAccountBalancesThrough(endDate) {
     const balances = {};
     FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
@@ -3054,14 +3092,14 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     allIncomeData.forEach(d => {
       if (!d.date || new Date(d.date) > endDate) return;
       const id = getIncomeAccountId(d);
-      if (balances[id] === undefined) balances[id] = 0;
+      if (balances[id] === undefined) return;
       balances[id] += parseFloat(d.amount || 0);
     });
 
     allExpenseData.forEach(d => {
       if (!d.date || new Date(d.date) > endDate) return;
       const id = getExpenseAccountId(d);
-      if (balances[id] === undefined) balances[id] = 0;
+      if (balances[id] === undefined) return;
       balances[id] -= getExpenseCashImpact(d);
     });
 
@@ -3192,7 +3230,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       // export. A panel row is skipped outright here (same idea as the
       // obligation-wrapper-row skip below); cellText() strips
       // data-export-skip content out of an otherwise-real cell.
-      if (cls.includes('review-panel-row')) { return; }
+      if (cls.includes('review-panel-row') || cls.includes('screen-only-note-row')) { return; }
       const cellText = td => {
         if (!td) return '';
         if (!td.querySelector('[data-export-skip]')) return td.innerText.trim();
