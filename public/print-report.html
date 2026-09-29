@@ -3288,7 +3288,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     const periodKey = currentWorkflowId();
     if (reviewDataLoadedForPeriod === periodKey) return;
     const liquidationIds = [...new Set(
-      (fExpForReview()).map(d => d.linkedLiquidationRequestId).filter(Boolean)
+      (fExpForReview()).flatMap(d => [d.linkedLiquidationRequestId, d.sourceLiquidationRequestId]).filter(Boolean)
     )];
     const [liqSnaps, sheetSnap] = await Promise.all([
       Promise.all(liquidationIds.map(id => db.collection('liquidationRequests').doc(id).get())),
@@ -3378,6 +3378,15 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   function findMatchingLiquidationItem(request, expense) {
     const items = request.liquidationItems || [];
     if (!items.length) return null;
+    // Split expenses from an overspent cash advance carry only a partial
+    // amount, so the amount match below can't find them - prefer the
+    // explicit item index written at reconcile/release time. The description
+    // guard keeps a stale index from binding to the wrong item.
+    const idx = expense.liquidationItemIndex;
+    if (Number.isInteger(idx) && idx >= 0 && idx < items.length
+      && (!expense.sub || !items[idx].description || items[idx].description === expense.sub)) {
+      return items[idx];
+    }
     const matches = items.filter(item => {
       const amountMatch = Math.abs(Number(item.amount || 0) - Number(expense.amount || 0)) < 0.01;
       const descMatch = (item.description || '') === (expense.sub || '');
@@ -3405,9 +3414,13 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       awaitingLiquidation = isCashAdvanceRequest
         && ['Released', 'Liquidation Submitted'].includes(request.status)
         && expense.category === LIQUIDATION_PLACEHOLDER_ADVANCE_CATEGORY;
+      // Reimbursed part of an overspent cash advance: items/receipts live on
+      // the SOURCE cash advance request (see report-workflow.html).
+      const itemRequest = (expense.liquidationSplit === 'reimburse' && expense.sourceLiquidationRequestId
+        && reviewLiquidationMap.get(expense.sourceLiquidationRequestId)) || request;
       if (!candidates.length) {
-        const pool = liquidationReceiptPool(request);
-        const matchedItem = findMatchingLiquidationItem(request, expense);
+        const pool = liquidationReceiptPool(itemRequest);
+        const matchedItem = findMatchingLiquidationItem(itemRequest, expense);
         if (matchedItem && (matchedItem.receiptIds || []).length) {
           matchedItem.receiptIds.forEach(receiptId => {
             const found = pool.find(p => p.id === receiptId);
@@ -3513,8 +3526,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       const old = reviewExpenseById.get(id) || {};
       Object.keys(old).forEach(k => delete old[k]);
       Object.assign(old, fresh);
-      if (old.linkedLiquidationRequestId) {
-        const reqDoc = await db.collection('liquidationRequests').doc(old.linkedLiquidationRequestId).get();
+      for (const reqId of [old.linkedLiquidationRequestId, old.sourceLiquidationRequestId].filter(Boolean)) {
+        const reqDoc = await db.collection('liquidationRequests').doc(reqId).get();
         if (reqDoc.exists) reviewLiquidationMap.set(reqDoc.id, { id: reqDoc.id, ...reqDoc.data() });
       }
       refreshReviewEntryRow(id);

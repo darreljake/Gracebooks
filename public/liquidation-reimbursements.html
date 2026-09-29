@@ -96,6 +96,13 @@
       padding: 12px 14px; margin-top: 12px; font-size: 13px;
     }
     .liq-balance strong { color: #8B0000; }
+    .alloc-input { width: 96px; text-align: right; }
+    .alloc-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 4px; font-size: 12px; }
+    .alloc-toolbar select { width: auto; }
+    .alloc-totals { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; font-weight: bold; margin-top: 8px; }
+    .alloc-ok { color: #1e8449; }
+    .alloc-bad { color: #a93226; }
+    .dup-warning { background: #fdedec; border-left: 4px solid #a93226; color: #7b241c; border-radius: 6px; padding: 6px 9px; margin-top: 6px; font-size: 12px; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; font-size: 13px; margin-bottom: 12px; }
     .detail-grid div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted #dde5ea; padding: 4px 0; }
     .detail-grid .k { color: #6f7a82; font-size: 11px; text-transform: uppercase; font-weight: bold; }
@@ -308,7 +315,8 @@
           <select id="release-category"></select>
           <div class="muted">Receipts are already attached — classify this reimbursement under the correct budget category now.</div>
         </div>
-        <div class="muted">This records a linked expense entry for the disbursed amount and reduces the selected fund immediately. Cash advances stay open (under a placeholder category) until the requester submits liquidation and it is reconciled; reimbursements are completed and classified on release.</div>
+        <div id="release-items-wrap" style="display:none;"></div>
+        <div class="muted" id="release-generic-note">This records a linked expense entry for the disbursed amount and reduces the selected fund immediately. Cash advances stay open (under a placeholder category) until the requester submits liquidation and it is reconciled; reimbursements are completed and classified on release.</div>
       </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeReleaseModal()">Cancel</button>
@@ -323,6 +331,7 @@
       <div class="liq-balance" id="reconcile-summary"></div>
       <div id="reconcile-items-wrap"></div>
       <div id="reconcile-topup-wrap" style="display:none; margin-top:12px;">
+        <!-- Legacy fallback only: the overspent-with-items case now allocates per item. -->
         <label>Category for Additional Reimbursement (Overspent Amount)</label>
         <select id="reconcile-topup-cat"></select>
       </div>
@@ -767,6 +776,7 @@
         : await db.collection('liquidationRequests').where('requesterUid', '==', firebase.auth().currentUser.uid).get();
       requestRows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       requestRows.sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')));
+      await flagDuplicateExpenses();
       renderRequests();
     }
 
@@ -943,6 +953,44 @@
       }
     }
 
+    // An auto-created "additional reimbursement" for an overspent cash advance.
+    // New ones carry reimbursementItems (one per liquidation item with a
+    // reimburse part); legacy ones (created before the allocation helper) do
+    // not - their excess was already expensed in full at reconciliation.
+    function isAutoReimbursement(row) {
+      return row.type === 'Reimbursement' && !!row.sourceLiquidationRequestId;
+    }
+    function hasReimbursementItems(row) {
+      return Array.isArray(row.reimbursementItems) && row.reimbursementItems.length > 0;
+    }
+    function isLegacyAutoReimbursement(row) {
+      return isAutoReimbursement(row) && !hasReimbursementItems(row);
+    }
+    // Legacy auto-reimbursements already released WITH an expense were
+    // double-counted by the old code. Map of request id -> duplicate expense
+    // amount, filled (Treasurer only) by flagDuplicateExpenses().
+    let duplicateExpenseWarnings = new Map();
+
+    function duplicateWarningHtml(row) {
+      if (!roleIs('Treasurer') || !duplicateExpenseWarnings.has(row.id)) return '';
+      return `<div class="dup-warning">⚠ This overspend was expensed twice (once at reconciliation, once at release). Review and delete the duplicate expense ₱${fmt(duplicateExpenseWarnings.get(row.id))} in Expenses.</div>`;
+    }
+
+    async function flagDuplicateExpenses() {
+      duplicateExpenseWarnings = new Map();
+      if (!roleIs('Treasurer')) return;
+      const suspects = requestRows.filter(row => isLegacyAutoReimbursement(row) && row.releasedAt && row.linkedExpenseId);
+      await Promise.all(suspects.map(async row => {
+        try {
+          const snap = await db.collection('expenses').doc(row.linkedExpenseId).get();
+          // Once the Treasurer deletes the duplicate, the warning goes away.
+          if (snap.exists) duplicateExpenseWarnings.set(row.id, Number((snap.data() || {}).amount || row.amount || 0));
+        } catch (error) {
+          duplicateExpenseWarnings.set(row.id, Number(row.amount || 0));
+        }
+      }));
+    }
+
     let releaseTargetId = null;
     let reconcileTargetId = null;
     let liquidationTargetId = null;
@@ -969,10 +1017,33 @@
       // Treasurer can classify the expense category right away. Cash
       // advances have no receipts yet - they stay under a placeholder
       // category and get classified per item when the requester liquidates.
-      const showCategory = row.type === 'Reimbursement';
+      const autoSplit = isAutoReimbursement(row) && hasReimbursementItems(row);
+      const autoLegacy = isLegacyAutoReimbursement(row);
+      const showCategory = row.type === 'Reimbursement' && !autoSplit && !autoLegacy;
       document.getElementById('release-category-wrap').style.display = showCategory ? '' : 'none';
       if (showCategory) {
         document.getElementById('release-category').innerHTML = categoryDropdownHTML(row.presetCategory || '');
+      }
+      // Auto-created overspend reimbursements: no single category - show the
+      // per-item breakdown (or, for a legacy one, why nothing gets expensed).
+      const itemsWrap = document.getElementById('release-items-wrap');
+      const genericNote = document.getElementById('release-generic-note');
+      genericNote.style.display = autoLegacy ? 'none' : '';
+      if (autoSplit) {
+        itemsWrap.style.display = '';
+        itemsWrap.innerHTML = `
+          <label>Reimbursement Breakdown</label>
+          <table class="inner-table">
+            <thead><tr><th>Item</th><th>Category</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>${row.reimbursementItems.map(it => `<tr><td>${escapeHtml(it.description || '')}${it.date ? `<div class="muted">${escapeHtml(it.date)}</div>` : ''}</td><td>${escapeHtml(it.category || '')}</td><td class="amount">₱${fmt(it.amount)}</td></tr>`).join('')}</tbody>
+          </table>
+          <div class="muted">One linked expense is recorded per item above, each under its own category.</div>`;
+      } else if (autoLegacy) {
+        itemsWrap.style.display = '';
+        itemsWrap.innerHTML = '<div class="dup-warning" style="border-left-color:#b9770e; background:#fef5e7; color:#7e5109;">This overspend was <strong>already expensed</strong> when the cash advance was reconciled. Releasing only marks this reimbursement as paid — <strong>no new expense</strong> is recorded.</div>';
+      } else {
+        itemsWrap.style.display = 'none';
+        itemsWrap.innerHTML = '';
       }
       document.getElementById('releaseModal').classList.add('open');
     }
@@ -982,10 +1053,118 @@
       document.getElementById('releaseModal').classList.remove('open');
     }
 
+    // Releases the auto-created reimbursement for an overspent cash advance.
+    // (a) New style (reimbursementItems): one expense per item for its
+    //     reimburse part - the advance part was already expensed at reconcile.
+    // (b) Legacy (no reimbursementItems): the whole excess was already
+    //     expensed at reconcile, so this only marks the request paid.
+    async function releaseAutoReimbursement(row) {
+      if (row.status !== 'Approved') return alert('This reimbursement is no longer awaiting release.');
+      const legacy = !hasReimbursementItems(row);
+      const items = legacy ? [] : row.reimbursementItems;
+      if (!legacy) {
+        const partsCents = items.map(it => Math.round(Number(it.amount || 0) * 100));
+        const sumCents = partsCents.reduce((a, b) => a + b, 0);
+        if (partsCents.some(c => c <= 0) || sumCents !== Math.round(Number(row.amount || 0) * 100)) {
+          return alert('The reimbursement items do not add up to the reimbursement amount. Please review this request before releasing.');
+        }
+        if (items.some(it => !it.category)) return alert('A reimbursement item has no category. Please review this request before releasing.');
+      }
+      const button = document.getElementById('release-confirm-btn');
+      button.disabled = true;
+      button.textContent = 'Releasing...';
+      try {
+        const fund = document.getElementById('release-fund').value;
+        const now = new Date().toISOString();
+        const expenseIds = [];
+
+        if (!legacy) {
+          // The receipts live on the SOURCE cash advance request.
+          let source = requestRows.find(item => item.id === row.sourceLiquidationRequestId) || null;
+          if (!source) {
+            const snap = await db.collection('liquidationRequests').doc(row.sourceLiquidationRequestId).get();
+            if (snap.exists) source = { id: snap.id, ...snap.data() };
+          }
+          const receiptPool = source ? (source.liquidationReceipts || []).concat(source.supportingReceipts || []) : [];
+          const payee = row.requesterName || row.requesterRole || '';
+          for (const it of items) {
+            const payload = {
+              date: now.slice(0, 10),
+              category: it.category,
+              budgetCategory: it.category,
+              sub: it.description || '',
+              payee,
+              amount: it.amount,
+              payment: fund,
+              targetAccId: fund,
+              status: 'Paid',
+              notes: `Reimbursement of overspent cash advance: ${(source && source.title) || row.title || ''}${it.date ? ` (item dated ${it.date})` : ''}`,
+              linkedLiquidationRequestId: row.id,
+              sourceLiquidationRequestId: row.sourceLiquidationRequestId,
+              liquidationItemIndex: it.index,
+              liquidationSplit: 'reimburse',
+              budgetYear: now.slice(0, 4),
+              expenseMonth: now.slice(0, 7),
+              postedAt: now,
+              createdAt: now,
+              updatedAt: now
+            };
+            const firstReceiptId = (it.receiptIds || [])[0];
+            const firstReceipt = firstReceiptId ? receiptPool.find(r => (r.receiptId || r.receiptPath) === firstReceiptId) : null;
+            if (firstReceipt) {
+              payload.receiptName = firstReceipt.receiptName || '';
+              payload.receiptPath = firstReceipt.receiptPath || '';
+              payload.receiptUrl = firstReceipt.receiptUrl || '';
+              payload.receiptSharedFromLiquidation = true;
+              payload.receiptAnnotations = (it.annotations || [])
+                .filter(a => a.receiptId === firstReceiptId)
+                .map(({ receiptId, ...rest }) => rest);
+            }
+            // Deterministic id: if a later step fails and the Treasurer
+            // retries, the same item overwrites its own expense instead of
+            // creating a second one.
+            const expenseRef = db.collection('expenses').doc(`liqrel-${row.id}-${it.index}`);
+            await expenseRef.set(payload);
+            expenseIds.push(expenseRef.id);
+            await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, payload,
+              `Recorded reimbursed part of overspent cash advance item "${it.description || ''}" (₱${fmt(it.amount)}) under ${it.category}`);
+          }
+        }
+
+        const after = {
+          status: 'Completed',
+          releasedFund: fund,
+          releasedBy: activeProfile.name || 'Treasurer',
+          releasedAt: now,
+          updatedAt: now
+        };
+        if (!legacy) {
+          after.linkedExpenseIds = expenseIds;
+          after.linkedExpenseId = expenseIds[0] || null;
+        } else {
+          after.settledAtReconciliation = true;
+        }
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_request_released', 'liquidationRequests', row.id, row, { ...row, ...after },
+          legacy
+            ? `Released additional reimbursement ₱${fmt(row.amount)} for ${row.title || row.id} — already expensed at reconciliation — no new expense`
+            : `Released additional reimbursement ₱${fmt(row.amount)} for ${row.title || row.id}: ${expenseIds.length} expense(s), one per reimbursed item`);
+        await notifyRole(row.requesterRole, `Your additional reimbursement "${row.title || ''}" (₱${fmt(row.amount)}) was released and completed.`);
+        closeReleaseModal();
+        if (legacy) alert('Marked as paid. This overspend was already expensed when the cash advance was reconciled, so no new expense was recorded.');
+        await loadRequests();
+      } catch (error) {
+        alert(error.message + (row.reimbursementItems ? '\n\nIf some expenses were already recorded, click Confirm Release again - they will not be duplicated.' : ''));
+      }
+      button.disabled = false;
+      button.textContent = 'Confirm Release';
+    }
+
     async function confirmRelease() {
       if (!releaseTargetId) return;
       const row = requestRows.find(item => item.id === releaseTargetId);
       if (!row) return closeReleaseModal();
+      if (isAutoReimbursement(row)) return releaseAutoReimbursement(row);
       const advance = isCashAdvance(row);
       let category = PLACEHOLDER_ADVANCE_CATEGORY;
       if (!advance) {
@@ -1507,11 +1686,118 @@
 
     /* ---------- Reconciliation ---------- */
 
+    /* ---- Overspent cash advance allocation helper ----
+       Everything below works in integer centavos (Math.round(x * 100)) so the
+       advance/reimburse columns can be checked for EXACT equality. */
+    function toCents(value) { return Math.round(Number(value || 0) * 100); }
+    function centsToInput(cents) { return (cents / 100).toFixed(2); }
+
+    let reconcileAlloc = null; // { rowId, releasedC, excessC, mode, items: [{ amtC, date, advC, reiC }] }
+
+    // Non-null only for the overspent-with-items case.
+    function overspendInfo(row) {
+      const items = row.liquidationItems || [];
+      if (!items.length) return null;
+      const balance = Number(row.amount || 0) - items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      if (!(balance < -0.004)) return null;
+      const releasedC = toCents(row.amount);
+      const totalC = items.reduce((sum, item) => sum + toCents(item.amount), 0);
+      const excessC = totalC - releasedC;
+      if (excessC <= 0) return null;
+      return { releasedC, totalC, excessC };
+    }
+
+    // Returns the advance part (cents) per item: walk the items in the chosen
+    // order, filling the advance until it is reached exactly; the item that
+    // crosses the boundary is split, every later item is all reimbursement.
+    function computeAdvanceAllocation(itemsC, releasedC, mode) {
+      const order = itemsC.map((it, index) => ({ ...it, index })).sort((a, b) => {
+        if (mode === 'largest' && a.amtC !== b.amtC) return b.amtC - a.amtC;
+        const byDate = String(a.date || '').localeCompare(String(b.date || ''));
+        return byDate || (a.index - b.index);
+      });
+      const adv = itemsC.map(() => 0);
+      let remaining = releasedC;
+      order.forEach(it => {
+        const take = Math.max(0, Math.min(it.amtC, remaining));
+        adv[it.index] = take;
+        remaining -= take;
+      });
+      return adv;
+    }
+
+    function autoAssignAllocation() {
+      if (!reconcileAlloc) return;
+      const modeEl = document.getElementById('reconcile-alloc-mode');
+      reconcileAlloc.mode = modeEl ? modeEl.value : 'earliest';
+      const adv = computeAdvanceAllocation(reconcileAlloc.items, reconcileAlloc.releasedC, reconcileAlloc.mode);
+      reconcileAlloc.items.forEach((it, index) => {
+        it.advC = adv[index];
+        it.reiC = it.amtC - adv[index];
+        syncAllocInputs(index);
+      });
+      renderAllocTotals();
+    }
+
+    function syncAllocInputs(index) {
+      const it = reconcileAlloc.items[index];
+      const advEl = document.getElementById(`reconcile-adv-${index}`);
+      const reiEl = document.getElementById(`reconcile-rei-${index}`);
+      if (advEl) advEl.value = centsToInput(it.advC);
+      if (reiEl) reiEl.value = centsToInput(it.reiC);
+    }
+
+    // Editing one side sets the other to (item amount - edited value).
+    function onAllocInput(index, side) {
+      if (!reconcileAlloc) return;
+      const it = reconcileAlloc.items[index];
+      const el = document.getElementById(`reconcile-${side}-${index}`);
+      let cents = Math.round(parseFloat(el.value) * 100);
+      if (!isFinite(cents)) cents = 0;
+      const clamped = Math.min(Math.max(cents, 0), it.amtC);
+      if (side === 'adv') { it.advC = clamped; it.reiC = it.amtC - clamped; }
+      else { it.reiC = clamped; it.advC = it.amtC - clamped; }
+      const other = document.getElementById(`reconcile-${side === 'adv' ? 'rei' : 'adv'}-${index}`);
+      if (other) other.value = centsToInput(side === 'adv' ? it.reiC : it.advC);
+      if (clamped !== cents) el.value = centsToInput(clamped);
+      renderAllocTotals();
+    }
+
+    // Empty string when the allocation is exact, otherwise what is wrong.
+    function allocProblem(alloc) {
+      if (!alloc) return 'Allocation is not available for this request.';
+      let advSum = 0, reiSum = 0;
+      for (const it of alloc.items) {
+        if (it.advC < 0 || it.reiC < 0 || it.advC + it.reiC !== it.amtC) return 'Every item\'s "From advance" and "Reimburse" parts must add up to its amount.';
+        advSum += it.advC; reiSum += it.reiC;
+      }
+      if (advSum !== alloc.releasedC) return `The "From advance" column must equal the released amount exactly (₱${fmt(alloc.releasedC / 100)}).`;
+      if (reiSum !== alloc.excessC) return `The "Reimburse" column must equal the excess exactly (₱${fmt(alloc.excessC / 100)}).`;
+      return '';
+    }
+
+    function renderAllocTotals() {
+      const box = document.getElementById('reconcile-alloc-totals');
+      const btn = document.getElementById('reconcile-confirm-btn');
+      if (!reconcileAlloc || !box) return;
+      const a = reconcileAlloc;
+      const advSum = a.items.reduce((s, it) => s + it.advC, 0);
+      const reiSum = a.items.reduce((s, it) => s + it.reiC, 0);
+      const advOk = advSum === a.releasedC;
+      const reiOk = reiSum === a.excessC;
+      box.innerHTML =
+        `<span class="${advOk ? 'alloc-ok' : 'alloc-bad'}">From advance: ₱${fmt(advSum / 100)} of ₱${fmt(a.releasedC / 100)} ${advOk ? '✓' : '✗'}</span>` +
+        `<span class="${reiOk ? 'alloc-ok' : 'alloc-bad'}">Reimburse: ₱${fmt(reiSum / 100)} of ₱${fmt(a.excessC / 100)} ${reiOk ? '✓' : '✗'}</span>`;
+      btn.disabled = !!allocProblem(a);
+    }
+
     function openReconcileModal(id) {
       if (!roleIs('Treasurer')) return;
       const row = requestRows.find(item => item.id === id);
       if (!row) return;
       reconcileTargetId = id;
+      reconcileAlloc = null;
+      document.getElementById('reconcile-confirm-btn').disabled = false;
       document.getElementById('reconcile-notes').value = '';
       const spent = Number(row.liquidationTotal || 0);
       const balance = Number(row.amount || 0) - spent;
@@ -1524,14 +1810,38 @@
 
       const itemsWrap = document.getElementById('reconcile-items-wrap');
       const items = row.liquidationItems || [];
+      const overspend = overspendInfo(row);
+      if (overspend) {
+        reconcileAlloc = {
+          rowId: row.id,
+          releasedC: overspend.releasedC,
+          excessC: overspend.excessC,
+          mode: 'earliest',
+          items: items.map(item => ({ amtC: toCents(item.amount), date: item.date || '', advC: 0, reiC: 0 }))
+        };
+        const adv = computeAdvanceAllocation(reconcileAlloc.items, reconcileAlloc.releasedC, 'earliest');
+        reconcileAlloc.items.forEach((it, index) => { it.advC = adv[index]; it.reiC = it.amtC - adv[index]; });
+      }
       if (items.length) {
         const pool = receiptPoolFromRow(row);
+        const allocHeader = overspend ? '<th>From advance ₱</th><th>Reimburse ₱</th>' : '';
+        const allocToolbar = overspend ? `
+          <div class="liq-balance">The advance covers exactly ₱${fmt(overspend.releasedC / 100)}. The rest (₱${fmt(overspend.excessC / 100)}) becomes an additional reimbursement, split to the same categories.</div>
+          <div class="alloc-toolbar">
+            <label style="margin:0;">Fill advance with:</label>
+            <select id="reconcile-alloc-mode" onchange="autoAssignAllocation()">
+              <option value="earliest">Earliest items first</option>
+              <option value="largest">Largest items first</option>
+            </select>
+            <button type="button" class="btn btn-secondary btn-small" onclick="autoAssignAllocation()">Auto-assign</button>
+          </div>` : '';
         itemsWrap.innerHTML = `
           <div class="section-label">Classify Each Item Into an Expense Category</div>
           <div class="muted">Dropdowns are pre-filled with the staff member's suggested category where given — this is only a suggestion; adjust any of them before confirming. Use "View Highlights" to see which part of a mixed receipt the staff member meant for each item.</div>
+          ${allocToolbar}
           <div class="table-wrap">
             <table class="inner-table">
-              <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Expense Category</th><th>Receipts</th></tr></thead>
+              <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Expense Category</th>${allocHeader}<th>Receipts</th></tr></thead>
               <tbody>
                 ${items.map((item, index) => {
                   const linked = pool.filter(p => (item.receiptIds || []).includes(p.receiptId));
@@ -1559,18 +1869,25 @@
                       <select id="reconcile-cat-${index}">${categoryDropdownHTML(item.suggestedCategory || '')}</select>
                       ${item.suggestedCategory ? '<div class="muted">Suggested by staff</div>' : ''}
                     </td>
+                    ${overspend ? `
+                    <td><input type="number" class="alloc-input" id="reconcile-adv-${index}" min="0" max="${centsToInput(reconcileAlloc.items[index].amtC)}" step="0.01" value="${centsToInput(reconcileAlloc.items[index].advC)}" oninput="onAllocInput(${index}, 'adv')" /></td>
+                    <td><input type="number" class="alloc-input" id="reconcile-rei-${index}" min="0" max="${centsToInput(reconcileAlloc.items[index].amtC)}" step="0.01" value="${centsToInput(reconcileAlloc.items[index].reiC)}" oninput="onAllocInput(${index}, 'rei')" /></td>` : ''}
                     <td>${receiptsCell}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
             </table>
-          </div>`;
+          </div>
+          ${overspend ? '<div class="alloc-totals" id="reconcile-alloc-totals"></div>' : ''}`;
+        if (overspend) renderAllocTotals();
       } else {
         itemsWrap.innerHTML = '<div class="muted" style="margin-top:8px;">No itemized liquidation on file for this request — categorized expense entries cannot be generated automatically. Use the notes field to record how it was settled.</div>';
       }
 
       const topupWrap = document.getElementById('reconcile-topup-wrap');
-      if (items.length && balance < -0.004) {
+      // The single top-up category dropdown is now a fallback only: an
+      // overspent request with items allocates per item instead.
+      if (items.length && balance < -0.004 && !reconcileAlloc) {
         topupWrap.style.display = '';
         document.getElementById('reconcile-topup-cat').innerHTML = categoryDropdownHTML('');
       } else {
@@ -1582,6 +1899,7 @@
 
     function closeReconcileModal() {
       reconcileTargetId = null;
+      reconcileAlloc = null;
       document.getElementById('reconcileModal').classList.remove('open');
     }
 
@@ -1605,7 +1923,18 @@
       const releasedAmount = Number(row.amount || 0);
       const balance = releasedAmount - liquidatedTotal;
       let topupCategory = '';
-      if (items.length && balance < -0.004) {
+      // Overspent-with-items: only the "From advance" parts become expenses
+      // now; the "Reimburse" parts ride on the auto-created reimbursement
+      // request and are expensed when that is released - never twice.
+      const alloc = (overspendInfo(row) && reconcileAlloc && reconcileAlloc.rowId === row.id) ? reconcileAlloc : null;
+      if (overspendInfo(row) && !alloc) {
+        return alert('The advance/reimbursement allocation is not available. Please close and reopen this reconciliation.');
+      }
+      if (alloc) {
+        const problem = allocProblem(alloc);
+        if (problem) return alert(problem);
+      }
+      if (!alloc && items.length && balance < -0.004) {
         topupCategory = document.getElementById('reconcile-topup-cat').value;
         if (!topupCategory) return alert('Please select a category for the additional reimbursement (overspent amount).');
       }
@@ -1636,7 +1965,10 @@
             }
           }
 
-          for (const item of categorizedItems) {
+          for (const [itemIndex, item] of categorizedItems.entries()) {
+            const split = alloc ? alloc.items[itemIndex] : null;
+            if (split && split.advC <= 0) continue; // fully reimbursed - expensed at release
+            const isSplit = !!split && split.reiC > 0;
             const itemDate = item.date || now.slice(0, 10);
             const payload = {
               date: itemDate,
@@ -1644,11 +1976,11 @@
               budgetCategory: item.category,
               sub: item.description,
               payee: row.requesterName || row.requesterRole || '',
-              amount: item.amount,
+              amount: split ? split.advC / 100 : item.amount,
               payment: fund,
               targetAccId: fund,
               status: 'Paid',
-              notes: `Liquidated from cash advance: ${row.title || ''}`,
+              notes: `Liquidated from cash advance: ${row.title || ''}${isSplit ? ` (₱${fmt(split.advC / 100)} of ₱${fmt(item.amount)} from the advance; the rest reimbursed)` : ''}`,
               linkedLiquidationRequestId: row.id,
               budgetYear: itemDate.slice(0, 4),
               expenseMonth: itemDate.slice(0, 7),
@@ -1679,10 +2011,22 @@
                   .map(({ receiptId, ...rest }) => rest);
               }
             }
-            const itemRef = await db.collection('expenses').add(payload);
+            let itemRef;
+            if (split) {
+              payload.liquidationItemIndex = itemIndex;
+              if (isSplit) payload.liquidationSplit = 'advance';
+              // Deterministic id so a retry after a mid-save failure
+              // overwrites the same expense instead of duplicating it.
+              itemRef = db.collection('expenses').doc(`liqrec-${row.id}-${itemIndex}`);
+              await itemRef.set(payload);
+            } else {
+              itemRef = await db.collection('expenses').add(payload);
+            }
             classifiedExpenseIds.push(itemRef.id);
             await writeAuditLog('expense_created_from_liquidation_item', 'expenses', itemRef.id, null, payload,
-              `Classified liquidation item "${item.description}" (₱${fmt(item.amount)}) under ${item.category}`);
+              isSplit
+                ? `Classified liquidation item "${item.description}" (₱${fmt(item.amount)}) under ${item.category}: ₱${fmt(split.advC / 100)} expensed from the advance, ₱${fmt(split.reiC / 100)} to be reimbursed`
+                : `Classified liquidation item "${item.description}" (₱${fmt(item.amount)}) under ${item.category}`);
           }
 
           if (balance > 0.004) {
@@ -1718,18 +2062,41 @@
             // trackable Reimbursement request for the shortfall - it still
             // needs an explicit "Release Payment" click before any cash
             // actually moves, same as every other request in this system.
+            let reimbursementItems = null;
+            let presetCategory = topupCategory;
+            if (alloc) {
+              reimbursementItems = [];
+              categorizedItems.forEach((item, index) => {
+                const part = alloc.items[index].reiC;
+                if (part <= 0) return;
+                const receiptIds = (item.receiptIds || []).slice();
+                reimbursementItems.push({
+                  index,
+                  date: item.date || '',
+                  description: item.description || '',
+                  amount: part / 100,
+                  category: item.category,
+                  receiptIds,
+                  annotations: (item.annotations || []).filter(a => receiptIds.includes(a.receiptId)).map(a => ({ ...a }))
+                });
+              });
+              // Back-compat display: the category of the largest reimbursed part.
+              const largest = reimbursementItems.reduce((best, it) => (!best || it.amount > best.amount) ? it : best, null);
+              presetCategory = largest ? largest.category : '';
+            }
+            const excessAmount = alloc ? alloc.excessC / 100 : Math.abs(balance);
             const reimbursementPayload = {
               type: 'Reimbursement',
               title: `Additional reimbursement - ${row.title || ''}`,
               date: now.slice(0, 10),
-              amount: Math.abs(balance),
-              notes: `Auto-created: the liquidated total for "${row.title || ''}" exceeded the released cash advance by ₱${fmt(Math.abs(balance))}.`,
+              amount: excessAmount,
+              notes: `Auto-created: the liquidated total for "${row.title || ''}" exceeded the released cash advance by ₱${fmt(excessAmount)}.`,
               status: 'Approved',
               requesterUid: row.requesterUid,
               requesterEmail: row.requesterEmail || '',
               requesterName: row.requesterName || row.requesterRole || '',
               requesterRole: row.requesterRole,
-              presetCategory: topupCategory,
+              presetCategory,
               presetFund: fund,
               sourceLiquidationRequestId: row.id,
               reviewedBy: activeProfile.name || 'Treasurer',
@@ -1737,11 +2104,24 @@
               createdAt: now,
               updatedAt: now
             };
-            const reimbursementRef = await db.collection('liquidationRequests').add(reimbursementPayload);
+            if (reimbursementItems) reimbursementPayload.reimbursementItems = reimbursementItems;
+            let reimbursementRef;
+            if (alloc) {
+              // Deterministic id (and never overwrite an existing one, which
+              // the Treasurer may already have released) so a retry after a
+              // mid-save failure can't create a second reimbursement.
+              reimbursementRef = db.collection('liquidationRequests').doc(`liqtop-${row.id}`);
+              const existing = await reimbursementRef.get();
+              if (!existing.exists) await reimbursementRef.set(reimbursementPayload);
+            } else {
+              reimbursementRef = await db.collection('liquidationRequests').add(reimbursementPayload);
+            }
             topupRequestId = reimbursementRef.id;
             await writeAuditLog('liquidation_request_created', 'liquidationRequests', reimbursementRef.id, null, reimbursementPayload,
-              `Auto-created reimbursement request for overspend on "${row.title || ''}" (₱${fmt(Math.abs(balance))})`);
-            await notifyRole(row.requesterRole, `An additional reimbursement request of ₱${fmt(Math.abs(balance))} was created for "${row.title || ''}" — the Treasurer will release it separately.`);
+              alloc
+                ? `Auto-created reimbursement request for overspend on "${row.title || ''}" (₱${fmt(excessAmount)}): advance covered ₱${fmt(alloc.releasedC / 100)}, ${reimbursementItems.length} item part(s) totalling ₱${fmt(excessAmount)} to be reimbursed`
+                : `Auto-created reimbursement request for overspend on "${row.title || ''}" (₱${fmt(Math.abs(balance))})`);
+            await notifyRole(row.requesterRole, `An additional reimbursement request of ₱${fmt(alloc ? alloc.excessC / 100 : Math.abs(balance))} was created for "${row.title || ''}" — the Treasurer will release it separately.`);
           }
         }
 
@@ -1754,14 +2134,22 @@
           updatedAt: now
         };
         if (categorizedItems.length) {
-          after.liquidationItems = categorizedItems;
+          after.liquidationItems = alloc
+            ? categorizedItems.map((item, index) => ({
+                ...item,
+                advancePortion: alloc.items[index].advC / 100,
+                reimbursePortion: alloc.items[index].reiC / 100
+              }))
+            : categorizedItems;
           after.classifiedExpenseIds = classifiedExpenseIds;
           after.returnedIncomeId = returnedIncomeId;
           after.topupRequestId = topupRequestId;
           after.linkedExpenseId = null;
         }
         await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
-        await writeAuditLog('liquidation_request_reconciled', 'liquidationRequests', row.id, row, { ...row, ...after }, `Reconciled request: ${row.title || row.id}`);
+        await writeAuditLog('liquidation_request_reconciled', 'liquidationRequests', row.id, row, { ...row, ...after }, alloc
+          ? `Reconciled request: ${row.title || row.id} — overspent: ₱${fmt(alloc.releasedC / 100)} expensed from the advance, ₱${fmt(alloc.excessC / 100)} routed to an additional reimbursement`
+          : `Reconciled request: ${row.title || row.id}`);
         await notifyRole(row.requesterRole, `Your liquidation for "${row.title || ''}" was reconciled and classified by the Treasurer.`);
         closeReconcileModal();
         await loadRequests();
@@ -1871,7 +2259,7 @@
                 <tr>
                   <td>${escapeHtml(item.date || '')}</td>
                   <td>${escapeHtml(item.description || '')}</td>
-                  <td class="amount">₱${fmt(item.amount)}</td>
+                  <td class="amount">₱${fmt(item.amount)}${item.reimbursePortion > 0 ? `<div class="muted" style="font-weight:normal;">₱${fmt(item.advancePortion)} advance · ₱${fmt(item.reimbursePortion)} reimbursed</div>` : ''}</td>
                   ${isClassified ? `<td>${escapeHtml(item.category || '-')}</td>`
                     : hasSuggestions ? `<td>${escapeHtml(item.suggestedCategory || '-')}</td>` : ''}
                   ${receiptsCell}
@@ -1882,6 +2270,14 @@
           </table>
         </div>` : '';
 
+      const reimbursementItemsHtml = hasReimbursementItems(row) ? `
+        <div class="section-label">Reimbursed Items (from the overspent cash advance)</div>
+        <div class="table-wrap">
+          <table class="inner-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right;">Reimburse</th></tr></thead>
+            <tbody>${row.reimbursementItems.map(it => `<tr><td>${escapeHtml(it.date || '')}</td><td>${escapeHtml(it.description || '')}</td><td>${escapeHtml(it.category || '')}</td><td class="amount">₱${fmt(it.amount)}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>` : '';
       const balance = Number(row.amount || 0) - Number(row.liquidationTotal || 0);
       const settlementHtml = row.status === 'Reconciled' && row.returnedIncomeId
         ? `Unspent balance of <strong>₱${fmt(balance)}</strong> was recorded as returned to the fund.`
@@ -1912,6 +2308,8 @@
         <div class="section-label">Particulars</div>
         <div><strong>${escapeHtml(row.title || '')}</strong></div>
         ${row.notes ? `<div class="muted">${escapeHtml(row.notes)}</div>` : ''}
+        ${duplicateWarningHtml(row)}
+        ${reimbursementItemsHtml}
         ${itemsHtml}
         ${balanceHtml}
         ${row.liquidationNotes ? `<div class="section-label">Liquidation Notes</div><div class="muted">${escapeHtml(row.liquidationNotes)}</div>` : ''}
@@ -2005,7 +2403,7 @@
             <td>${escapeHtml(row.date || '')}</td>
             <td>${escapeHtml(row.requesterName || row.requesterRole || '-')}<div class="muted">${escapeHtml(row.requesterRole || '')}</div></td>
             <td>${escapeHtml(typeLabel(row))}${row.assignedBy ? '<div class="muted">Assigned</div>' : ''}${row.sourceLiquidationRequestId ? '<div class="muted">Auto (overspend)</div>' : ''}</td>
-            <td><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div></td>
+            <td><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div>${duplicateWarningHtml(row)}</td>
             <td><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Submitted')}</span></td>
             <td class="amount">₱${fmt(row.amount)}</td>
             <td class="amount">${liquidatedCell}</td>
