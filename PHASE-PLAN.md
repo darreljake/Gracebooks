@@ -852,3 +852,9 @@ Status: Done (code side); deploy pending. Owner feedback: Investment Income / Lo
 - `tithe-entry.html`: Budget Details placeholder hint only.
 - No amounts changed; validated by before/after Playwright comparison (only labels/notes/detail rows differ).
 
+## Cash Budget: Trend-Based Cash Projection with Cash Levels (2026-09-30)
+
+Status: Done (code side); deploy pending.
+
+- `budget-vs-actual.html` Cash Budget tab: new "Trend-Based Cash Projection - Cash Levels (Financial Overview basis)" section below Projected Cash Flow Timing. Starts from live Available Operating Cash (one-time fetch, extended to also gather monthly General Fund cash series, essential monthly expense and current/next-year budgets) and projects 3/6/12 months (default 6) using `financial-overview.html`'s `getCashForecast()` rates (3-month actual trend, or Conservative/Hybrid default), grading each month Green/Yellow/Red/Black with months-of-cover and an alert for the first Red/Black month or level drop.
+- By design differs from FO by applying each month's own budget rather than a flat two-month average; FO helpers are copied (`trendBudgetedForMonth`, `trendCashLevel`) and must stay in step. Included in the Treasurer's "Generate & Save Version" snapshot. No Firestore rules change, no new writes.
