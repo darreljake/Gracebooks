@@ -108,6 +108,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     .modal-content { background:white; padding:30px; border-radius:12px; width:600px; max-width:95%; box-shadow:0 10px 25px rgba(0,0,0,0.2); }
     .modal-header { font-size:18px; font-weight:700; margin-bottom:5px; border-bottom:1px solid #ddd; padding-bottom:10px; color:var(--dark); }
     .modal-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+    /* Cash voucher preview modal (built lazily by openVoucherPreview) */
+    .vp-modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:1100; justify-content:center; align-items:center; }
+    .vp-box { background:#fff; border-radius:10px; width:min(920px,96vw); height:min(92vh,1100px); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.3); }
+    .vp-head { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid #ddd; flex-shrink:0; }
+    .vp-title { font-weight:700; font-size:15px; color:#8B0000; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .vp-newtab { font-size:12px; color:#1a5276; font-weight:600; text-decoration:none; white-space:nowrap; }
+    .vp-close { background:none; border:none; font-size:26px; line-height:1; cursor:pointer; color:#666; padding:0 4px; }
+    .vp-frame { flex:1; width:100%; border:0; background:#fff; }
+    @media (max-width: 600px) { .vp-box { width:100vw; height:100%; max-height:none; border-radius:0; } }
+
     .btn-cancel { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:#eee; color:#333; }
     .btn-save { padding:8px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:600; background:var(--red); color:white; }
     
@@ -3904,7 +3914,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       receiptCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewReceipt('${escapeAttr(e.id)}')">${escapeHtml(label)}</button>`;
     }
     const voucherCell = resolved.voucherId
-      ? `<a href="cash-voucher.html?view=${encodeURIComponent(resolved.voucherId)}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">🧾 ${escapeHtml(resolved.voucherNo || 'View Voucher')}</a>`
+      ? `<button type="button" class="rbtn rbtn-view" onclick="openVoucherPreview('${escapeAttr(resolved.voucherId)}', '${escapeAttr(resolved.voucherNo || '')}')">🧾 ${escapeHtml(resolved.voucherNo || 'View Voucher')}</button>`
       : '<span class="rbadge rbadge-missing">No voucher</span>';
     const liquidationLink = e.linkedLiquidationRequestId
       ? ` <a href="liquidation-reimbursements.html" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view" title="Open Liquidation / Reimbursements">🔗 Liquidation</a>`
@@ -4114,6 +4124,49 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       annotations: candidate.annotations || [], editable: false, locked: !!candidate.locked
     });
   }
+  // ── Cash voucher preview (in-page modal, built lazily, reused) ───────────
+  // Opens cash-voucher.html's read-only embed mode in an iframe so the
+  // reviewer never leaves this page. Same-origin, so Firebase auth is shared.
+  function openVoucherPreview(voucherId, voucherNo) {
+    if (!voucherId) return;
+    let modal = document.getElementById('voucherPreviewModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'voucherPreviewModal';
+      modal.className = 'vp-modal no-print review-only';
+      modal.innerHTML =
+        '<div class="vp-box" role="dialog" aria-modal="true" aria-labelledby="vp-title">' +
+          '<div class="vp-head">' +
+            '<span class="vp-title" id="vp-title"></span>' +
+            '<a class="vp-newtab" id="vp-newtab" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>' +
+            '<button type="button" class="vp-close" id="vp-close" aria-label="Close">&times;</button>' +
+          '</div>' +
+          '<iframe class="vp-frame" id="vp-frame" title="Cash voucher preview"></iframe>' +
+        '</div>';
+      document.body.appendChild(modal);
+      modal.addEventListener('click', (ev) => { if (ev.target === modal) closeVoucherPreview(); });
+      modal.querySelector('#vp-close').addEventListener('click', closeVoucherPreview);
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && modal.style.display === 'flex') closeVoucherPreview();
+      });
+      // The embedded voucher page relays Escape (a focused iframe swallows it).
+      window.addEventListener('message', (ev) => {
+        if (ev.origin === window.location.origin && ev.data && ev.data.type === 'gb-voucher-embed-close' && modal.style.display === 'flex') closeVoucherPreview();
+      });
+    }
+    const base = 'cash-voucher.html?view=' + encodeURIComponent(voucherId);
+    modal.querySelector('#vp-title').textContent = 'Cash Voucher' + (voucherNo ? ' ' + voucherNo : '');
+    modal.querySelector('#vp-newtab').setAttribute('href', base);
+    modal.querySelector('#vp-frame').src = base + '&embed=1';
+    modal.style.display = 'flex';
+  }
+  function closeVoucherPreview() {
+    const modal = document.getElementById('voucherPreviewModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.querySelector('#vp-frame').src = 'about:blank';
+  }
+
   function closeReviewReceiptViewer() {
     document.getElementById('review-receipt-viewer-body').innerHTML = '';
     document.getElementById('reviewReceiptViewerModal').style.display = 'none';

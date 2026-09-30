@@ -852,3 +852,11 @@ Status: Done (code side); deploy pending. Owner feedback: Investment Income / Lo
 - `tithe-entry.html`: Budget Details placeholder hint only.
 - No amounts changed; validated by before/after Playwright comparison (only labels/notes/detail rows differ).
 
+
+## Voucher Preview In Review Mode + Zoom in the Image Viewer (2026-09-30)
+
+Status: Done (code side); deploy pending. Owner feedback: (A) clicking a cash voucher while checking receipts in review mode navigated away to `cash-voucher.html`, so the Auditor lost their place; (B) income tally sheets cannot be zoomed.
+
+- **A. In-page voucher preview.** `cash-voucher.html?view=<id>&embed=1` renders only the voucher (same `voucherMarkup()` as the View / Print modal, signatures included) plus a small Print button - no topbar, register, signature/defaults card or edit controls; Treasurer/Auditor role gate unchanged, unknown id shows "Voucher not found.", non-embed behaviour untouched. `print-report.html` (review mode only, `review-only no-print` modal built lazily by `openVoucherPreview()`) and `report-workflow.html` (Supporting Documents) now show the voucher as a button opening a modal with that iframe (full-screen on phones), Esc/backdrop/close, and an "Open in new tab" fallback link.
+- **B. Zoom in `receipt-annotator.js`** (all callers, no caller changes): -/+/Fit toolbar buttons (Fit..500%), Ctrl/Cmd+wheel about the cursor, double-click / double-tap toggles Fit <-> 250%, two-finger pinch about the pinch centre, mouse-drag / one-finger pan when zoomed (view/locked), two-finger pan while editing (one finger still draws). Implemented by resizing the stage in px inside an overflow:auto viewport (no CSS transform) so the 0..1 highlight fractions stay aligned and boxes drawn while zoomed save correct fractions; `touch-action` on the viewer stops page pinch-zoom without touching any viewport meta. Public API unchanged.
+- **Validated** with Playwright (stubbed Firebase, Chromium touch emulation via CDP): embed renders only the voucher; modal opens/closes on both pages without navigating; normal `print-report.html` `#export-table` byte-identical to HEAD; zoom keeps the highlight over the same image pixels at 1x/3.4x, drawing while zoomed (mouse and touch) saves the expected fractions; pinch/double-tap on a 390px phone. Not deployed.
