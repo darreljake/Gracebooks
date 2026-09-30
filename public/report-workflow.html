@@ -983,6 +983,9 @@
     let supportingDocsReceiptMap = new Map();
     // Sunday date -> that date's countSheets docs (see renderIncomeSection).
     let supportingDocsSheetMap = new Map();
+    // 'YYYY-MM' -> that month's month-level tally sheet docs (scope 'month'),
+    // kept apart from the weekly map above so weekly checks never see them.
+    let supportingDocsMonthSheets = new Map();
     // Kept so the Treasurer fix-it actions below (upload receipt / make
     // voucher / attach count sheet) can resolve a liquidation-linked
     // expense's request without re-fetching it, and so a successful action
@@ -1111,10 +1114,17 @@
         );
         if (requestId !== supportingDocsRequestId) return;
         const sheetMap = new Map();
-        sheetSnaps.forEach(snap => { if (snap.exists) sheetMap.set(snap.id, { id: snap.id, ...snap.data() }); });
+        // A month-level sheet (scope 'month') is never a Sunday's sheet -
+        // income docs never link to one, but skip it defensively anyway.
+        sheetSnaps.forEach(snap => { if (snap.exists && snap.data().scope !== 'month') sheetMap.set(snap.id, { id: snap.id, ...snap.data() }); });
+
+        // Month-level tally sheets for the period (one-time read; a failure
+        // here must never block the rest of the card).
+        const monthSheets = await loadMonthlySheetsForPeriod();
+        if (requestId !== supportingDocsRequestId) return;
 
         renderSupportingDocuments(reportableRows, liquidationMap);
-        renderIncomeSection(incomeRows, sheetMap);
+        renderIncomeSection(incomeRows, sheetMap, monthSheets);
       } catch (error) {
         if (requestId !== supportingDocsRequestId) return;
         console.error(error);
@@ -1343,8 +1353,9 @@
     // date's count sheet (or flags it missing), same gating as the rest of
     // this card. Rendered into its own placeholder so it doesn't have to
     // wait on (or block) the expense/payroll tables above.
-    function renderIncomeSection(incomeRows, sheetMap) {
+    function renderIncomeSection(incomeRows, sheetMap, monthSheets) {
       supportingDocsSheetMap = sheetMap;
+      supportingDocsMonthSheets = monthSheets || new Map();
       const target = document.getElementById('supporting-income-body');
       if (!target) return;
 
@@ -1370,12 +1381,15 @@
         if (!sheets.length) {
           missingCount++;
           const attachAction = (profile && profile.role === 'Treasurer')
-            ? ` <button type="button" class="btn-ledger" onclick="openSupportingAttachCountSheet('${escapeAttr(date)}')">Attach count sheet</button>`
+            ? ` <button type="button" class="btn-ledger" title="You can select 2 or more photos at once (front/back, receipts)" onclick="openSupportingAttachCountSheet('${escapeAttr(date)}')">Attach count sheet</button>`
             : '';
           sheetCell = `<span class="badge-missing">No count sheet</span>${attachAction}`;
         } else {
           const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
           sheetCell = `<button type="button" class="btn-ledger" onclick="openSupportingCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
+          if (profile && profile.role === 'Treasurer') {
+            sheetCell += ` <button type="button" class="btn-ledger" title="You can select 2 or more photos at once" onclick="openSupportingAddSheetFiles('${escapeAttr(date)}')">Add photo/file</button>`;
+          }
           if (linkedCount < entries.length) {
             sheetCell += ` <span class="muted" style="font-size:11px;">(${linkedCount}/${entries.length} entries linked)</span>`;
           }
@@ -1423,6 +1437,7 @@
       }).join('');
 
       target.outerHTML = `
+        ${monthlySheetHeaderHtml(incomeRows)}
         <div class="docs-summary">${dates.length} Sunday${dates.length === 1 ? '' : 's'} · ${missingCount} missing count sheet${missingCount === 1 ? '' : 's'}</div>
         <div class="doc-table-wrap">
           <table class="doc-table">
@@ -1523,6 +1538,131 @@
       openReceiptCandidate(record, resolved.candidates[index]);
     }
 
+    // ── Monthly tally sheets (scope 'month') ────────────────────────────
+    // One-time read of the period's month-level sheets. A range on `month`
+    // works for both a single month and a whole year with no composite
+    // index (only month sheets carry the field).
+    async function loadMonthlySheetsForPeriod() {
+      const map = new Map();
+      try {
+        const type = document.getElementById('report-type').value;
+        const year = document.getElementById('period-year').value;
+        let query = db.collection('countSheets');
+        if (type === 'annual') query = query.where('month', '>=', `${year}-01`).where('month', '<=', `${year}-12`);
+        else if (periodMonthPrefix()) query = query.where('month', '==', periodMonthPrefix());
+        else return map;
+        const snap = await query.get();
+        snap.docs.forEach(d => {
+          const data = d.data();
+          if (data.scope !== 'month' || !data.month) return;
+          if (!map.has(data.month)) map.set(data.month, []);
+          map.get(data.month).push({ id: d.id, ...data });
+        });
+      } catch (error) {
+        console.warn('Unable to load monthly tally sheets.', error);
+      }
+      return map;
+    }
+
+    const MONTH_SHORT_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Header line(s) above the Income summary: monthly reports show one
+    // line, annual reports a compact per-month list. Same gating as the
+    // rest of the card (this only ever renders inside it). Never touches the
+    // per-Sunday rows below.
+    function monthlySheetHeaderHtml(incomeRows) {
+      const type = document.getElementById('report-type').value;
+      const isTreasurer = !!(profile && profile.role === 'Treasurer');
+      const monthTotals = new Map();
+      incomeRows.forEach(r => {
+        const m = String(r.date || '').slice(0, 7);
+        monthTotals.set(m, (monthTotals.get(m) || 0) + Number(r.amount || 0));
+      });
+      const statusHtml = (month, compact) => {
+        const sheets = supportingDocsMonthSheets.get(month) || [];
+        const recorded = monthTotals.get(month) || 0;
+        const attach = isTreasurer
+          ? ` <button type="button" class="btn-ledger" title="You can select 2 or more photos at once" onclick="openSupportingMonthlyAttach('${escapeAttr(month)}')">${compact ? 'Attach' : 'Attach monthly sheet'}</button>`
+          : '';
+        if (!sheets.length) return `<span class="badge-missing">No monthly sheet</span>${attach}`;
+        const fileCount = sheets.reduce((n, sh) => n + (sh.files || []).length, 0);
+        let html = `<button type="button" class="btn-ledger" onclick="openSupportingMonthlySheet('${escapeAttr(month)}')">View (${fileCount} file${fileCount === 1 ? '' : 's'})</button>`;
+        if (isTreasurer) html += ` <button type="button" class="btn-ledger" title="You can select 2 or more photos at once" onclick="openSupportingMonthlyAttach('${escapeAttr(month)}')">Add files</button>`;
+        const withTotal = sheets.filter(sh => sh.monthlyTotal != null && isFinite(Number(sh.monthlyTotal)));
+        if (withTotal.length) {
+          const sheetTotal = Number(withTotal[0].monthlyTotal);
+          const mismatch = Math.abs(sheetTotal - recorded) > 0.004;
+          html += mismatch
+            ? ` <span class="badge-mismatch">Sheet total ₱${peso(sheetTotal)} ≠ recorded ₱${peso(recorded)}</span>`
+            : ` <span class="muted" style="font-size:11px;">Sheet total ₱${peso(sheetTotal)} · recorded ₱${peso(recorded)}</span>`;
+        }
+        return html;
+      };
+
+      if (type === 'monthly') {
+        const month = periodMonthPrefix();
+        if (!month) return '';
+        return `<div class="docs-summary monthly-sheet-line"><strong>Monthly tally sheet:</strong> ${statusHtml(month, false)}</div>`;
+      }
+      if (type === 'annual') {
+        const year = document.getElementById('period-year').value;
+        const items = [];
+        for (let m = 1; m <= 12; m++) {
+          const month = `${year}-${String(m).padStart(2, '0')}`;
+          const hasSheet = (supportingDocsMonthSheets.get(month) || []).length > 0;
+          const hasIncome = (monthTotals.get(month) || 0) > 0 || incomeRows.some(r => String(r.date || '').slice(0, 7) === month);
+          if (!hasSheet && !hasIncome) continue;
+          items.push(`<span style="display:inline-block; margin:2px 10px 2px 0;"><strong>${MONTH_SHORT_NAMES[m - 1]}</strong> ${statusHtml(month, true)}</span>`);
+        }
+        return `<div class="docs-summary monthly-sheet-line"><strong>Monthly tally sheets:</strong> ${items.join('') || '<span class="muted">No income months in this year.</span>'}</div>`;
+      }
+      return '';
+    }
+
+    function openSupportingMonthlySheet(month) {
+      const sheets = supportingDocsMonthSheets.get(month) || [];
+      const allFiles = [];
+      sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+      if (!allFiles.length) { alert('This monthly sheet has no attached files.'); return; }
+      document.getElementById('receipt-viewer-title').textContent = `Monthly Tally Sheet — ${month}`;
+      document.getElementById('receipt-viewer-body').innerHTML = `
+        <ul class="receipt-chooser-list">
+          ${allFiles.map((file, i) => `
+            <li>
+              <span>${escapeHtml(file.name || 'Monthly sheet file')}</span>
+              <button type="button" class="btn-ledger" onclick="openMonthlySheetFile('${escapeAttr(month)}', ${i})">View</button>
+            </li>`).join('')}
+        </ul>`;
+      document.getElementById('receiptViewerModal').style.display = 'flex';
+    }
+
+    function openMonthlySheetFile(month, index) {
+      const allFiles = [];
+      (supportingDocsMonthSheets.get(month) || []).forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+      showSheetFile(allFiles[index], `Monthly tally sheet — ${month}`);
+    }
+
+    // Shared by weekly + monthly file viewers.
+    function showSheetFile(file, subtitle) {
+      if (!file) return;
+      closeReceiptViewer();
+      const isPdf = !window.GraceBooksAnnotator.isAnnotatableUrl(file.name, file.url);
+      if (isPdf || !file.url) {
+        document.getElementById('receipt-viewer-title').textContent = file.name || 'Count sheet';
+        document.getElementById('receipt-viewer-body').innerHTML =
+          `<div class="receipt-frame" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:200px;">
+             <p style="margin:0; color:#555;">${file.url ? 'PDF files open in a new browser tab for viewing.' : 'File not available.'}</p>
+             ${file.url ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">Open PDF in New Tab</a>` : ''}
+           </div>`;
+        document.getElementById('receiptViewerModal').style.display = 'flex';
+        return;
+      }
+      window.GraceBooksAnnotator.open({
+        title: file.name || 'Count sheet', imageUrl: file.url, fileName: file.name || '',
+        subtitle, annotations: [], editable: false, locked: true
+      });
+    }
+
     function openSupportingCountSheet(date) {
       const groups = new Map();
       // Rebuild from the last render's data via the sheet map + expense map
@@ -1531,7 +1671,7 @@
       // were shown for this date; a simpler direct approach is to look up
       // every sheet whose own `date` field matches, which is equivalent and
       // needs no extra state.
-      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date);
+      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
       if (!sheets.length) return;
       const allFiles = [];
       sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push({ sheet, file: f })));
@@ -1552,7 +1692,7 @@
     }
 
     function openCountSheetFile(date, index) {
-      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date);
+      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
       const allFiles = [];
       sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
       const file = allFiles[index];
@@ -1744,6 +1884,118 @@
       } catch (error) {
         console.error(error);
         alert('Error saving count sheet: ' + (error.message || error));
+      }
+    }
+
+    // ── Add more files to an existing sheet / attach a monthly sheet ─────
+    // Treasurer only. Uploads to count-sheets/{sheetId}/{uid}/{token}{ext}
+    // (images/PDF, <= 5 MB) and appends with arrayUnion so a concurrent
+    // edit to `files` isn't clobbered.
+    function validateSheetFiles(files) {
+      for (const file of files) {
+        const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+        if (!okType) return `"${file.name}" must be an image or PDF.`;
+        if (file.size > 5 * 1024 * 1024) return `"${file.name}" must be 5 MB or smaller.`;
+      }
+      return '';
+    }
+    async function uploadSheetFiles(sheetId, files) {
+      const uid = firebase.auth().currentUser.uid;
+      const uploaded = [];
+      for (const file of files) {
+        const fileId = generateStorageToken();
+        const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+        const fileRef = storage.ref(path);
+        await fileRef.put(file);
+        const url = await fileRef.getDownloadURL();
+        uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+      }
+      return uploaded;
+    }
+    function pickFiles(onFiles) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,application/pdf';
+      input.multiple = true;
+      input.onchange = () => { const files = Array.from(input.files || []); if (files.length) onFiles(files); };
+      input.click();
+    }
+
+    function openSupportingAddSheetFiles(date) {
+      if (!profile || profile.role !== 'Treasurer') return;
+      const sheets = [...supportingDocsSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
+      if (!sheets.length) return;
+      let sheet = sheets[0];
+      if (sheets.length > 1) {
+        const list = sheets.map((sh, i) => `${i + 1}) ${(sh.files || []).length} file(s)${sh.createdBy && sh.createdBy.name ? ', by ' + sh.createdBy.name : ''}`).join('\n');
+        const answer = window.prompt(`${date} has ${sheets.length} count sheets. Add files to which one? (enter a number)\n${list}`, '1');
+        if (answer === null) return;
+        const idx = parseInt(answer, 10) - 1;
+        if (!(idx >= 0 && idx < sheets.length)) { alert('Please enter a valid number.'); return; }
+        sheet = sheets[idx];
+      }
+      pickFiles(files => saveSupportingSheetFiles(sheet.id, files, `count sheet for ${date}`));
+    }
+
+    async function saveSupportingSheetFiles(sheetId, files, label) {
+      const err = validateSheetFiles(files);
+      if (err) return alert(err);
+      try {
+        const uploaded = await uploadSheetFiles(sheetId, files);
+        await db.collection('countSheets').doc(sheetId).update({ files: firebase.firestore.FieldValue.arrayUnion(...uploaded) });
+        await writeDocAuditLog('count_sheet_files_added', 'countSheets', sheetId, null,
+          { sheetId, fileNames: uploaded.map(f => f.name) },
+          `Added ${uploaded.length} file${uploaded.length === 1 ? '' : 's'} to ${label} (via Supporting Documents)`);
+        alert('Files added.');
+        await loadSupportingDocuments();
+      } catch (error) {
+        console.error(error);
+        alert('Error adding files: ' + (error.message || error));
+      }
+    }
+
+    function openSupportingMonthlyAttach(month) {
+      if (!profile || profile.role !== 'Treasurer') return;
+      pickFiles(files => saveSupportingMonthlySheet(month, files));
+    }
+
+    async function saveSupportingMonthlySheet(month, files) {
+      if (!profile || profile.role !== 'Treasurer') return;
+      if (!/^\d{4}-\d{2}$/.test(month)) return;
+      const err = validateSheetFiles(files);
+      if (err) return alert(err);
+      try {
+        const existingSnap = await db.collection('countSheets').where('month', '==', month).get();
+        const existing = existingSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(sh => sh.scope === 'month')[0] || null;
+        if (existing) {
+          await saveSupportingSheetFiles(existing.id, files, `monthly tally sheet for ${month}`);
+          return;
+        }
+        let monthlyTotal = null;
+        const totalAnswer = window.prompt('Sheet total ₱ (optional - leave blank to skip):', '');
+        if (totalAnswer === null) return;
+        if (totalAnswer.trim() !== '') {
+          monthlyTotal = Number(totalAnswer.replace(/,/g, ''));
+          if (!isFinite(monthlyTotal) || monthlyTotal < 0) { alert('Sheet total must be a valid amount.'); return; }
+        }
+        const uid = firebase.auth().currentUser.uid;
+        const sheetId = `monthly-${month}`;
+        const uploaded = await uploadSheetFiles(sheetId, files);
+        const payload = {
+          scope: 'month', month, date: `${month}-01`,
+          createdAt: new Date().toISOString(),
+          createdBy: { uid, name: profile.name || '', role: profile.role || '' },
+          files: uploaded, notes: 'Attached from Report Workflow (Supporting Documents).'
+        };
+        if (monthlyTotal != null) payload.monthlyTotal = monthlyTotal;
+        await db.collection('countSheets').doc(sheetId).set(payload);
+        await writeDocAuditLog('monthly_count_sheet_created', 'countSheets', sheetId, null, payload,
+          `Attached monthly tally sheet for ${month} (${uploaded.length} file${uploaded.length === 1 ? '' : 's'}) (via Supporting Documents)`);
+        alert('Monthly sheet saved.');
+        await loadSupportingDocuments();
+      } catch (error) {
+        console.error(error);
+        alert('Error saving monthly sheet: ' + (error.message || error));
       }
     }
 

@@ -127,6 +127,7 @@
       <h3>Consolidated Daily Income</h3>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn-export" id="btn-attach-sheet" style="background:#8B0000; display:none;" onclick="openAttachSheetModal()">📎 Attach Count Sheet</button>
+        <button class="btn-export" id="btn-attach-monthly" style="background:#6c3483; display:none;" onclick="openMonthlySheetModal()">🗓️ Attach Monthly Sheet</button>
         <button class="btn-export" onclick="exportCSV()">📥 Export CSV</button>
       </div>
     </div>
@@ -196,11 +197,39 @@
     <label style="font-size:12px; color:#555;">Service Date</label>
     <input type="date" id="attach-sheet-date" onchange="loadUnattachedIncomeForDate()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 14px;">
     <div id="attach-sheet-entries" class="muted" style="font-size:13px; color:#888; margin-bottom:14px;">Pick a date to see its income entries without a count sheet.</div>
+    <div id="attach-sheet-target-wrap" style="display:none; margin-bottom:14px;">
+      <label style="font-size:12px; color:#555;">Save to</label>
+      <select id="attach-sheet-target" onchange="onAttachTargetChange()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin-top:6px;"></select>
+    </div>
     <label style="font-size:12px; color:#555;">Count Sheet Photo(s)</label>
+    <div style="font-size:11px; color:#888; margin-top:2px;">You can select 2 or more photos (front/back, receipts) at once. Images or PDF, 5 MB each.</div>
     <input type="file" id="attach-sheet-files" accept="image/*,.pdf" multiple style="width:100%; margin:6px 0 14px;">
     <div style="display:flex; gap:10px; justify-content:flex-end;">
       <button class="btn-export" style="background:#999;" onclick="closeAttachSheetModal()">Cancel</button>
       <button class="btn-export" id="attach-sheet-save-btn" onclick="saveAttachSheet()">Save Count Sheet</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="monthlySheetModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000;">
+  <div style="background:white; border-radius:12px; padding:24px; width:min(520px,92vw); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="color:#6c3483;">Attach Monthly Tally Sheet</h3>
+      <button onclick="closeMonthlySheetModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">×</button>
+    </div>
+    <label style="font-size:12px; color:#555;">Month</label>
+    <input type="month" id="monthly-sheet-month" onchange="loadExistingMonthlySheet()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 10px;">
+    <div id="monthly-sheet-status" style="font-size:13px; color:#888; margin-bottom:14px;">Pick a month.</div>
+    <label style="font-size:12px; color:#555;">Sheet Photo(s) / PDF</label>
+    <div style="font-size:11px; color:#888; margin-top:2px;">You can select 2 or more photos at once. Images or PDF, 5 MB each.</div>
+    <input type="file" id="monthly-sheet-files" accept="image/*,.pdf" multiple style="width:100%; margin:6px 0 14px;">
+    <label style="font-size:12px; color:#555;">Sheet total ₱ (optional)</label>
+    <input type="number" id="monthly-sheet-total" min="0" step="0.01" placeholder="Total written on the monthly sheet" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 14px;">
+    <label style="font-size:12px; color:#555;">Notes (optional)</label>
+    <textarea id="monthly-sheet-notes" rows="2" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 14px;"></textarea>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn-export" style="background:#999;" onclick="closeMonthlySheetModal()">Cancel</button>
+      <button class="btn-export" id="monthly-sheet-save-btn" style="background:#6c3483;" onclick="saveMonthlySheet()">Save Monthly Sheet</button>
     </div>
   </div>
 </div>
@@ -373,13 +402,53 @@
   }
 
   let unattachedForDate = [];
+  let existingSheetsForDate = [];
+
+  // A countSheets doc with no `scope` is a weekly (Sunday) sheet; month
+  // sheets (scope 'month') are never a Sunday's sheet.
+  function isMonthSheet(sheet) { return !!sheet && sheet.scope === 'month'; }
+
+  function validateSheetFiles(files) {
+    for (const file of files) {
+      const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+      if (!okType) return `"${file.name}" must be an image or PDF.`;
+      if (file.size > 5 * 1024 * 1024) return `"${file.name}" must be 5 MB or smaller.`;
+    }
+    return '';
+  }
+
+  // Uploads to count-sheets/{sheetId}/{uid}/{token}{ext} (never the original
+  // file name in the path) and returns the file objects stored in `files`.
+  async function uploadSheetFiles(sheetId, files) {
+    const uid = firebase.auth().currentUser.uid;
+    const uploaded = [];
+    for (const file of files) {
+      const fileId = generateStorageToken();
+      const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+      const fileRef = storage.ref(path);
+      await fileRef.put(file);
+      const url = await fileRef.getDownloadURL();
+      uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+    }
+    return uploaded;
+  }
+
+  // Appends files to an existing sheet with arrayUnion so a concurrent edit
+  // to `files` is never clobbered, and audit-logs it.
+  async function appendFilesToSheet(sheetId, uploaded, summary) {
+    await db.collection('countSheets').doc(sheetId).update({ files: firebase.firestore.FieldValue.arrayUnion(...uploaded) });
+    await writeAuditLog('count_sheet_files_added', 'countSheets', sheetId, null,
+      { sheetId, fileNames: uploaded.map(f => f.name) }, summary);
+  }
 
   window.openAttachSheetModal = function() {
     if (!activeProfile || activeProfile.role !== 'Treasurer') return;
     document.getElementById('attach-sheet-date').value = '';
     document.getElementById('attach-sheet-files').value = '';
     document.getElementById('attach-sheet-entries').textContent = 'Pick a date to see its income entries without a count sheet.';
+    document.getElementById('attach-sheet-target-wrap').style.display = 'none';
     unattachedForDate = [];
+    existingSheetsForDate = [];
     document.getElementById('attachSheetModal').style.display = 'flex';
   };
 
@@ -387,26 +456,62 @@
     document.getElementById('attachSheetModal').style.display = 'none';
   };
 
+  window.onAttachTargetChange = function() {
+    const isNew = document.getElementById('attach-sheet-target').value === '__new__';
+    document.getElementById('attach-sheet-save-btn').textContent = isNew ? 'Save Count Sheet' : 'Add Files to Sheet';
+  };
+
   window.loadUnattachedIncomeForDate = async function() {
     const date = document.getElementById('attach-sheet-date').value;
     const box = document.getElementById('attach-sheet-entries');
+    const wrap = document.getElementById('attach-sheet-target-wrap');
+    const select = document.getElementById('attach-sheet-target');
     unattachedForDate = [];
+    existingSheetsForDate = [];
+    wrap.style.display = 'none';
     if (!date) {
       box.textContent = 'Pick a date to see its income entries without a count sheet.';
       return;
     }
     box.textContent = 'Loading...';
     try {
-      const snapshot = await db.collection('income').where('date', '==', date).get();
+      const [snapshot, sheetSnap] = await Promise.all([
+        db.collection('income').where('date', '==', date).get(),
+        db.collection('countSheets').where('date', '==', date).get()
+      ]);
+      if (document.getElementById('attach-sheet-date').value !== date) return; // date changed meanwhile
       unattachedForDate = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(r => !r.countSheetId && (r.type || '').toLowerCase() !== 'transfer');
+      existingSheetsForDate = sheetSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(sh => !isMonthSheet(sh));
+
+      select.innerHTML = '';
+      if (unattachedForDate.length) {
+        const o = document.createElement('option');
+        o.value = '__new__';
+        o.textContent = `New count sheet (links ${unattachedForDate.length} unlinked entr${unattachedForDate.length === 1 ? 'y' : 'ies'})`;
+        select.appendChild(o);
+      }
+      existingSheetsForDate.forEach((sh, i) => {
+        const n = (sh.files || []).length;
+        const o = document.createElement('option');
+        o.value = sh.id;
+        o.textContent = `Add more photos/files to existing sheet${existingSheetsForDate.length > 1 ? ' #' + (i + 1) : ''} (${n} file${n === 1 ? '' : 's'} now${sh.createdBy && sh.createdBy.name ? ', by ' + sh.createdBy.name : ''})`;
+        select.appendChild(o);
+      });
+      wrap.style.display = select.options.length > 1 || existingSheetsForDate.length ? 'block' : 'none';
+      onAttachTargetChange();
+
       if (!unattachedForDate.length) {
-        box.innerHTML = '<span style="color:#c0392b;">No income entries without a count sheet for this date (either none exist, or they already have one).</span>';
+        box.innerHTML = existingSheetsForDate.length
+          ? '<span style="color:#1e8449;">All entries for this date already have a count sheet. You can add more photos/files to it below.</span>'
+          : '<span style="color:#c0392b;">No income entries without a count sheet for this date (either none exist, or they already have one).</span>';
         return;
       }
       const total = unattachedForDate.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
-      box.innerHTML = `<strong>${unattachedForDate.length}</strong> entr${unattachedForDate.length === 1 ? 'y' : 'ies'} totaling <strong>₱${fmt(total)}</strong> will be linked to this count sheet:<br>` +
+      box.innerHTML = `<strong>${unattachedForDate.length}</strong> entr${unattachedForDate.length === 1 ? 'y' : 'ies'} totaling <strong>₱${fmt(total)}</strong> without a count sheet (linked when saving as a new sheet):<br>` +
         unattachedForDate.map(r => `&nbsp;&nbsp;• ${escapeHtml(r.member || r.type || 'Entry')} — ₱${fmt(r.amount)}`).join('<br>');
     } catch (error) {
       console.error(error);
@@ -418,32 +523,31 @@
     if (!activeProfile || activeProfile.role !== 'Treasurer') return;
     const date = document.getElementById('attach-sheet-date').value;
     if (!date) return alert('Please pick a date.');
-    if (!unattachedForDate.length) return alert('No income entries without a count sheet were found for this date.');
+    const target = document.getElementById('attach-sheet-target').value;
+    const addToExisting = !!target && target !== '__new__';
+    if (!addToExisting && !unattachedForDate.length) return alert('No income entries without a count sheet were found for this date.');
     const files = Array.from(document.getElementById('attach-sheet-files').files || []);
+    if (addToExisting && !files.length) return alert('Please choose at least one photo or PDF to add.');
     if (!files.length && !confirm('No photo selected. Save a count sheet record for this date without a photo?')) return;
-    for (const file of files) {
-      const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
-      if (!okType) return alert(`"${file.name}" must be an image or PDF.`);
-      if (file.size > 5 * 1024 * 1024) return alert(`"${file.name}" must be 5 MB or smaller.`);
-    }
+    const fileError = validateSheetFiles(files);
+    if (fileError) return alert(fileError);
 
     const btn = document.getElementById('attach-sheet-save-btn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
       const uid = firebase.auth().currentUser.uid;
+      if (addToExisting) {
+        const uploadedMore = await uploadSheetFiles(target, files);
+        await appendFilesToSheet(target, uploadedMore,
+          `Added ${uploadedMore.length} file${uploadedMore.length === 1 ? '' : 's'} to count sheet ${target} for ${date}`);
+        closeAttachSheetModal();
+        alert('Files added to the count sheet.');
+        return;
+      }
       const sheetRef = db.collection('countSheets').doc();
       const sheetId = sheetRef.id;
-
-      const uploaded = [];
-      for (const file of files) {
-        const fileId = generateStorageToken();
-        const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
-        const fileRef = storage.ref(path);
-        await fileRef.put(file);
-        const url = await fileRef.getDownloadURL();
-        uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
-      }
+      const uploaded = await uploadSheetFiles(sheetId, files);
 
       const cashTotal = unattachedForDate.filter(r => r.payment === 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
       const nonCashTotal = unattachedForDate.filter(r => r.payment !== 'Cash').reduce((s, r) => s + parseFloat(r.amount || 0), 0);
@@ -481,7 +585,116 @@
       alert('Error saving count sheet: ' + (error.message || error));
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Save Count Sheet';
+      onAttachTargetChange();
+    }
+  };
+
+  // ── Attach Monthly Tally Sheet (Treasurer only) ───────────────────────────
+  // A month-level countSheets doc: scope 'month', month 'YYYY-MM', date
+  // 'YYYY-MM-01'. No denominations and NOT linked to income docs (weekly
+  // countSheetId links are unaffected). One doc per month: a second attach
+  // for the same month appends files to it with arrayUnion.
+  let existingMonthlySheet = null;
+
+  window.openMonthlySheetModal = function() {
+    if (!activeProfile || activeProfile.role !== 'Treasurer') return;
+    const now = new Date();
+    document.getElementById('monthly-sheet-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    document.getElementById('monthly-sheet-files').value = '';
+    document.getElementById('monthly-sheet-total').value = '';
+    document.getElementById('monthly-sheet-notes').value = '';
+    document.getElementById('monthlySheetModal').style.display = 'flex';
+    loadExistingMonthlySheet();
+  };
+
+  window.closeMonthlySheetModal = function() {
+    document.getElementById('monthlySheetModal').style.display = 'none';
+  };
+
+  window.loadExistingMonthlySheet = async function() {
+    const month = document.getElementById('monthly-sheet-month').value;
+    const box = document.getElementById('monthly-sheet-status');
+    existingMonthlySheet = null;
+    if (!/^\d{4}-\d{2}$/.test(month)) { box.textContent = 'Pick a month.'; return; }
+    box.textContent = 'Checking for an existing monthly sheet...';
+    try {
+      const snap = await db.collection('countSheets').where('month', '==', month).get();
+      if (document.getElementById('monthly-sheet-month').value !== month) return;
+      const sheets = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(isMonthSheet);
+      existingMonthlySheet = sheets[0] || null;
+      if (existingMonthlySheet) {
+        const n = (existingMonthlySheet.files || []).length;
+        box.innerHTML = `<span style="color:#1e8449;">A monthly sheet already exists for ${escapeHtml(month)} (${n} file${n === 1 ? '' : 's'}). New files will be added to it.</span>` +
+          (existingMonthlySheet.monthlyTotal != null ? ` Saved total: ₱${fmt(Number(existingMonthlySheet.monthlyTotal))}.` : '');
+      } else {
+        box.textContent = 'No monthly sheet yet for this month - one will be created.';
+      }
+    } catch (error) {
+      console.error(error);
+      box.textContent = 'Unable to check for an existing monthly sheet: ' + (error.message || error);
+    }
+  };
+
+  window.saveMonthlySheet = async function() {
+    if (!activeProfile || activeProfile.role !== 'Treasurer') return;
+    const month = document.getElementById('monthly-sheet-month').value;
+    if (!/^\d{4}-\d{2}$/.test(month)) return alert('Please pick a month.');
+    const files = Array.from(document.getElementById('monthly-sheet-files').files || []);
+    const totalRaw = document.getElementById('monthly-sheet-total').value.trim();
+    const notes = document.getElementById('monthly-sheet-notes').value.trim();
+    let monthlyTotal = null;
+    if (totalRaw !== '') {
+      monthlyTotal = Number(totalRaw);
+      if (!isFinite(monthlyTotal) || monthlyTotal < 0) return alert('Sheet total must be a valid amount.');
+    }
+    if (!files.length) return alert('Please choose at least one photo or PDF of the monthly sheet.');
+    const fileError = validateSheetFiles(files);
+    if (fileError) return alert(fileError);
+
+    const btn = document.getElementById('monthly-sheet-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+      // Re-check right before writing so a sheet created since the modal
+      // opened is appended to, never duplicated.
+      const snap = await db.collection('countSheets').where('month', '==', month).get();
+      const existing = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(isMonthSheet)[0] || null;
+      const uid = firebase.auth().currentUser.uid;
+      if (existing) {
+        const uploaded = await uploadSheetFiles(existing.id, files);
+        const patch = { files: firebase.firestore.FieldValue.arrayUnion(...uploaded) };
+        if (monthlyTotal != null) patch.monthlyTotal = monthlyTotal;
+        if (notes) patch.notes = existing.notes ? `${existing.notes}\n${notes}` : notes;
+        await db.collection('countSheets').doc(existing.id).update(patch);
+        await writeAuditLog('count_sheet_files_added', 'countSheets', existing.id, null,
+          { sheetId: existing.id, month, fileNames: uploaded.map(f => f.name), monthlyTotal },
+          `Added ${uploaded.length} file${uploaded.length === 1 ? '' : 's'} to the monthly tally sheet for ${month}`);
+        alert('Files added to the existing monthly sheet.');
+      } else {
+        const sheetId = `monthly-${month}`;
+        const uploaded = await uploadSheetFiles(sheetId, files);
+        const payload = {
+          scope: 'month',
+          month,
+          date: `${month}-01`,
+          createdAt: new Date().toISOString(),
+          createdBy: { uid, name: activeProfile.name || '', role: activeProfile.role || '' },
+          files: uploaded,
+          notes
+        };
+        if (monthlyTotal != null) payload.monthlyTotal = monthlyTotal;
+        await db.collection('countSheets').doc(sheetId).set(payload);
+        await writeAuditLog('monthly_count_sheet_created', 'countSheets', sheetId, null, payload,
+          `Attached monthly tally sheet for ${month} (${uploaded.length} file${uploaded.length === 1 ? '' : 's'})`);
+        alert('Monthly sheet saved.');
+      }
+      closeMonthlySheetModal();
+    } catch (error) {
+      console.error(error);
+      alert('Error saving monthly sheet: ' + (error.message || error));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Monthly Sheet';
     }
   };
 
@@ -493,6 +706,8 @@
       activeProfile = profile;
       const btn = document.getElementById('btn-attach-sheet');
       if (btn) btn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
+      const mbtn = document.getElementById('btn-attach-monthly');
+      if (mbtn) mbtn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
     });
   }
 </script>
