@@ -1007,6 +1007,113 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     return parts.join(' · ');
   }
 
+  // ── Income detail labels ────────────────────────────────────────────────
+  // A collection with no payer (member "General Collection" - Loose Offering,
+  // Sunday School, Investment Income, special offerings...) must still say
+  // WHAT it was. One rule, duplicated per page (see reports.html):
+  //   1. a real payer name (not blank / Anonymous / General Collection /
+  //      Loose Offering);
+  //   2. else the specific detail in budgetDetails, then notes (generic words
+  //      like "general collection", "loose offering", "offering" don't count);
+  //   3. else a dated fallback, "<Type/Sub> — 7 Sep".
+  // Presentation only: no amount or total is derived from these labels.
+  const INCOME_NONPAYER_NAMES = new Set(['', 'anonymous', 'general collection', 'loose offering']);
+  const INCOME_GENERIC_DETAIL = new Set(['general collection', 'general collections', 'loose offering', 'loose offerings',
+    'offering', 'offerings', 'collection', 'collections', 'sunday school', 'tithes', 'tithe', 'investment income']);
+  function isRealPayerName(name) {
+    return !INCOME_NONPAYER_NAMES.has(String(name || '').trim().toLowerCase());
+  }
+  function cleanIncomeDetail(text) {
+    let t = cleanMiscLabel(text);
+    if (!t) return '';
+    const norm = t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (INCOME_GENERIC_DETAIL.has(norm)) return '';
+    if (t.length > 70) t = t.slice(0, 67).trim() + '…';
+    return t;
+  }
+  function incomeDetailOf(d, subLabel) {
+    const det = cleanIncomeDetail(d.budgetDetails) || cleanIncomeDetail(d.notes);
+    if (det && subLabel && normalizeGroupKey(det) === normalizeGroupKey(subLabel)) return '';
+    return det;
+  }
+  const FULL_WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function incomeDateParts(d) {
+    const m = String(d.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const y = +m[1], mo = +m[2] - 1, day = +m[3];
+    return { key: m[0], short: `${day} ${SHORT_MONTHS[mo]}`, weekday: FULL_WEEKDAYS[new Date(y, mo, day).getDay()], mo };
+  }
+  // Consecutive months collapse into ranges: "Jan–Dec", "Jan–Sep, Dec", "Mar, Jun".
+  function incomeMonthsText(entries) {
+    const mos = [...new Set(entries.map(e => (incomeDateParts(e) || {}).mo).filter(x => x !== undefined))].sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < mos.length;) {
+      let j = i;
+      while (j + 1 < mos.length && mos[j + 1] === mos[j] + 1) j++;
+      if (j - i >= 2) out.push(`${SHORT_MONTHS[mos[i]]}–${SHORT_MONTHS[mos[j]]}`);
+      else for (let k = i; k <= j; k++) out.push(SHORT_MONTHS[mos[k]]);
+      i = j + 1;
+    }
+    return out.join(', ');
+  }
+  // Monthly rows for the payer-less entries of one income sub-line:
+  // [{label, amt}] - one row per date for Sunday-type lines, otherwise one
+  // per distinct label (specific detail, else dated fallback).
+  function buildGeneralIncomeRows(entries, subLabel, sundayLine, isMiscLine) {
+    const rows = {}, order = [];
+    entries.forEach(d => {
+      const amt = parseFloat(d.amount || 0);
+      const dp = incomeDateParts(d);
+      const det = incomeDetailOf(d, subLabel);
+      let label, key, isDetail = false;
+      if (sundayLine) {
+        key = 'd|' + (dp ? dp.key : '');
+        label = dp ? `${dp.weekday}, ${dp.short}` : subLabel;
+      } else if (det) {
+        key = 'l|' + normalizeGroupKey(det); label = det; isDetail = true;
+      } else {
+        label = dp ? `${subLabel} — ${dp.short}` : subLabel;
+        key = 'l|' + normalizeGroupKey(label);
+      }
+      if (!rows[key]) { rows[key] = { label, amt: 0, n: 0, date: dp ? dp.key : '', details: [], isDetail }; order.push(key); }
+      const r = rows[key];
+      r.amt += amt; r.n += 1;
+      if (sundayLine && det && !r.details.some(x => normalizeGroupKey(x) === normalizeGroupKey(det))) r.details.push(det);
+      if (dp && (!r.date || dp.key < r.date)) r.date = dp.key;
+    });
+    return order.map(k => rows[k])
+      // A Miscellaneous line is already named after its detail; repeating it as its own row adds nothing.
+      .filter(r => !(isMiscLine && r.isDetail && normalizeGroupKey(r.label) === normalizeGroupKey(subLabel)))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.label.localeCompare(b.label))
+      .map(r => {
+        let label = r.label;
+        if (r.details.length) label += ' — ' + r.details.join('; ');
+        else if (!sundayLine && r.n > 1) label += ` (${r.n} entries)`;
+        return { label, amt: r.amt };
+      });
+  }
+  // Annual: up to 8 detail rows (by total, biggest first) for a payer-less,
+  // non-Sunday line whose entries carry specific details, the rest under Others.
+  function buildAnnualGeneralRows(entries, subLabel) {
+    const groups = {}, order = [];
+    let otherAmt = 0, otherN = 0;
+    entries.forEach(d => {
+      const amt = parseFloat(d.amount || 0);
+      const det = incomeDetailOf(d, subLabel);
+      if (!det) { otherAmt += amt; otherN += 1; return; }
+      const key = normalizeGroupKey(det);
+      if (!groups[key]) { groups[key] = { label: det, amt: 0, n: 0 }; order.push(key); }
+      groups[key].amt += amt; groups[key].n += 1;
+    });
+    if (!order.length) return [];
+    const list = order.map(k => groups[k]).sort((a, b) => b.amt - a.amt || a.label.localeCompare(b.label));
+    const shown = list.slice(0, 8);
+    list.slice(8).forEach(g => { otherAmt += g.amt; otherN += g.n; });
+    const out = shown.map(g => ({ label: g.n > 1 ? `${g.label} (${g.n} entries)` : g.label, amt: g.amt }));
+    if (otherN) out.push({ label: `Others (${otherN} ${otherN === 1 ? 'entry' : 'entries'})`, amt: otherAmt });
+    return out;
+  }
+
   // Adds `amt` to a Miscellaneous-style group keyed by the case/whitespace
   // -insensitive form of `label`, recording the first-seen label as the
   // group's display text. `bucket.totals` maps normalized key -> amount,
@@ -2090,7 +2197,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         // notes, the member/payer name (unless "General Collection"), and the
         // generic income type only as the very last resort.
         const memberName = resolveMemberName(d);
-        let subName = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: memberName }, mainType], '');
+        let subName = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: isRealPayerName(memberName) ? memberName : '' }, mainType], '');
         if (!subName) subName = 'Other Unbudgeted Income (no details recorded)';
         sub = subName;
 
@@ -2120,7 +2227,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           finalMain = MISC_MAIN;
           // Same label source order as above: budget category text first,
           // notes/details last.
-          sub = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: resolveMemberName(d) }, mainType], 'Other Unbudgeted Income (no details recorded)');
+          sub = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: isRealPayerName(resolveMemberName(d)) ? resolveMemberName(d) : '' }, mainType], 'Other Unbudgeted Income (no details recorded)');
       }
 
       if (!incGroups[finalMain]) incGroups[finalMain] = { t: 0, s: {}, sLabels: {} };
@@ -2219,6 +2326,15 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           entryCountHtml = ` <span class="entry-count">(${escapeHtml(miscDetailText(miscEntries, isAnnual, miscWho))})</span>`;
           unbudgetedItems.push({ label: subLabel, who: miscWho, side: 'Income', count: miscEntries.length, months: miscWhen(miscEntries, true), total: g.s[subKey].t });
         }
+        const incSundayLine = subLabel.toLowerCase().includes('loose') || subLabel.toLowerCase().includes('sunday school');
+        const incEntries = g.s[subKey].entries;
+        // Annual only: a line made only of payer-less entries gets a muted count/months note.
+        const incGeneralOnly = isAnnual && !isMisc && incEntries.length > 0 && incEntries.every(d => !isRealPayerName(resolveMemberName(d)));
+        if (incGeneralOnly) {
+          const cnt = incEntries.length, when = incomeMonthsText(incEntries);
+          const noun = incSundayLine ? (cnt === 1 ? 'collection' : 'collections') : (cnt === 1 ? 'entry' : 'entries');
+          entryCountHtml = ` <span class="entry-count">(${escapeHtml(cnt + ' ' + noun + (when ? ' · ' + when : ''))})</span>`;
+        }
         // Review mode only: makes this line clickable to show the income
         // entries behind it (see report-workflow.html's Report Preview /
         // openReviewPanel()). reviewMode is false on the normal page, so
@@ -2235,9 +2351,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
             ${budgetCellsHtml(isMisc ? 0 : (incBudgetSubTotals[main] || {})[subLabel], incActualForSub(ytdIncGroups, main, subLabel), false, isMisc)}
           </tr>`;
 
-        if (!isAnnual && !subLabel.toLowerCase().includes('loose') && !subLabel.toLowerCase().includes('sunday school')) {
+        const incDetailRow = (label, amt) => `
+              <tr>
+                <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(label)}</td>
+                <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(amt)}</td>
+                <td class="col-main"></td>
+                ${emptyBudgetCells}
+              </tr>`;
+        if (!isAnnual) {
           const sortType = document.getElementById('sel-member-sort').value;
-          const memberList = Object.keys(g.s[subKey].m);
+          const memberList = Object.keys(g.s[subKey].m).filter(isRealPayerName);
           const memberAmounts = g.s[subKey].m;
           const memberIds = g.s[subKey].ids || {};
 
@@ -2260,15 +2383,15 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
               default:
                 return a.localeCompare(b);
             }
-          }).forEach(m => {
-            incRows += `
-              <tr>
-                <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(m)}</td>
-                <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(g.s[subKey].m[m])}</td>
-                <td class="col-main"></td>
-                ${emptyBudgetCells}
-              </tr>`;
-          });
+          }).forEach(m => { incRows += incDetailRow(m, g.s[subKey].m[m]); });
+
+          // Payer-less (General Collection etc.) entries: labelled rows after the named members.
+          const generalEntries = incEntries.filter(d => !isRealPayerName(resolveMemberName(d)));
+          buildGeneralIncomeRows(generalEntries, subLabel, incSundayLine, isMisc)
+            .forEach(r => { incRows += incDetailRow(r.label, r.amt); });
+        } else if (incGeneralOnly && !incSundayLine) {
+          // Up to 8 specific-detail rows (rest under Others); Sunday lines stay count-only.
+          buildAnnualGeneralRows(incEntries, subLabel).forEach(r => { incRows += incDetailRow(r.label, r.amt); });
         }
       });
     });

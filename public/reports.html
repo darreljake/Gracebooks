@@ -961,10 +961,38 @@
     return category.includes('loose');
   }
 
+  // ── Income detail labels ────────────────────────────────────────────────
+  // A collection with no payer (member "General Collection" - Loose Offering,
+  // Investment Income, special offerings...) must still say WHAT it was. One
+  // rule, duplicated per page (see print-report.html):
+  //   1. a real payer name (not blank / Anonymous / General Collection /
+  //      Loose Offering);
+  //   2. else the specific detail in budgetDetails, then notes (generic words
+  //      such as "general collection", "loose offering", "offering", "n/a"
+  //      don't count);
+  //   3. else a dated fallback, "<Type> — 7 Sep".
+  // Charts/grouped tables group by type + detail only when a detail exists
+  // (getIncomeGroupKey); per-Sunday tables use the dated form
+  // (getIncomeEntryLabel). Labels are user-entered text: always escapeHtml.
+  const INCOME_GENERIC_PHRASES = new Set(['source of funds', 'occasional offering', 'special offering', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'n a', 'na', 'none', 'general', '',
+    'general collection', 'general collections', 'loose offering', 'loose offerings', 'offering', 'offerings',
+    'collection', 'collections', 'sunday school', 'tithes', 'tithe', 'investment income']);
+  const INCOME_GENERIC_WORDS = new Set(['source', 'of', 'funds', 'occasional', 'offering', 'special', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'na', 'n', 'a', 'none', 'general']);
+  const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function cleanIncomeDetail(text) {
+    let cleaned = String(text || '').replace(/not in( the)? budget/ig, ' ')
+      .replace(/^[\s\-\:\/\.,;]+|[\s\-\:\/\.,;]+$/g, '').replace(/\s+/g, ' ').trim();
+    const norm = cleaned.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (INCOME_GENERIC_PHRASES.has(norm)) return '';
+    if (norm.split(' ').every(w => INCOME_GENERIC_WORDS.has(w))) return '';
+    if (cleaned.length > 70) cleaned = cleaned.slice(0, 67).trim() + '…';
+    return cleaned;
+  }
+  // The specific detail (budgetDetails, then notes), or '' when there is none.
   function getCollectionDetail(d) {
-    const detail = (d.budgetDetails || d.notes || '').trim();
-    if (!detail) return '';
-    return detail.replace(/\s+/g, ' ');
+    return cleanIncomeDetail(d.budgetDetails) || cleanIncomeDetail(d.notes);
   }
 
   function isGeneralCollectionRecord(d) {
@@ -972,14 +1000,43 @@
     return !member || member === 'anonymous' || member === 'general collection' || member === 'loose offering';
   }
 
+  // The income type, refined by its budget sub-category when that adds
+  // something ("Source of Funds" + "Source of Funds - Loose Offering" ->
+  // "Source of Funds - Loose Offering"); "Not in the budget" adds nothing.
+  function getIncomeBase(d) {
+    const type = d.type || 'Other Income';
+    const cat = String(d.budgetCategory || d.category || '').trim();
+    if (cat.toLowerCase().startsWith(type.toLowerCase() + ' - ')) {
+      const sub = cat.slice(type.length + 3).trim();
+      if (sub && !/not in( the)? budget|miscellaneous/i.test(sub)) return `${type} - ${sub}`;
+    }
+    return type;
+  }
+
   function getIncomeGroupKey(d) {
-    const base = d.type || 'Other Income';
+    const base = getIncomeBase(d);
     const detail = getCollectionDetail(d);
     const isOffering = `${base} ${d.budgetCategory || ''} ${d.category || ''}`.toLowerCase().includes('offering');
-    if (detail && (isGeneralCollectionRecord(d) || isOffering)) {
+    const tail = base.split(' - ').pop().trim().toLowerCase();
+    if (detail && (isGeneralCollectionRecord(d) || isOffering) && detail.toLowerCase() !== tail) {
       return `${base} - ${detail}`;
     }
     return base;
+  }
+
+  // "7 Sep" from an ISO/Timestamp-ish date, or ''.
+  function incomeShortDate(d) {
+    const dt = parseDate(d.date);
+    return dt && !isNaN(dt.getTime()) ? `${dt.getDate()} ${SHORT_MONTHS[dt.getMonth()]}` : '';
+  }
+
+  // Label for a single payer-less entry in a per-Sunday table: type + detail
+  // when a detail exists, otherwise the type with its date.
+  function getIncomeEntryLabel(d) {
+    const key = getIncomeGroupKey(d);
+    if (key !== getIncomeBase(d)) return key;
+    const when = incomeShortDate(d);
+    return when ? `${key} — ${when}` : key;
   }
 
   function isNamedTither(d) {
@@ -1154,7 +1211,7 @@
       if (!reporting || reporting.year !== year || reporting.month !== month) return;
 
       const week = reporting.week;
-      const label = getIncomeGroupKey(record);
+      const label = getIncomeEntryLabel(record);
       if (!collectionMap[label]) collectionMap[label] = { w1: 0, w2: 0, w3: 0, w4: 0, w5: 0, total: 0 };
       collectionMap[label][`w${week}`] += record.amount;
       collectionMap[label].total += record.amount;
@@ -1178,7 +1235,7 @@
       totalByWeek.w4 += w4; totalByWeek.w5 += w5; totalByWeek.total += total;
 
       return `<tr>
-          <td style="text-align: left; font-weight: bold;">${member}</td>
+          <td style="text-align: left; font-weight: bold;">${escapeHtml(member)}</td>
           <td>${w1 > 0 ? `<span class="weekly-amount">₱${fmt(w1)}</span>` : '-'}</td>
           <td>${w2 > 0 ? `<span class="weekly-amount">₱${fmt(w2)}</span>` : '-'}</td>
           <td>${w3 > 0 ? `<span class="weekly-amount">₱${fmt(w3)}</span>` : '-'}</td>
@@ -1586,7 +1643,7 @@
       const barW = Math.max(2, (value / maxVal) * barAreaWidth);
       const shortLabel = key.length > 28 ? key.slice(0, 26) + '…' : key;
       return `
-        <text x="${labelWidth - 10}" y="${y + rowHeight * 0.6}" text-anchor="end" font-size="12" fill="#444"><title>${key}</title>${shortLabel}</text>
+        <text x="${labelWidth - 10}" y="${y + rowHeight * 0.6}" text-anchor="end" font-size="12" fill="#444"><title>${escapeHtml(key)}</title>${escapeHtml(shortLabel)}</text>
         <rect x="${labelWidth}" y="${y + 4}" width="${barW}" height="${rowHeight - 12}" fill="#c0392b" rx="3"></rect>
         <text x="${labelWidth + barW + 8}" y="${y + rowHeight * 0.6}" font-size="12" fill="#666">₱${fmt(value)} (${total > 0 ? (value / total * 100).toFixed(1) : 0}%)</text>
       `;
@@ -1662,9 +1719,9 @@
           }
         }
         const subPart = key.startsWith(mainGroup + ' - ') ? key.slice(mainGroup.length + 3) : key.split(' - ').slice(1).join(' - ');
-        label = `<span style="color:#aaa;font-size:11px;">${mainGroup}</span> › ${subPart}`;
+        label = `<span style="color:#aaa;font-size:11px;">${escapeHtml(mainGroup)}</span> › ${escapeHtml(subPart)}`;
       } else {
-        label = key;
+        label = escapeHtml(key);
       }
       return `<tr>
         <td>${label}</td>
@@ -1705,7 +1762,8 @@
   function renderMembers(inc) {
     const map = {};
     inc.forEach(d => {
-      const m = d.member;
+      // A payer-less collection is listed by what it was, not as "General Collection".
+      const m = isGeneralCollectionRecord(d) && (d.member || '').trim().toLowerCase() !== 'anonymous' ? getIncomeGroupKey(d) : d.member;
       if (!map[m]) map[m] = { count: 0, sum: 0, last: d.date };
       map[m].count++;
       map[m].sum += d.amount;
@@ -1713,7 +1771,7 @@
     });
     const sorted = Object.entries(map).sort((a,b) => b[1].sum - a[1].sum);
     document.getElementById('members-table-body').innerHTML = sorted.map(([m, d], i) => `
-      <tr><td>${i+1}</td><td>${m}</td><td>${d.count}x</td><td>₱${fmt(d.sum)}</td><td>${d.last}</td></tr>
+      <tr><td>${i+1}</td><td>${escapeHtml(m)}</td><td>${d.count}x</td><td>₱${fmt(d.sum)}</td><td>${escapeHtml(d.last)}</td></tr>
     `).join('') || '<tr><td colspan="5" class="empty">No members found.</td></tr>';
   }
 

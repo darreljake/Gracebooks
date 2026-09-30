@@ -1258,6 +1258,25 @@
         }
     }
     
+    // Hint only (never required): a payer-less "General Collection" entry
+    // is only as useful in the reports as the detail typed here.
+    const detailsInput = document.getElementById('budget-details');
+    if (detailsInput) {
+      let hint = null;
+      if (!needsMember) {
+        const t = String(type || '').toLowerCase();
+        if (t.includes('investment') || budgetCat.includes('investment')) hint = 'e.g., BDO time deposit interest';
+        else if (budgetCat.includes('loose')) hint = 'e.g., Sunday worship, 7 Sep';
+        else if (budgetCat.includes('sunday school')) hint = 'e.g., Sunday School offering, 7 Sep';
+        else if (t.includes('special') || budgetCat.includes('special')) hint = 'e.g., Youth camp love offering';
+        else if (t.includes('building') || budgetCat.includes('building')) hint = 'e.g., Building Fund pledge drive, 7 Sep';
+        else if (t.includes('mission') || budgetCat.includes('mission')) hint = 'e.g., Mission Sunday offering, 7 Sep';
+        else hint = 'e.g., what this collection was for (7 Sep)';
+      }
+      detailsInput.placeholder = hint || (budgetCat.includes('not in the budget')
+        ? 'Please specify where this goes...' : 'Additional notes for this account (Optional)');
+    }
+
     // Pledge section logic (walang pagbabago)
     document.getElementById('pledge-section').style.display = budgetCat.includes('pledge') ? 'block' : 'none';
 };

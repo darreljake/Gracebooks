@@ -841,3 +841,14 @@ Status: Done (code side); deploy pending. Owner request: "Make sure that I can a
 - **Monthly total/notes** editable or clearable (audit `monthly_count_sheet_updated`); mismatch badge re-evaluates.
 - No rules change (existing Treasurer-only update/delete). Not deployed.
 - **Validated** with Playwright (extended stateful stub: runTransaction, storage delete, failure injection): replace 2nd of 3 keeps order on all three pages, old-delete failure, commit failure (orphan removed, doc unchanged), upload failure, invalid file, remove one then all (doc kept, "no photo", income still linked), monthly replace/remove/edit/clear with badge re-evaluation, Auditor/Money Counter/Pastor see nothing and handlers refuse, wrong fileId/tampered path cannot delete another sheet's file, normal `#export-table` byte-identical to the previous commit (monthly + annual, with sheets present), review controls hidden in print and absent from the Excel export.
+
+## Income Detail Labels for General-Collection Income (2026-09-30)
+
+Status: Done (code side); deploy pending. Owner feedback: Investment Income / Loose Offering etc. show no specific labels in reports.
+
+- One labeling rule (payer name -> `budgetDetails`/`notes` detail -> dated fallback "Type - 7 Sep") duplicated in `print-report.html` and `reports.html`.
+- `print-report.html`: monthly - every income sub-line gets detail rows (Loose Offering/Sunday School per Sunday, others per label), after named members; annual - muted count/months note plus up to 8 detail rows + Others for non-Sunday lines. Excel export picks up the rows via the existing detail-row branch. Misc sub-label no longer "General Collection".
+- `reports.html`: income table, Members list and Weekly Collection use specific labels; also escaped previously unescaped member/category text.
+- `tithe-entry.html`: Budget Details placeholder hint only.
+- No amounts changed; validated by before/after Playwright comparison (only labels/notes/detail rows differ).
+
