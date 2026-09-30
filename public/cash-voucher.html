@@ -9,6 +9,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Cash Vouchers - GraceBooks</title>
+  <script>
+    // Embed mode (?view=<id>&embed=1): the read-only voucher alone, for the
+    // in-page preview iframe in report-workflow.html / print-report.html.
+    try { var _qp = new URLSearchParams(location.search); if (_qp.get('embed') === '1' && _qp.get('view')) document.documentElement.classList.add('embed'); } catch (e) {}
+  </script>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -164,7 +169,19 @@
        signatures. */
     .voucher-print-slot .voucher-sign-row { margin-top: auto; }
 
+    /* Embed mode: only the voucher itself, filling the frame. */
+    #embed-root { display: none; }
+    html.embed body { background: #fff; min-height: 0; }
+    html.embed .topbar, html.embed .container, html.embed #receiverPadModal, html.embed #printModal { display: none !important; }
+    html.embed #embed-root { display: block; padding: 10px 12px 16px; }
+    .embed-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .embed-msg { text-align: center; color: #777; font-size: 14px; padding: 40px 10px; }
+    html.embed .voucher-print-slot { margin: 0 auto; }
+
     @media print {
+      html.embed body * { visibility: visible; }
+      html.embed .no-print { display: none !important; }
+      html.embed #embed-root { padding: 0; }
       body * { visibility: hidden; }
       #printModal, #printModal * { visibility: visible; }
       #printModal { position: absolute; top: 0; left: 0; width: 100%; background: white; display: block !important; z-index: auto; }
@@ -385,6 +402,12 @@
       </table>
     </div>
   </div>
+</div>
+
+<!-- Embed mode (?view=<id>&embed=1): the voucher alone, read-only -->
+<div id="embed-root">
+  <div class="embed-bar no-print"><button type="button" class="btn-save" onclick="window.print()">🖨️ Print</button></div>
+  <div id="embed-voucher"><div class="embed-msg">Loading voucher…</div></div>
 </div>
 
 <!-- Receiver signature capture modal -->
@@ -1468,6 +1491,10 @@
       window.location.href = 'index.html';
       return;
     }
+    if (document.documentElement.classList.contains('embed')) {
+      await initEmbedVoucher();
+      return;
+    }
     canManageVouchersFlag = activeProfile.role === 'Treasurer';
     applyVoucherRoleAccess();
 
@@ -1506,6 +1533,31 @@
       }
     }
     openPrintModal([voucherId]);
+  }
+
+  // Embed mode: same voucherMarkup() the View / Print modal uses, nothing else
+  // (no register, signature card, edit controls or modal). Read-only for both roles.
+  async function initEmbedVoucher() {
+    const target = document.getElementById('embed-voucher');
+    const voucherId = getQueryParam('view');
+    await loadVoucherSettings();
+    try {
+      const doc = await db.collection('cashVouchers').doc(voucherId).get();
+      if (!doc.exists) throw new Error('missing');
+      target.innerHTML = `<div class="voucher-print-slot">${voucherMarkup({ id: doc.id, ...doc.data() })}</div>`;
+    } catch (error) {
+      console.warn('Embedded voucher unavailable', error);
+      target.innerHTML = '<div class="embed-msg">Voucher not found.</div>';
+    }
+  }
+
+  if (document.documentElement.classList.contains('embed')) {
+    // A focused iframe swallows Escape; relay it so the parent's preview modal can close.
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'gb-voucher-embed-close' }, window.location.origin);
+      }
+    });
   }
 
   initApp();
