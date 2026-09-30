@@ -1016,12 +1016,18 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   //   2. else the specific detail in budgetDetails, then notes (generic words
   //      like "general collection", "loose offering", "offering" don't count);
   //   3. else a dated fallback, "<Type/Sub> — 7 Sep".
+  // Exception: the MONTHLY member lists still show "Anonymous" as its own row
+  // (isListedPayerName); everywhere else Anonymous stays payer-less.
   // Presentation only: no amount or total is derived from these labels.
   const INCOME_NONPAYER_NAMES = new Set(['', 'anonymous', 'general collection', 'loose offering']);
   const INCOME_GENERIC_DETAIL = new Set(['general collection', 'general collections', 'loose offering', 'loose offerings',
     'offering', 'offerings', 'collection', 'collections', 'sunday school', 'tithes', 'tithe', 'investment income']);
   function isRealPayerName(name) {
     return !INCOME_NONPAYER_NAMES.has(String(name || '').trim().toLowerCase());
+  }
+  // Monthly member lists keep "Anonymous" as its own row (owner's choice); it is still never used as a Miscellaneous label.
+  function isListedPayerName(name) {
+    return isRealPayerName(name) || String(name || '').trim().toLowerCase() === 'anonymous';
   }
   function cleanIncomeDetail(text) {
     let t = cleanMiscLabel(text);
@@ -2360,7 +2366,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
               </tr>`;
         if (!isAnnual) {
           const sortType = document.getElementById('sel-member-sort').value;
-          const memberList = Object.keys(g.s[subKey].m).filter(isRealPayerName);
+          const memberList = Object.keys(g.s[subKey].m).filter(isListedPayerName);
           const memberAmounts = g.s[subKey].m;
           const memberIds = g.s[subKey].ids || {};
 
@@ -2386,7 +2392,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           }).forEach(m => { incRows += incDetailRow(m, g.s[subKey].m[m]); });
 
           // Payer-less (General Collection etc.) entries: labelled rows after the named members.
-          const generalEntries = incEntries.filter(d => !isRealPayerName(resolveMemberName(d)));
+          const generalEntries = incEntries.filter(d => !isListedPayerName(resolveMemberName(d)));
           buildGeneralIncomeRows(generalEntries, subLabel, incSundayLine, isMisc)
             .forEach(r => { incRows += incDetailRow(r.label, r.amt); });
         } else if (incGeneralOnly && !incSundayLine) {
