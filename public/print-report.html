@@ -850,6 +850,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   let reviewRestrictedEntries = {}; // 'rst|accountId' -> {name, income, expense, transferIn, transferOut} for that restricted account
   let reviewLiquidationMap = new Map();
   let reviewCountSheetMap = new Map();
+  let reviewMonthSheetMap = new Map(); // 'YYYY-MM' -> month-level (scope 'month') tally sheet docs; never mixed into the weekly map above
   let reviewDataLoadedForPeriod = '';
   let reviewOpenPanelKeys = new Set();
   let currentRole = (function () {
@@ -1379,6 +1380,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     else if (reportType === 'annual') renderAnnual();
     else if (reportType === 'special-project') renderSpecialProject();
     applyReviewModeUI();
+    if (reviewMode) ensureReviewMonthlyLine();
     fitReportToScreen();
   }
 
@@ -2604,7 +2606,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
           <tr class="section-header">
             <td colspan="${COLSPAN}">Receipts / Income (General Fund)</td>
-          </tr>
+          </tr>${reviewMode ? reviewMonthlyPlaceholderRowHtml(COLSPAN) : ''}
           ${incRows || `<tr><td class="indent-1 col-desc" colspan="${COLSPAN}" style="color:#aaa;padding:8px 0;">No income recorded for this period.</td></tr>`}
           <tr class="spacer-row"><td colspan="${COLSPAN}"></td></tr>
           <tr class="subtotal-row bold-row">
@@ -3598,7 +3600,10 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     reviewLiquidationMap = new Map();
     liqSnaps.forEach(snap => { if (snap.exists) reviewLiquidationMap.set(snap.id, { id: snap.id, ...snap.data() }); });
     reviewCountSheetMap = new Map();
-    sheetSnap.docs.forEach(d => reviewCountSheetMap.set(d.id, { id: d.id, ...d.data() }));
+    // Month-level tally sheets (scope 'month', dated YYYY-MM-01) fall inside
+    // this date-range query but are NOT any Sunday's sheet - kept out of the
+    // weekly map (see reviewMonthSheetMap / ensureReviewMonthlyLine()).
+    sheetSnap.docs.forEach(d => { if (d.data().scope !== 'month') reviewCountSheetMap.set(d.id, { id: d.id, ...d.data() }); });
     reviewDataLoadedForPeriod = periodKey;
   }
 
@@ -4012,18 +4017,21 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     const dayEntries = reviewDayEntries(date, entries);
     const total = dayEntries.reduce((s, r) => s + Number(r.amount || 0), 0);
     const cashTotal = dayEntries.filter(r => r.payment === 'Cash').reduce((s, r) => s + Number(r.amount || 0), 0);
-    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
     const linkedCount = dayEntries.filter(r => r.countSheetId).length;
 
     let sheetCell;
     if (!sheets.length) {
       sheetCell = '<span class="rbadge rbadge-missing">No count sheet</span>';
       if (currentRole === 'Treasurer') {
-        sheetCell += ` <button type="button" class="rbtn rbtn-upload" onclick="openAttachCountSheetPrompt('${escapeAttr(date)}')">Attach count sheet</button>`;
+        sheetCell += ` <button type="button" class="rbtn rbtn-upload" title="You can select 2 or more photos at once (front/back, receipts)" onclick="openAttachCountSheetPrompt('${escapeAttr(date)}')">Attach count sheet</button>`;
       }
     } else {
       const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
       sheetCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
+      if (currentRole === 'Treasurer') {
+        sheetCell += ` <button type="button" class="rbtn rbtn-upload" title="You can select 2 or more photos at once" onclick="openReviewAddSheetFiles('${escapeAttr(date)}')">Add photo/file</button>`;
+      }
       if (linkedCount < dayEntries.length) sheetCell += ` <span style="font-size:11px; color:#888;">(${linkedCount}/${dayEntries.length} entries linked)</span>`;
       const sheetsWithCount = sheets.filter(sh => sh.countedCashTotal != null && Number(sh.countedCashTotal) > 0);
       if (sheetsWithCount.length) {
@@ -4109,7 +4117,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   }
 
   function openReviewCountSheet(date) {
-    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
     if (!sheets.length) return;
     const allFiles = [];
     sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
@@ -4126,7 +4134,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
   }
   function openReviewCountSheetFile(date, index) {
-    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date);
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
     const allFiles = [];
     sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
     const file = allFiles[index];
@@ -4147,6 +4155,267 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       title: file.name || 'Count sheet', imageUrl: file.url, fileName: file.name || '',
       subtitle: `Count sheet — ${date}`, annotations: [], editable: false, locked: true
     });
+  }
+
+  // ── Add more files to an existing sheet (Treasurer) ────────────────────
+  // Uploads to count-sheets/{sheetId}/{uid}/{token}{ext} (images/PDF, <= 5 MB)
+  // and appends with arrayUnion so a concurrent edit to `files` isn't
+  // clobbered. Mirrors income-log.html (no shared JS modules in this repo).
+  function validateReviewSheetFiles(files) {
+    for (const file of files) {
+      const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+      if (!okType) return `"${file.name}" must be an image or PDF.`;
+      if (file.size > 5 * 1024 * 1024) return `"${file.name}" must be 5 MB or smaller.`;
+    }
+    return '';
+  }
+  async function uploadReviewSheetFiles(sheetId, files) {
+    const uid = firebase.auth().currentUser.uid;
+    const uploaded = [];
+    for (const file of files) {
+      const fileId = generateStorageToken();
+      const path = `count-sheets/${sheetId}/${uid}/${fileId}${safeFileExtension(file.name)}`;
+      const fileRef = storage.ref(path);
+      await fileRef.put(file);
+      const url = await fileRef.getDownloadURL();
+      uploaded.push({ fileId, name: file.name, path, url, contentType: file.type || '', size: file.size || 0 });
+    }
+    return uploaded;
+  }
+  function pickReviewSheetFiles(onFiles) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.multiple = true;
+    input.onchange = () => { const files = Array.from(input.files || []); if (files.length) onFiles(files); };
+    input.click();
+  }
+  // Appends to an existing sheet doc (arrayUnion), audit-logs it, and
+  // returns the uploaded file objects.
+  async function appendFilesToReviewSheet(sheetId, files, label) {
+    const uploaded = await uploadReviewSheetFiles(sheetId, files);
+    await db.collection('countSheets').doc(sheetId).update({ files: firebase.firestore.FieldValue.arrayUnion(...uploaded) });
+    await writeReviewAuditLog('count_sheet_files_added', sheetId, null,
+      { sheetId, fileNames: uploaded.map(f => f.name) },
+      `Added ${uploaded.length} file${uploaded.length === 1 ? '' : 's'} to ${label} (via Report Preview review mode)`, 'countSheets');
+    return uploaded;
+  }
+
+  function openReviewAddSheetFiles(date) {
+    if (currentRole !== 'Treasurer') return;
+    const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
+    if (!sheets.length) return;
+    let sheet = sheets[0];
+    if (sheets.length > 1) {
+      const list = sheets.map((sh, i) => `${i + 1}) ${(sh.files || []).length} file(s)${sh.createdBy && sh.createdBy.name ? ', by ' + sh.createdBy.name : ''}`).join('\n');
+      const answer = window.prompt(`${date} has ${sheets.length} count sheets. Add files to which one? (enter a number)\n${list}`, '1');
+      if (answer === null) return;
+      const idx = parseInt(answer, 10) - 1;
+      if (!(idx >= 0 && idx < sheets.length)) { alert('Please enter a valid number.'); return; }
+      sheet = sheets[idx];
+    }
+    pickReviewSheetFiles(async files => {
+      const err = validateReviewSheetFiles(files);
+      if (err) return alert(err);
+      try {
+        const uploaded = await appendFilesToReviewSheet(sheet.id, files, `count sheet for ${date}`);
+        const local = reviewCountSheetMap.get(sheet.id);
+        if (local) local.files = (local.files || []).concat(uploaded);
+        refreshIncomeDateGroup(date);
+        alert('Files added.');
+      } catch (error) {
+        console.error(error);
+        alert('Error adding files: ' + (error.message || error));
+      }
+    });
+  }
+
+  // ── Monthly tally sheet line (review mode only) ────────────────────────
+  // A month-level countSheets doc (scope 'month'). Shown as review-only UI
+  // at the top of the Receipts / Income section: hidden in print, skipped
+  // by the Excel export (review-panel-row), and never emitted at all on the
+  // normal page.
+  function reviewMonthlyPlaceholderRowHtml(colspan) {
+    return `<tr class="review-panel-row review-only" data-monthly-sheet-row="1"><td colspan="${colspan}"><div class="review-panel review-monthly-sheet" id="review-monthly-sheet-box"><span class="review-panel-loading">Loading monthly tally sheet…</span></div></td></tr>`;
+  }
+
+  const REVIEW_MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let reviewMonthlyLoadedFor = '';
+  let reviewMonthlyLoading = null;
+
+  function reviewMonthlyScope() {
+    const year = document.getElementById('sel-year').value;
+    if (reportType === 'annual') return { annual: true, year, key: `annual-${year}` };
+    const month = `${year}-${String(parseInt(document.getElementById('sel-month').value) + 1).padStart(2, '0')}`;
+    return { annual: false, year, month, key: month };
+  }
+
+  async function ensureReviewMonthlyLine() {
+    const scope = reviewMonthlyScope();
+    if (reviewMonthlyLoadedFor === scope.key) { renderReviewMonthlyLine(); return; }
+    if (!reviewMonthlyLoading || reviewMonthlyLoading.key !== scope.key) {
+      const load = (async () => {
+        const map = new Map();
+        try {
+          let query = db.collection('countSheets');
+          query = scope.annual
+            ? query.where('month', '>=', `${scope.year}-01`).where('month', '<=', `${scope.year}-12`)
+            : query.where('month', '==', scope.month);
+          const snap = await query.get();
+          snap.docs.forEach(d => {
+            const data = d.data();
+            if (data.scope !== 'month' || !data.month) return;
+            if (!map.has(data.month)) map.set(data.month, []);
+            map.get(data.month).push({ id: d.id, ...data });
+          });
+        } catch (err) {
+          console.warn('Unable to load monthly tally sheets for review mode.', err);
+        }
+        return map;
+      })();
+      reviewMonthlyLoading = { key: scope.key, promise: load };
+    }
+    const pending = reviewMonthlyLoading;
+    const map = await pending.promise;
+    if (reviewMonthlyLoading !== pending) return; // a newer period took over
+    reviewMonthSheetMap = map;
+    reviewMonthlyLoadedFor = scope.key;
+    reviewMonthlyLoading = null;
+    if (reviewMonthlyScope().key === scope.key) renderReviewMonthlyLine();
+  }
+
+  function reviewMonthlyStatusHtml(month, recorded, compact) {
+    const isTreasurer = currentRole === 'Treasurer';
+    const sheets = reviewMonthSheetMap.get(month) || [];
+    const attachTip = 'You can select 2 or more photos at once';
+    if (!sheets.length) {
+      const attach = isTreasurer
+        ? ` <button type="button" class="rbtn rbtn-upload" title="${attachTip}" onclick="openReviewMonthlyAttach('${escapeAttr(month)}')">${compact ? 'Attach' : 'Attach monthly sheet'}</button>` : '';
+      return `<span class="rbadge rbadge-missing">No monthly sheet</span>${attach}`;
+    }
+    const fileCount = sheets.reduce((n, sh) => n + (sh.files || []).length, 0);
+    let html = `<button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheet('${escapeAttr(month)}')">View (${fileCount} file${fileCount === 1 ? '' : 's'})</button>`;
+    if (isTreasurer) html += ` <button type="button" class="rbtn rbtn-upload" title="${attachTip}" onclick="openReviewMonthlyAttach('${escapeAttr(month)}')">Add files</button>`;
+    const withTotal = sheets.filter(sh => sh.monthlyTotal != null && isFinite(Number(sh.monthlyTotal)));
+    if (withTotal.length) {
+      const sheetTotal = Number(withTotal[0].monthlyTotal);
+      const mismatch = Math.abs(sheetTotal - recorded) > 0.004;
+      html += mismatch
+        ? ` <span class="rbadge rbadge-mismatch">Sheet total <span class="rpeso">₱${fmt(sheetTotal)}</span> ≠ recorded <span class="rpeso">₱${fmt(recorded)}</span></span>`
+        : ` <span class="rbadge rbadge-ok">Sheet total <span class="rpeso">₱${fmt(sheetTotal)}</span> · recorded <span class="rpeso">₱${fmt(recorded)}</span></span>`;
+    }
+    return html;
+  }
+
+  function renderReviewMonthlyLine() {
+    const box = document.getElementById('review-monthly-sheet-box');
+    if (!box || !reviewMode) return;
+    const scope = reviewMonthlyScope();
+    // Recorded income on the statement's own basis: incomeData already
+    // excludes fund transfers and the duplicate legacy cash advance returns.
+    const recordedFor = month => incomeData.filter(d => String(d.date || '').slice(0, 7) === month).reduce((s, d) => s + Number(d.amount || 0), 0);
+    if (!scope.annual) {
+      box.innerHTML = `<strong>Monthly tally sheet:</strong> ${reviewMonthlyStatusHtml(scope.month, recordedFor(scope.month), false)}`;
+      return;
+    }
+    const items = [];
+    for (let m = 1; m <= 12; m++) {
+      const month = `${scope.year}-${String(m).padStart(2, '0')}`;
+      const recorded = recordedFor(month);
+      const hasSheet = (reviewMonthSheetMap.get(month) || []).length > 0;
+      if (!hasSheet && !incomeData.some(d => String(d.date || '').slice(0, 7) === month)) continue;
+      items.push(`<span style="display:inline-block; margin:2px 10px 2px 0;"><strong>${REVIEW_MONTH_SHORT[m - 1]}</strong> ${reviewMonthlyStatusHtml(month, recorded, true)}</span>`);
+    }
+    box.innerHTML = `<strong>Monthly tally sheets:</strong> ${items.join('') || '<span style="color:#888;">No income months in this year.</span>'}`;
+  }
+
+  function openReviewMonthlySheet(month) {
+    const allFiles = [];
+    (reviewMonthSheetMap.get(month) || []).forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    if (!allFiles.length) { alert('This monthly sheet has no attached files.'); return; }
+    document.getElementById('review-receipt-viewer-title').textContent = `Monthly Tally Sheet — ${month}`;
+    document.getElementById('review-receipt-viewer-body').innerHTML = `
+      <ul style="list-style:none; padding:0; margin:0;">
+        ${allFiles.map((f, i) => `
+          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #eee;">
+            <span>${escapeHtml(f.name || 'Monthly sheet file')}</span>
+            <button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheetFile('${escapeAttr(month)}', ${i})">View</button>
+          </li>`).join('')}
+      </ul>`;
+    document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+  }
+  function openReviewMonthlySheetFile(month, index) {
+    const allFiles = [];
+    (reviewMonthSheetMap.get(month) || []).forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    const file = allFiles[index];
+    if (!file) return;
+    closeReviewReceiptViewer();
+    const isPdf = !window.GraceBooksAnnotator || !window.GraceBooksAnnotator.isAnnotatableUrl(file.name, file.url);
+    if (isPdf || !file.url) {
+      document.getElementById('review-receipt-viewer-title').textContent = file.name || 'Monthly sheet';
+      document.getElementById('review-receipt-viewer-body').innerHTML =
+        `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; min-height:150px;">
+           <p style="margin:0; color:#555;">${file.url ? 'PDF files open in a new browser tab for viewing.' : 'File not available.'}</p>
+           ${file.url ? `<a href="${escapeHtml(file.url)}" target="_blank" rel="noopener noreferrer" class="rbtn rbtn-view">Open PDF in New Tab</a>` : ''}
+         </div>`;
+      document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
+      return;
+    }
+    window.GraceBooksAnnotator.open({
+      title: file.name || 'Monthly sheet', imageUrl: file.url, fileName: file.name || '',
+      subtitle: `Monthly tally sheet — ${month}`, annotations: [], editable: false, locked: true
+    });
+  }
+
+  function openReviewMonthlyAttach(month) {
+    if (currentRole !== 'Treasurer') return;
+    pickReviewSheetFiles(files => saveReviewMonthlySheet(month, files));
+  }
+
+  async function saveReviewMonthlySheet(month, files) {
+    if (currentRole !== 'Treasurer' || !/^\d{4}-\d{2}$/.test(month)) return;
+    const err = validateReviewSheetFiles(files);
+    if (err) return alert(err);
+    try {
+      const existingSnap = await db.collection('countSheets').where('month', '==', month).get();
+      const existing = existingSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(sh => sh.scope === 'month')[0] || null;
+      if (existing) {
+        const uploaded = await appendFilesToReviewSheet(existing.id, files, `monthly tally sheet for ${month}`);
+        const list = reviewMonthSheetMap.get(month) || [];
+        const local = list.find(sh => sh.id === existing.id);
+        if (local) local.files = (local.files || []).concat(uploaded);
+        else { list.push({ ...existing, files: (existing.files || []).concat(uploaded) }); reviewMonthSheetMap.set(month, list); }
+        renderReviewMonthlyLine();
+        alert('Files added to the monthly sheet.');
+        return;
+      }
+      let monthlyTotal = null;
+      const totalAnswer = window.prompt('Sheet total ₱ (optional - leave blank to skip):', '');
+      if (totalAnswer === null) return;
+      if (totalAnswer.trim() !== '') {
+        monthlyTotal = Number(totalAnswer.replace(/,/g, ''));
+        if (!isFinite(monthlyTotal) || monthlyTotal < 0) { alert('Sheet total must be a valid amount.'); return; }
+      }
+      const uid = firebase.auth().currentUser.uid;
+      const sheetId = `monthly-${month}`;
+      const uploaded = await uploadReviewSheetFiles(sheetId, files);
+      const payload = {
+        scope: 'month', month, date: `${month}-01`,
+        createdAt: new Date().toISOString(),
+        createdBy: { uid, name: (window.graceBooksUser && window.graceBooksUser.name) || '', role: currentRole || '' },
+        files: uploaded, notes: 'Attached from Report Preview (review mode).'
+      };
+      if (monthlyTotal != null) payload.monthlyTotal = monthlyTotal;
+      await db.collection('countSheets').doc(sheetId).set(payload);
+      await writeReviewAuditLog('monthly_count_sheet_created', sheetId, null, payload,
+        `Attached monthly tally sheet for ${month} (${uploaded.length} file${uploaded.length === 1 ? '' : 's'}) (via Report Preview review mode)`, 'countSheets');
+      reviewMonthSheetMap.set(month, [{ id: sheetId, ...payload }]);
+      renderReviewMonthlyLine();
+      alert('Monthly sheet saved.');
+    } catch (error) {
+      console.error(error);
+      alert('Error saving monthly sheet: ' + (error.message || error));
+    }
   }
 
   // ── Treasurer: attach a count sheet to a date with no linked entries ───
