@@ -128,6 +128,7 @@
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <button class="btn-export" id="btn-attach-sheet" style="background:#8B0000; display:none;" onclick="openAttachSheetModal()">📎 Attach Count Sheet</button>
         <button class="btn-export" id="btn-attach-monthly" style="background:#6c3483; display:none;" onclick="openMonthlySheetModal()">🗓️ Attach Monthly Sheet</button>
+        <button class="btn-export" id="btn-manage-sheets" style="background:#1f6f8b; display:none;" onclick="openManageSheetsModal()">🗂️ Manage Count Sheets</button>
         <button class="btn-export" onclick="exportCSV()">📥 Export CSV</button>
       </div>
     </div>
@@ -230,6 +231,25 @@
     <div style="display:flex; gap:10px; justify-content:flex-end;">
       <button class="btn-export" style="background:#999;" onclick="closeMonthlySheetModal()">Cancel</button>
       <button class="btn-export" id="monthly-sheet-save-btn" style="background:#6c3483;" onclick="saveMonthlySheet()">Save Monthly Sheet</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="manageSheetsModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000;">
+  <div style="background:white; border-radius:12px; padding:24px; width:min(640px,94vw); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <h3 style="color:#1f6f8b;">Manage Count Sheets</h3>
+      <button onclick="closeManageSheetsModal()" style="background:none; border:none; font-size:20px; cursor:pointer;">×</button>
+    </div>
+    <div style="font-size:12px; color:#888; margin-bottom:12px;">Replace or remove a photo you uploaded by mistake. Removing a photo never deletes the sheet or unlinks any income entry.</div>
+    <label style="font-size:12px; color:#555;">Sunday (weekly count sheet)</label>
+    <input type="date" id="manage-sheet-date" onchange="loadManageWeekly()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 10px;">
+    <div id="manage-week-body" style="font-size:13px; color:#888; margin-bottom:16px;">Pick a date.</div>
+    <label style="font-size:12px; color:#555;">Month (monthly tally sheet)</label>
+    <input type="month" id="manage-sheet-month" onchange="loadManageMonthly()" style="width:100%; padding:9px 12px; border:1px solid #ddd; border-radius:8px; margin:6px 0 10px;">
+    <div id="manage-month-body" style="font-size:13px; color:#888; margin-bottom:10px;">Pick a month.</div>
+    <div style="display:flex; justify-content:flex-end;">
+      <button class="btn-export" style="background:#999;" onclick="closeManageSheetsModal()">Close</button>
     </div>
   </div>
 </div>
@@ -698,6 +718,330 @@
     }
   };
 
+  // ── Count sheet file management (Treasurer only) ─────────────────────────
+  // Replace / Remove one file on an existing countSheets doc, and edit a
+  // monthly sheet's total/notes. The `files` array is only ever changed inside
+  // a transaction that reads the doc, finds the entry by its `fileId` and
+  // writes the whole array back (position kept), never arrayRemove/arrayUnion
+  // on objects. A countSheets doc is NEVER deleted here and no income entry is
+  // ever unlinked: removing the last file leaves a "no photo" sheet. Storage
+  // objects are only deleted when their path is one of THIS sheet's own `files`
+  // entries AND lives under count-sheets/{sheetId}/ (best effort, after the doc
+  // is already correct).
+  const CS_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+  function csFileError(file) {
+    if (!file) return 'No file selected.';
+    const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+    if (!okType) return `"${file.name}" must be an image or PDF.`;
+    if (file.size > 5 * 1024 * 1024) return `"${file.name}" must be 5 MB or smaller.`;
+    return '';
+  }
+  function csOwnPath(sheetId, path) {
+    return CS_ID_RE.test(sheetId) && typeof path === 'string' && path.length < 400 &&
+      path.startsWith(`count-sheets/${sheetId}/`) && path.indexOf('..') === -1 && path.indexOf('//') === -1;
+  }
+  function csMeta(f) {
+    return f ? { fileId: f.fileId || '', name: f.name || '', path: f.path || '', url: f.url || '', contentType: f.contentType || '', size: f.size || 0 } : null;
+  }
+  async function csAudit(env, action, sheetId, before, after, summary) {
+    try { await env.audit(action, sheetId, before, after, summary); return ''; }
+    catch (error) { console.warn('Count sheet change saved but the audit entry failed.', error); return error && error.message ? error.message : String(error); }
+  }
+  async function csDeleteStorage(env, sheetId, file) {
+    if (!file || !file.path) return '';
+    if (!csOwnPath(sheetId, file.path)) { console.warn('Refusing to delete a storage path outside this sheet:', file.path); return 'path not under this sheet - not deleted'; }
+    try { await env.storage.ref(file.path).delete(); return ''; }
+    catch (error) { console.warn('Could not delete the old storage object (the sheet is already correct).', file.path, error); return (error && error.message) ? error.message : String(error); }
+  }
+  function csGate(env, sheetId) {
+    if (!env.isTreasurer()) throw new Error('Only the Treasurer can change count sheet files.');
+    if (!CS_ID_RE.test(sheetId || '')) throw new Error('Invalid count sheet reference.');
+  }
+  async function csReplaceFile(env, sheetId, fileId, newFile, reason) {
+    csGate(env, sheetId);
+    const err = csFileError(newFile);
+    if (err) throw new Error(err);
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const pre = await ref.get();
+    if (!pre.exists || !(pre.data().files || []).some(f => f && f.fileId === fileId)) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+    // Upload to a NEW path first: if this throws nothing has changed.
+    const uploaded = (await env.upload(sheetId, [newFile]))[0];
+    let result;
+    try {
+      result = await env.db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('That count sheet no longer exists.');
+        const data = snap.data() || {};
+        const files = Array.isArray(data.files) ? data.files.slice() : [];
+        const idx = files.findIndex(f => f && f.fileId === fileId);
+        if (idx < 0) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+        const old = files[idx];
+        files[idx] = uploaded; // same position
+        tx.update(ref, { files });
+        return { old, files, index: idx };
+      });
+    } catch (error) {
+      // The doc was not changed: drop the orphan we just uploaded (best effort).
+      try { await env.storage.ref(uploaded.path).delete(); } catch (delError) { console.warn('Could not delete the orphaned upload.', uploaded.path, delError); }
+      throw error;
+    }
+    const deleteError = uploaded.path !== result.old.path ? await csDeleteStorage(env, sheetId, result.old) : 'same path - not deleted';
+    const auditError = await csAudit(env, 'count_sheet_file_replaced', sheetId,
+      { sheetId, position: result.index, file: csMeta(result.old) },
+      { sheetId, position: result.index, file: csMeta(uploaded), reason: reason || '', oldStorageDeleted: !deleteError, oldStorageDeleteError: deleteError },
+      `Replaced count sheet file "${result.old.name || ''}" with "${uploaded.name}" on sheet ${sheetId}${reason ? ' - ' + reason : ''}${deleteError ? ' (old storage object could not be deleted)' : ''}`);
+    return { files: result.files, oldDeleteError: deleteError, auditError };
+  }
+  async function csRemoveFile(env, sheetId, fileId) {
+    csGate(env, sheetId);
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const result = await env.db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('That count sheet no longer exists.');
+      const files = Array.isArray((snap.data() || {}).files) ? snap.data().files.slice() : [];
+      const idx = files.findIndex(f => f && f.fileId === fileId);
+      if (idx < 0) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+      const old = files[idx];
+      files.splice(idx, 1);
+      tx.update(ref, { files });
+      return { old, files, index: idx };
+    });
+    const deleteError = await csDeleteStorage(env, sheetId, result.old);
+    const auditError = await csAudit(env, 'count_sheet_file_removed', sheetId,
+      { sheetId, position: result.index, file: csMeta(result.old) },
+      { sheetId, remainingFileCount: result.files.length, oldStorageDeleted: !deleteError, oldStorageDeleteError: deleteError },
+      `Removed count sheet file "${result.old.name || ''}" from sheet ${sheetId}${result.files.length ? '' : ' (sheet now has no photo)'}${deleteError ? ' (storage object could not be deleted)' : ''}`);
+    return { files: result.files, oldDeleteError: deleteError, auditError };
+  }
+  // monthlyTotal: a number, or null to clear it. notes: string ('' clears).
+  async function csUpdateMonthly(env, sheetId, monthlyTotal, notes) {
+    csGate(env, sheetId);
+    if (monthlyTotal != null && (!isFinite(monthlyTotal) || monthlyTotal < 0)) throw new Error('Sheet total must be a valid amount.');
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const result = await env.db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('That monthly sheet no longer exists.');
+      const data = snap.data() || {};
+      if (data.scope !== 'month') throw new Error('Only a monthly sheet has a sheet total.');
+      tx.update(ref, { monthlyTotal: monthlyTotal == null ? firebase.firestore.FieldValue.delete() : monthlyTotal, notes: notes || '' });
+      return { month: data.month || '', before: { monthlyTotal: data.monthlyTotal == null ? null : data.monthlyTotal, notes: data.notes || '' } };
+    });
+    const after = { monthlyTotal: monthlyTotal == null ? null : monthlyTotal, notes: notes || '' };
+    const auditError = await csAudit(env, 'monthly_count_sheet_updated', sheetId,
+      { sheetId, month: result.month, ...result.before }, { sheetId, month: result.month, ...after },
+      `Updated monthly tally sheet ${result.month || sheetId}: total ${result.before.monthlyTotal == null ? '(none)' : result.before.monthlyTotal} -> ${after.monthlyTotal == null ? '(none)' : after.monthlyTotal}${result.before.notes !== after.notes ? ', notes changed' : ''}`);
+    return { monthlyTotal: after.monthlyTotal, notes: after.notes, auditError };
+  }
+  // Asks for a new monthly total then notes via prompt(); null = cancelled.
+  function csPromptMonthly(sheet) {
+    const curTotal = sheet && sheet.monthlyTotal != null && isFinite(Number(sheet.monthlyTotal)) ? String(Number(sheet.monthlyTotal)) : '';
+    const totalAnswer = window.prompt('Sheet total ₱ (leave blank to clear the total):', curTotal);
+    if (totalAnswer === null) return null;
+    let monthlyTotal = null;
+    if (totalAnswer.trim() !== '') {
+      monthlyTotal = Number(totalAnswer.replace(/,/g, ''));
+      if (!isFinite(monthlyTotal) || monthlyTotal < 0) { alert('Sheet total must be a valid amount.'); return null; }
+    }
+    const notesAnswer = window.prompt('Notes (leave blank to clear):', (sheet && sheet.notes) || '');
+    if (notesAnswer === null) return null;
+    return { monthlyTotal, notes: notesAnswer.trim() };
+  }
+  // One file picker (single file) for Replace.
+  function csPickOneFile(onFile) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.onchange = () => { const f = (input.files || [])[0]; if (f) onFile(f); };
+    input.click();
+  }
+
+
+  const csEnv = {
+    db, storage,
+    isTreasurer: () => !!activeProfile && activeProfile.role === 'Treasurer',
+    upload: (sheetId, files) => uploadSheetFiles(sheetId, files),
+    audit: (action, sheetId, before, after, summary) => writeAuditLog(action, 'countSheets', sheetId, before, after, summary)
+  };
+
+  // ── Manage Count Sheets modal (Treasurer only) ────────────────────────────
+  // Lists the count sheet(s) of a Sunday / the monthly tally sheet of a month
+  // with each file's View / Replace / Remove, plus Add photo and (monthly)
+  // Edit total/notes. Ids ride in data- attributes, never inline JS strings.
+  let manageWeek = { date: '', sheets: [] };
+  let manageMonth = { month: '', sheets: [] };
+  let manageBusy = false;
+
+  function safeHttpUrl(u) { return /^https?:\/\//i.test(u || '') ? u : ''; }
+
+  function manageFileRowHtml(kind, key, sheet, file) {
+    const url = safeHttpUrl(file.url);
+    const attrs = `data-cs-kind="${escapeHtml(kind)}" data-cs-key="${escapeHtml(key)}" data-cs-sheet="${escapeHtml(sheet.id)}" data-cs-file="${escapeHtml(file.fileId || '')}"`;
+    return `<li style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #eee;">
+      <span>${escapeHtml(file.name || 'Count sheet file')}</span>
+      <span>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="margin-right:6px;">View</a>` : ''}
+        <button type="button" class="btn-export" style="padding:4px 10px; font-size:12px;" data-cs-act="replace" ${attrs}>Replace</button>
+        <button type="button" class="btn-export" style="padding:4px 10px; font-size:12px; background:#c0392b;" data-cs-act="remove" ${attrs}>Remove</button></span>
+    </li>`;
+  }
+  function manageSheetHtml(kind, key, sheet, index, count) {
+    const files = (sheet.files || []).filter(f => f && f.fileId);
+    const by = sheet.createdBy && sheet.createdBy.name ? ` · by ${escapeHtml(sheet.createdBy.name)}` : '';
+    const attrs = `data-cs-kind="${escapeHtml(kind)}" data-cs-key="${escapeHtml(key)}" data-cs-sheet="${escapeHtml(sheet.id)}"`;
+    let head;
+    if (kind === 'month') {
+      const hasTotal = sheet.monthlyTotal != null && isFinite(Number(sheet.monthlyTotal));
+      head = `<strong>Monthly tally sheet ${escapeHtml(key)}</strong>${by} · ${hasTotal ? 'Sheet total ₱' + fmt(Number(sheet.monthlyTotal)) : 'no sheet total'}` +
+        (sheet.notes ? `<div style="color:#555; margin-top:2px;">Notes: ${escapeHtml(sheet.notes)}</div>` : '') +
+        `<div style="margin-top:4px;"><button type="button" class="btn-export" style="padding:4px 10px; font-size:12px;" data-cs-act="editmonthly" ${attrs}>${hasTotal ? 'Edit total/notes' : 'Set total/notes'}</button></div>`;
+    } else {
+      head = `<strong>Count sheet${count > 1 ? ' #' + (index + 1) : ''} — ${escapeHtml(key)}</strong>${by} · ${Number(sheet.entryCount || 0)} entr${Number(sheet.entryCount || 0) === 1 ? 'y' : 'ies'} · ₱${fmt(Number(sheet.totalAmount || 0))}`;
+    }
+    const list = files.length
+      ? `<ul style="list-style:none; padding:0; margin:6px 0 0;">${files.map(f => manageFileRowHtml(kind, key, sheet, f)).join('')}</ul>`
+      : `<div style="margin-top:6px; color:#c0392b;">${kind === 'month' ? 'No monthly sheet file' : 'Count sheet (no photo)'}</div>`;
+    const add = `<div style="margin-top:6px;"><button type="button" class="btn-export" style="padding:4px 10px; font-size:12px;" data-cs-act="add" ${attrs}>${files.length ? 'Add photo/file' : (kind === 'month' ? 'Add files' : 'Add photo')}</button></div>`;
+    return `<div style="border:1px solid #e3e3e3; border-radius:8px; padding:10px; margin-bottom:8px; color:#333;">${head}${list}${add}</div>`;
+  }
+  function renderManageWeekly() {
+    const box = document.getElementById('manage-week-body');
+    const { date, sheets } = manageWeek;
+    box.style.color = '#333';
+    box.innerHTML = sheets.length ? sheets.map((sh, i) => manageSheetHtml('week', date, sh, i, sheets.length)).join('') : '<span style="color:#888;">No count sheet is saved for this date.</span>';
+  }
+  function renderManageMonthly() {
+    const box = document.getElementById('manage-month-body');
+    const { month, sheets } = manageMonth;
+    box.style.color = '#333';
+    box.innerHTML = sheets.length ? sheets.map((sh, i) => manageSheetHtml('month', month, sh, i, sheets.length)).join('') : '<span style="color:#888;">No monthly sheet is saved for this month.</span>';
+  }
+  window.loadManageWeekly = async function() {
+    const date = document.getElementById('manage-sheet-date').value;
+    const box = document.getElementById('manage-week-body');
+    manageWeek = { date, sheets: [] };
+    if (!date) { box.textContent = 'Pick a date.'; return; }
+    box.textContent = 'Loading...';
+    try {
+      const snap = await db.collection('countSheets').where('date', '==', date).get();
+      if (document.getElementById('manage-sheet-date').value !== date) return;
+      manageWeek.sheets = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(sh => !isMonthSheet(sh));
+      renderManageWeekly();
+    } catch (error) {
+      console.error(error);
+      box.textContent = 'Unable to load count sheets: ' + (error.message || error);
+    }
+  };
+  window.loadManageMonthly = async function() {
+    const month = document.getElementById('manage-sheet-month').value;
+    const box = document.getElementById('manage-month-body');
+    manageMonth = { month, sheets: [] };
+    if (!/^\d{4}-\d{2}$/.test(month)) { box.textContent = 'Pick a month.'; return; }
+    box.textContent = 'Loading...';
+    try {
+      const snap = await db.collection('countSheets').where('month', '==', month).get();
+      if (document.getElementById('manage-sheet-month').value !== month) return;
+      manageMonth.sheets = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(isMonthSheet);
+      renderManageMonthly();
+    } catch (error) {
+      console.error(error);
+      box.textContent = 'Unable to load the monthly sheet: ' + (error.message || error);
+    }
+  };
+  window.openManageSheetsModal = function() {
+    if (!activeProfile || activeProfile.role !== 'Treasurer') return;
+    document.getElementById('manage-sheet-date').value = '';
+    document.getElementById('manage-sheet-month').value = '';
+    manageWeek = { date: '', sheets: [] };
+    manageMonth = { month: '', sheets: [] };
+    document.getElementById('manage-week-body').textContent = 'Pick a date.';
+    document.getElementById('manage-month-body').textContent = 'Pick a month.';
+    document.getElementById('manageSheetsModal').style.display = 'flex';
+  };
+  window.closeManageSheetsModal = function() {
+    document.getElementById('manageSheetsModal').style.display = 'none';
+  };
+
+  async function handleManageAction(act, kind, key, sheetId, fileId) {
+    if (manageBusy || !activeProfile || activeProfile.role !== 'Treasurer') return;
+    if (kind !== 'week' && kind !== 'month') return;
+    const state = kind === 'month' ? manageMonth : manageWeek;
+    const stateKey = kind === 'month' ? state.month : state.date;
+    if (stateKey !== key) return;
+    const sheet = state.sheets.find(sh => sh.id === sheetId);
+    if (!sheet) return;
+    const file = (sheet.files || []).find(f => f && f.fileId === fileId);
+    const reload = () => (kind === 'month' ? loadManageMonthly() : loadManageWeekly());
+    try {
+      if (act === 'editmonthly') {
+        if (kind !== 'month') return;
+        const answer = csPromptMonthly(sheet);
+        if (!answer) return;
+        manageBusy = true;
+        const res = await csUpdateMonthly(csEnv, sheetId, answer.monthlyTotal, answer.notes);
+        await reload();
+        alert('Monthly sheet updated.' + (res.auditError ? ' (The audit entry could not be written.)' : ''));
+      } else if (act === 'remove') {
+        if (!file) return;
+        if (!confirm(`Remove "${file.name || 'this file'}" from this ${kind === 'month' ? 'monthly' : 'count'} sheet?\n\nThe sheet itself${kind === 'month' ? '' : ' and its income entries'} stay; only this file is removed.`)) return;
+        manageBusy = true;
+        const res = await csRemoveFile(csEnv, sheetId, fileId);
+        await reload();
+        alert('File removed.' + (res.oldDeleteError ? ' (The stored copy could not be deleted; it has been noted in the audit log.)' : ''));
+      } else if (act === 'add') {
+        csPickFiles(async files => {
+          const err = validateSheetFiles(files);
+          if (err) return alert(err);
+          manageBusy = true;
+          try {
+            const uploaded = await uploadSheetFiles(sheetId, files);
+            await appendFilesToSheet(sheetId, uploaded,
+              `Added ${uploaded.length} file${uploaded.length === 1 ? '' : 's'} to ${kind === 'month' ? 'monthly tally sheet ' + key : 'count sheet for ' + key} (via Manage Count Sheets)`);
+            await reload();
+            alert('Files added.');
+          } catch (error) {
+            console.error(error);
+            alert('Error adding files: ' + (error.message || error));
+          } finally { manageBusy = false; }
+        });
+      } else if (act === 'replace') {
+        if (!file) return;
+        csPickOneFile(async newFile => {
+          const err = csFileError(newFile);
+          if (err) return alert(err);
+          const reason = window.prompt(`Reason for replacing "${file.name || 'this file'}" (optional):`, '');
+          if (reason === null) return;
+          manageBusy = true;
+          try {
+            const res = await csReplaceFile(csEnv, sheetId, fileId, newFile, reason.trim());
+            await reload();
+            alert('File replaced.' + (res.oldDeleteError ? ' (The old stored copy could not be deleted; it has been noted in the audit log.)' : ''));
+          } catch (error) {
+            console.error(error);
+            alert('Error replacing file: ' + (error.message || error));
+          } finally { manageBusy = false; }
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Error: ' + (error.message || error));
+    } finally {
+      if (act !== 'replace' && act !== 'add') manageBusy = false;
+    }
+  }
+  function csPickFiles(onFiles) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.multiple = true;
+    input.onchange = () => { const files = Array.from(input.files || []); if (files.length) onFiles(files); };
+    input.click();
+  }
+  document.addEventListener('click', event => {
+    const btn = event.target && event.target.closest ? event.target.closest('[data-cs-act]') : null;
+    if (!btn) return;
+    event.preventDefault();
+    handleManageAction(btn.dataset.csAct, btn.dataset.csKind, btn.dataset.csKey, btn.dataset.csSheet, btn.dataset.csFile);
+  });
+
   // Idinagdag sa initialization para tumakbo agad yung Date Sorter
   initFilters();
   setupListener();
@@ -708,6 +1052,8 @@
       if (btn) btn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
       const mbtn = document.getElementById('btn-attach-monthly');
       if (mbtn) mbtn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
+      const gbtn = document.getElementById('btn-manage-sheets');
+      if (gbtn) gbtn.style.display = profile && profile.role === 'Treasurer' ? 'inline-block' : 'none';
     });
   }
 </script>
