@@ -30,7 +30,7 @@
       // Explicit top/right/bottom/left rather than the `inset` shorthand:
       // this ships inside an Android Capacitor WebView (see android/,
       // capacitor.config.json) which can be older than Chrome 87.
-      '.gb-annot-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.65); z-index: 5000;',
+      '.gb-annot-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.65); z-index: 5000; touch-action: pan-x pan-y;',
       '  display: flex; align-items: center; justify-content: center; padding: 16px; font-family: Arial, sans-serif; }',
       '.gb-annot-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 780px; max-height: 94vh;',
       '  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.35); }',
@@ -43,9 +43,22 @@
       '.gb-annot-stage-wrap { position: relative; background: #f4f6f7; border: 1px solid #eee; border-radius: 8px;',
       '  min-height: 200px; display: flex; align-items: center; justify-content: center; }',
       '.gb-annot-loading { padding: 40px 10px; color: #8a99a5; font-size: 13px; }',
-      '.gb-annot-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; touch-action: none; }',
+      // Zoom: the stage is resized in real px (fit size x zoom) inside this
+      // scrolling viewport - never a CSS transform - so the % based
+      // highlight boxes and the drawing maths stay aligned at any zoom.
+      '.gb-annot-viewport { position: relative; width: 100%; max-height: 65vh; overflow: auto; -webkit-overflow-scrolling: touch;',
+      '  overscroll-behavior: contain; touch-action: pan-y; }',
+      '.gb-annot-viewport.gb-annot-zoomed { cursor: grab; }',
+      '.gb-annot-viewport.gb-annot-panning { cursor: grabbing; }',
+      '.gb-annot-viewport.gb-annot-zoomed .gb-annot-stage.gb-annot-editable { cursor: crosshair; }',
+      '.gb-annot-stage { position: relative; display: block; margin: 0 auto; line-height: 0; }',
+      '.gb-annot-zoom { display: inline-flex; align-items: center; gap: 4px; }',
+      '.gb-annot-zoom button { background: #eaf2f8; color: #1a5276; border: none; border-radius: 6px; min-width: 32px; height: 30px;',
+      '  padding: 0 8px; font-size: 14px; font-weight: bold; cursor: pointer; }',
+      '.gb-annot-zoom button:disabled { opacity: 0.45; cursor: not-allowed; }',
+      '.gb-annot-zoom .gb-annot-zoom-reset { font-size: 12px; min-width: 52px; }',
       '.gb-annot-stage.gb-annot-editable { cursor: crosshair; }',
-      '.gb-annot-img { display: block; max-width: 100%; max-height: 65vh; width: auto; height: auto; user-select: none; -webkit-user-drag: none; }',
+      '.gb-annot-img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }',
       '.gb-annot-boxes { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }',
       '.gb-annot-boxes.gb-annot-hidden-boxes { display: none; }',
       '.gb-annot-box { position: absolute; border: 2px solid; box-sizing: border-box; pointer-events: none; }',
@@ -216,10 +229,14 @@
     loadingEl.textContent = 'Loading receipt…';
     stageWrap.appendChild(loadingEl);
 
+    var viewport = document.createElement('div');
+    viewport.className = 'gb-annot-viewport';
+    viewport.style.display = 'none';
+    stageWrap.appendChild(viewport);
+
     var stage = document.createElement('div');
     stage.className = 'gb-annot-stage' + (state.editable ? ' gb-annot-editable' : '');
-    stage.style.display = 'none';
-    stageWrap.appendChild(stage);
+    viewport.appendChild(stage);
 
     var img = document.createElement('img');
     img.className = 'gb-annot-img';
@@ -257,6 +274,30 @@
       toolbar.appendChild(swatches);
     }
 
+    var zoomGroup = document.createElement('div');
+    zoomGroup.className = 'gb-annot-zoom';
+    var zoomOutBtn = document.createElement('button');
+    zoomOutBtn.type = 'button';
+    zoomOutBtn.className = 'gb-annot-zoom-out';
+    zoomOutBtn.textContent = '\u2212';
+    zoomOutBtn.title = 'Zoom out';
+    zoomOutBtn.setAttribute('aria-label', 'Zoom out');
+    var zoomResetBtn = document.createElement('button');
+    zoomResetBtn.type = 'button';
+    zoomResetBtn.className = 'gb-annot-zoom-reset';
+    zoomResetBtn.textContent = 'Fit';
+    zoomResetBtn.title = 'Fit to view';
+    var zoomInBtn = document.createElement('button');
+    zoomInBtn.type = 'button';
+    zoomInBtn.className = 'gb-annot-zoom-in';
+    zoomInBtn.textContent = '+';
+    zoomInBtn.title = 'Zoom in';
+    zoomInBtn.setAttribute('aria-label', 'Zoom in');
+    zoomGroup.appendChild(zoomOutBtn);
+    zoomGroup.appendChild(zoomResetBtn);
+    zoomGroup.appendChild(zoomInBtn);
+    toolbar.appendChild(zoomGroup);
+
     var toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'gb-annot-toggle-btn';
@@ -281,7 +322,7 @@
     if (state.editable) {
       var hint = document.createElement('div');
       hint.className = 'gb-annot-hint';
-      hint.textContent = 'Drag on the receipt to draw a highlight box, then label it below.';
+      hint.textContent = 'Drag on the receipt to draw a highlight box, then label it below. Zoom with + / \u2212 or Ctrl+scroll; on a phone pinch, or pan with two fingers.';
       body.appendChild(hint);
     }
 
@@ -519,6 +560,9 @@
       if (!state.editable || !state.imageLoaded) return;
       if (!e.touches || !e.touches.length) return;
       e.preventDefault();
+      // A second finger means pinch/pan, never a highlight: drop any
+      // half-drawn box (the viewport handlers take over).
+      if (e.touches.length > 1) { dragStart = null; previewBox.style.display = 'none'; return; }
       var t = e.touches[0];
       dragStart = fractionFromPoint(t.clientX, t.clientY);
       showPreview(dragStart, dragStart);
@@ -527,6 +571,7 @@
       if (!dragStart) return;
       if (!e.touches || !e.touches.length) return;
       e.preventDefault();
+      if (e.touches.length > 1) { dragStart = null; previewBox.style.display = 'none'; return; }
       var t = e.touches[0];
       showPreview(dragStart, fractionFromPoint(t.clientX, t.clientY));
     }
@@ -545,6 +590,193 @@
       stage.addEventListener('touchend', onTouchEnd, { passive: false });
       stage.addEventListener('touchcancel', onTouchEnd, { passive: false });
     }
+
+    // ---- Zoom / pan ----
+    // Fit size is computed once per load/resize; zoom is a multiplier on it
+    // (1 = fit, up to MAX_ZOOM). The stage is resized in px inside the
+    // scrolling viewport, so highlight boxes (percentages of the stage) and
+    // fractionFromPoint() (stage bounding rect) are correct at every zoom.
+    var MIN_ZOOM = 1, MAX_ZOOM = 5, DBL_ZOOM = 2.5;
+    var zoom = 1, natW = 0, natH = 0, fitW = 0, fitH = 0;
+    var gesture = null;   // {mode:'pinch'|'pan'|'ignore', ...}
+    var lastTap = null;
+
+    function computeFit() {
+      if (!natW || !natH) return;
+      var w = Math.max(60, stageWrap.clientWidth);
+      var h = Math.max(120, window.innerHeight * 0.65);
+      var s = Math.min(1, w / natW, h / natH);
+      fitW = natW * s;
+      fitH = natH * s;
+    }
+    function clampZoom(z) { return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
+    function applyStageSize() {
+      stage.style.width = (fitW * zoom) + 'px';
+      stage.style.height = (fitH * zoom) + 'px';
+    }
+    function updateZoomUi() {
+      zoomResetBtn.textContent = zoom <= 1.001 ? 'Fit' : Math.round(zoom * 100) + '%';
+      zoomOutBtn.disabled = zoom <= MIN_ZOOM + 0.001;
+      zoomInBtn.disabled = zoom >= MAX_ZOOM - 0.001;
+      viewport.classList.toggle('gb-annot-zoomed', zoom > 1.001);
+      // Fit + view mode keeps native vertical scrolling of the modal over the
+      // image; zoomed or editing, the viewer handles touches itself (page
+      // pinch-zoom is off either way).
+      viewport.style.touchAction = (state.editable || zoom > 1.001) ? 'none' : 'pan-y';
+    }
+    // Sets the zoom so the stage point (fx, fy) (fractions 0..1) sits under
+    // viewport-relative pixel (cx, cy).
+    function zoomAt(next, fx, fy, cx, cy) {
+      next = clampZoom(next);
+      if (next < 1.02) next = 1;
+      zoom = next;
+      applyStageSize();
+      viewport.scrollLeft = stage.offsetLeft + fx * stage.offsetWidth - cx;
+      viewport.scrollTop = stage.offsetTop + fy * stage.offsetHeight - cy;
+      updateZoomUi();
+    }
+    function fractionsAtViewportPoint(cx, cy) {
+      var w = stage.offsetWidth || 1, h = stage.offsetHeight || 1;
+      return {
+        x: (viewport.scrollLeft + cx - stage.offsetLeft) / w,
+        y: (viewport.scrollTop + cy - stage.offsetTop) / h
+      };
+    }
+    function setZoom(next, cx, cy) {
+      if (!state.imageLoaded) return;
+      if (cx == null) { cx = viewport.clientWidth / 2; cy = viewport.clientHeight / 2; }
+      var f = fractionsAtViewportPoint(cx, cy);
+      zoomAt(next, f.x, f.y, cx, cy);
+    }
+    function viewportPoint(clientX, clientY) {
+      var r = viewport.getBoundingClientRect();
+      return { x: clientX - r.left, y: clientY - r.top };
+    }
+    function toggleZoomAt(clientX, clientY) {
+      var p = viewportPoint(clientX, clientY);
+      setZoom(zoom > 1.001 ? 1 : DBL_ZOOM, p.x, p.y);
+    }
+
+    zoomInBtn.addEventListener('click', function () { setZoom(zoom * 1.5); });
+    zoomOutBtn.addEventListener('click', function () { setZoom(zoom / 1.5); });
+    zoomResetBtn.addEventListener('click', function () { setZoom(1); });
+    updateZoomUi();
+
+    // Ctrl/Cmd + wheel (also what a trackpad pinch sends) zooms about the cursor.
+    viewport.addEventListener('wheel', function (e) {
+      if (!(e.ctrlKey || e.metaKey) || !state.imageLoaded) return;
+      e.preventDefault();
+      var p = viewportPoint(e.clientX, e.clientY);
+      setZoom(zoom * Math.exp(-e.deltaY * 0.0025), p.x, p.y);
+    }, { passive: false });
+
+    viewport.addEventListener('dblclick', function (e) {
+      if (!state.imageLoaded) return;
+      e.preventDefault();
+      toggleZoomAt(e.clientX, e.clientY);
+    });
+
+    // Mouse drag pans a zoomed image in view/locked mode (edit mode draws).
+    var mousePan = null;
+    viewport.addEventListener('mousedown', function (e) {
+      if (state.editable || zoom <= 1.001 || (e.button !== undefined && e.button !== 0)) return;
+      mousePan = { x: e.clientX, y: e.clientY, sl: viewport.scrollLeft, st: viewport.scrollTop };
+      viewport.classList.add('gb-annot-panning');
+      e.preventDefault();
+      document.addEventListener('mousemove', onPanMove);
+      document.addEventListener('mouseup', onPanUp);
+    });
+    function onPanMove(e) {
+      if (!mousePan) return;
+      viewport.scrollLeft = mousePan.sl - (e.clientX - mousePan.x);
+      viewport.scrollTop = mousePan.st - (e.clientY - mousePan.y);
+    }
+    function onPanUp() {
+      mousePan = null;
+      viewport.classList.remove('gb-annot-panning');
+      document.removeEventListener('mousemove', onPanMove);
+      document.removeEventListener('mouseup', onPanUp);
+    }
+
+    // Touch: two fingers pinch (about the pinch centre) and pan; in view
+    // mode one finger pans a zoomed image; double-tap toggles fit / 2.5x.
+    function touchInfo(touches) {
+      var a = touches[0], b = touches[1];
+      var dx = a.clientX - b.clientX, dy = a.clientY - b.clientY;
+      return { dist: Math.sqrt(dx * dx + dy * dy) || 1, cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2 };
+    }
+    viewport.addEventListener('touchstart', function (e) {
+      if (!state.imageLoaded || !e.touches || !e.touches.length) return;
+      if (e.touches.length >= 2) {
+        var ti = touchInfo(e.touches);
+        var p = viewportPoint(ti.cx, ti.cy);
+        var f = fractionsAtViewportPoint(p.x, p.y);
+        gesture = { mode: 'pinch', dist: ti.dist, zoom: zoom, fx: f.x, fy: f.y };
+        lastTap = null;
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      if (gesture && gesture.mode === 'ignore') return;
+      var t = e.touches[0];
+      gesture = {
+        mode: (!state.editable && zoom > 1.001) ? 'pan' : 'tap',
+        x: t.clientX, y: t.clientY, sl: viewport.scrollLeft, st: viewport.scrollTop,
+        time: Date.now(), moved: false
+      };
+      if (gesture.mode === 'pan' && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    viewport.addEventListener('touchmove', function (e) {
+      if (!gesture || !e.touches || !e.touches.length) return;
+      if (gesture.mode === 'pinch' && e.touches.length >= 2) {
+        var ti = touchInfo(e.touches);
+        var p = viewportPoint(ti.cx, ti.cy);
+        zoomAt(gesture.zoom * ti.dist / gesture.dist, gesture.fx, gesture.fy, p.x, p.y);
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      var t = e.touches[0];
+      if (gesture.mode === 'pan' || gesture.mode === 'tap') {
+        var dx = t.clientX - gesture.x, dy = t.clientY - gesture.y;
+        if (Math.abs(dx) > 10 || Math.abs(dy) > 10) gesture.moved = true;
+        if (gesture.mode === 'pan') {
+          viewport.scrollLeft = gesture.sl - dx;
+          viewport.scrollTop = gesture.st - dy;
+          if (e.cancelable) e.preventDefault();
+        }
+      }
+    }, { passive: false });
+    function onViewportTouchEnd(e) {
+      if (!gesture) return;
+      var remaining = e.touches ? e.touches.length : 0;
+      if (remaining > 0) {
+        // One finger of a pinch lifted: ignore the rest until all lift.
+        gesture = { mode: 'ignore' };
+        return;
+      }
+      var g = gesture;
+      gesture = null;
+      if (g.mode === 'pinch' && zoom < 1.02) { setZoom(1); }
+      if (g.mode === 'ignore' || g.mode === 'pinch') return;
+      var t = e.changedTouches && e.changedTouches[0];
+      if (!t || g.moved || e.type === 'touchcancel') { lastTap = null; return; }
+      var now = Date.now();
+      if (lastTap && now - lastTap.time < 350 && Math.abs(t.clientX - lastTap.x) < 30 && Math.abs(t.clientY - lastTap.y) < 30) {
+        lastTap = null;
+        if (e.cancelable) e.preventDefault();
+        toggleZoomAt(t.clientX, t.clientY);
+      } else {
+        lastTap = { time: now, x: t.clientX, y: t.clientY };
+      }
+    }
+    viewport.addEventListener('touchend', onViewportTouchEnd, { passive: false });
+    viewport.addEventListener('touchcancel', onViewportTouchEnd, { passive: false });
+
+    function onWindowResize() {
+      if (!state.imageLoaded) return;
+      computeFit();
+      setZoom(zoom);
+    }
+    window.addEventListener('resize', onWindowResize);
 
     // ---- Save ----
     function cleanedAnnotations() {
@@ -655,6 +887,9 @@
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('mousemove', onPanMove);
+      document.removeEventListener('mouseup', onPanUp);
+      window.removeEventListener('resize', onWindowResize);
       overlay.remove();
     }
 
@@ -665,7 +900,12 @@
     img.addEventListener('load', function () {
       state.imageLoaded = true;
       loadingEl.style.display = 'none';
-      stage.style.display = 'inline-block';
+      natW = img.naturalWidth || 1;
+      natH = img.naturalHeight || 1;
+      viewport.style.display = 'block';
+      computeFit();
+      applyStageSize();
+      updateZoomUi();
       renderBoxes();
       renderLegend();
     });
