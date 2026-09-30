@@ -4028,9 +4028,23 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       }
     } else {
       const label = sheets.length > 1 ? `View Count Sheets (${sheets.length})` : 'View Count Sheet';
-      sheetCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
-      if (currentRole === 'Treasurer') {
-        sheetCell += ` <button type="button" class="rbtn rbtn-upload" title="You can select 2 or more photos at once" onclick="openReviewAddSheetFiles('${escapeAttr(date)}')">Add photo/file</button>`;
+      const totalFiles = sheets.reduce((n, sh) => n + (sh.files || []).length, 0);
+      if (!totalFiles) {
+        // The sheet doc (denominations, income links) stays even when its
+        // last photo was removed - it just has no photo any more.
+        sheetCell = '<span style="font-size:11px; color:#888;">Count sheet (no photo)</span>';
+        if (currentRole === 'Treasurer') {
+          sheetCell += ` · <button type="button" class="rbtn rbtn-upload" title="You can select 2 or more photos at once" onclick="openReviewAddSheetFiles('${escapeAttr(date)}')">Add photo</button>`;
+        }
+      } else {
+        sheetCell = `<button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheet('${escapeAttr(date)}')">${escapeHtml(label)}</button>`;
+        if (currentRole === 'Treasurer') {
+          if (totalFiles === 1) {
+            const onlySheet = sheets.find(sh => (sh.files || []).length);
+            sheetCell += csActionBtnsHtml('week', date, onlySheet.id, onlySheet.files[0].fileId);
+          }
+          sheetCell += ` <button type="button" class="rbtn rbtn-upload" title="You can select 2 or more photos at once" onclick="openReviewAddSheetFiles('${escapeAttr(date)}')">Add photo/file</button>`;
+        }
       }
       if (linkedCount < dayEntries.length) sheetCell += ` <span style="font-size:11px; color:#888;">(${linkedCount}/${dayEntries.length} entries linked)</span>`;
       const sheetsWithCount = sheets.filter(sh => sh.countedCashTotal != null && Number(sh.countedCashTotal) > 0);
@@ -4120,15 +4134,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     const sheets = [...reviewCountSheetMap.values()].filter(s => s.date === date && s.scope !== 'month');
     if (!sheets.length) return;
     const allFiles = [];
-    sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    sheets.forEach(sheet => (sheet.files || []).forEach(f => allFiles.push({ sheet, file: f })));
     if (!allFiles.length) { alert('This count sheet has no attached photo files.'); return; }
+    csChooserState = { kind: 'week', key: date };
     document.getElementById('review-receipt-viewer-title').textContent = `Count Sheet — ${date}`;
     document.getElementById('review-receipt-viewer-body').innerHTML = `
       <ul style="list-style:none; padding:0; margin:0;">
-        ${allFiles.map((f, i) => `
-          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #eee;">
-            <span>${escapeHtml(f.name || 'Count sheet photo')}</span>
-            <button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheetFile('${escapeAttr(date)}', ${i})">View</button>
+        ${allFiles.map(({ sheet, file }, i) => `
+          <li style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #eee;">
+            <span>${escapeHtml(file.name || 'Count sheet photo')}</span>
+            <span><button type="button" class="rbtn rbtn-view" onclick="openReviewCountSheetFile('${escapeAttr(date)}', ${i})">View</button>${currentRole === 'Treasurer' ? csActionBtnsHtml('week', date, sheet.id, file.fileId) : ''}</span>
           </li>`).join('')}
       </ul>`;
     document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
@@ -4294,8 +4309,21 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       return `<span class="rbadge rbadge-missing">No monthly sheet</span>${attach}`;
     }
     const fileCount = sheets.reduce((n, sh) => n + (sh.files || []).length, 0);
-    let html = `<button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheet('${escapeAttr(month)}')">View (${fileCount} file${fileCount === 1 ? '' : 's'})</button>`;
-    if (isTreasurer) html += ` <button type="button" class="rbtn rbtn-upload" title="${attachTip}" onclick="openReviewMonthlyAttach('${escapeAttr(month)}')">Add files</button>`;
+    let html;
+    if (!fileCount) {
+      // The month doc (sheet total, notes) stays after its last file was removed.
+      html = '<span class="rbadge rbadge-missing">No monthly sheet file</span>';
+      if (isTreasurer) html += ` <button type="button" class="rbtn rbtn-upload" title="${attachTip}" onclick="openReviewMonthlyAttach('${escapeAttr(month)}')">${compact ? 'Attach' : 'Attach monthly sheet'}</button>`;
+    } else {
+      html = `<button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheet('${escapeAttr(month)}')">View (${fileCount} file${fileCount === 1 ? '' : 's'})</button>`;
+      if (isTreasurer) {
+        if (fileCount === 1) {
+          const onlySheet = sheets.find(sh => (sh.files || []).length);
+          html += csActionBtnsHtml('month', month, onlySheet.id, onlySheet.files[0].fileId);
+        }
+        html += ` <button type="button" class="rbtn rbtn-upload" title="${attachTip}" onclick="openReviewMonthlyAttach('${escapeAttr(month)}')">Add files</button>`;
+      }
+    }
     const withTotal = sheets.filter(sh => sh.monthlyTotal != null && isFinite(Number(sh.monthlyTotal)));
     if (withTotal.length) {
       const sheetTotal = Number(withTotal[0].monthlyTotal);
@@ -4303,6 +4331,10 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       html += mismatch
         ? ` <span class="rbadge rbadge-mismatch">Sheet total <span class="rpeso">₱${fmt(sheetTotal)}</span> ≠ recorded <span class="rpeso">₱${fmt(recorded)}</span></span>`
         : ` <span class="rbadge rbadge-ok">Sheet total <span class="rpeso">₱${fmt(sheetTotal)}</span> · recorded <span class="rpeso">₱${fmt(recorded)}</span></span>`;
+    }
+    if (isTreasurer) {
+      const target = withTotal[0] || sheets[0];
+      html += ` <button type="button" class="rbtn rbtn-upload" data-cs-act="editmonthly" data-cs-kind="month" data-cs-key="${escapeAttr(month)}" data-cs-sheet="${escapeAttr(target.id)}">${withTotal.length ? 'Edit total/notes' : 'Set total/notes'}</button>`;
     }
     return html;
   }
@@ -4331,15 +4363,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
   function openReviewMonthlySheet(month) {
     const allFiles = [];
-    (reviewMonthSheetMap.get(month) || []).forEach(sheet => (sheet.files || []).forEach(f => allFiles.push(f)));
+    (reviewMonthSheetMap.get(month) || []).forEach(sheet => (sheet.files || []).forEach(f => allFiles.push({ sheet, file: f })));
     if (!allFiles.length) { alert('This monthly sheet has no attached files.'); return; }
+    csChooserState = { kind: 'month', key: month };
     document.getElementById('review-receipt-viewer-title').textContent = `Monthly Tally Sheet — ${month}`;
     document.getElementById('review-receipt-viewer-body').innerHTML = `
       <ul style="list-style:none; padding:0; margin:0;">
-        ${allFiles.map((f, i) => `
-          <li style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #eee;">
-            <span>${escapeHtml(f.name || 'Monthly sheet file')}</span>
-            <button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheetFile('${escapeAttr(month)}', ${i})">View</button>
+        ${allFiles.map(({ sheet, file }, i) => `
+          <li style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #eee;">
+            <span>${escapeHtml(file.name || 'Monthly sheet file')}</span>
+            <span><button type="button" class="rbtn rbtn-view" onclick="openReviewMonthlySheetFile('${escapeAttr(month)}', ${i})">View</button>${currentRole === 'Treasurer' ? csActionBtnsHtml('month', month, sheet.id, file.fileId) : ''}</span>
           </li>`).join('')}
       </ul>`;
     document.getElementById('reviewReceiptViewerModal').style.display = 'flex';
@@ -4417,6 +4450,232 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       alert('Error saving monthly sheet: ' + (error.message || error));
     }
   }
+
+  // ── Count sheet file management (Treasurer only) ─────────────────────────
+  // Replace / Remove one file on an existing countSheets doc, and edit a
+  // monthly sheet's total/notes. The `files` array is only ever changed inside
+  // a transaction that reads the doc, finds the entry by its `fileId` and
+  // writes the whole array back (position kept), never arrayRemove/arrayUnion
+  // on objects. A countSheets doc is NEVER deleted here and no income entry is
+  // ever unlinked: removing the last file leaves a "no photo" sheet. Storage
+  // objects are only deleted when their path is one of THIS sheet's own `files`
+  // entries AND lives under count-sheets/{sheetId}/ (best effort, after the doc
+  // is already correct).
+  const CS_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+  function csFileError(file) {
+    if (!file) return 'No file selected.';
+    const okType = /^image\//.test(file.type) || file.type === 'application/pdf';
+    if (!okType) return `"${file.name}" must be an image or PDF.`;
+    if (file.size > 5 * 1024 * 1024) return `"${file.name}" must be 5 MB or smaller.`;
+    return '';
+  }
+  function csOwnPath(sheetId, path) {
+    return CS_ID_RE.test(sheetId) && typeof path === 'string' && path.length < 400 &&
+      path.startsWith(`count-sheets/${sheetId}/`) && path.indexOf('..') === -1 && path.indexOf('//') === -1;
+  }
+  function csMeta(f) {
+    return f ? { fileId: f.fileId || '', name: f.name || '', path: f.path || '', url: f.url || '', contentType: f.contentType || '', size: f.size || 0 } : null;
+  }
+  async function csAudit(env, action, sheetId, before, after, summary) {
+    try { await env.audit(action, sheetId, before, after, summary); return ''; }
+    catch (error) { console.warn('Count sheet change saved but the audit entry failed.', error); return error && error.message ? error.message : String(error); }
+  }
+  async function csDeleteStorage(env, sheetId, file) {
+    if (!file || !file.path) return '';
+    if (!csOwnPath(sheetId, file.path)) { console.warn('Refusing to delete a storage path outside this sheet:', file.path); return 'path not under this sheet - not deleted'; }
+    try { await env.storage.ref(file.path).delete(); return ''; }
+    catch (error) { console.warn('Could not delete the old storage object (the sheet is already correct).', file.path, error); return (error && error.message) ? error.message : String(error); }
+  }
+  function csGate(env, sheetId) {
+    if (!env.isTreasurer()) throw new Error('Only the Treasurer can change count sheet files.');
+    if (!CS_ID_RE.test(sheetId || '')) throw new Error('Invalid count sheet reference.');
+  }
+  async function csReplaceFile(env, sheetId, fileId, newFile, reason) {
+    csGate(env, sheetId);
+    const err = csFileError(newFile);
+    if (err) throw new Error(err);
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const pre = await ref.get();
+    if (!pre.exists || !(pre.data().files || []).some(f => f && f.fileId === fileId)) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+    // Upload to a NEW path first: if this throws nothing has changed.
+    const uploaded = (await env.upload(sheetId, [newFile]))[0];
+    let result;
+    try {
+      result = await env.db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('That count sheet no longer exists.');
+        const data = snap.data() || {};
+        const files = Array.isArray(data.files) ? data.files.slice() : [];
+        const idx = files.findIndex(f => f && f.fileId === fileId);
+        if (idx < 0) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+        const old = files[idx];
+        files[idx] = uploaded; // same position
+        tx.update(ref, { files });
+        return { old, files, index: idx };
+      });
+    } catch (error) {
+      // The doc was not changed: drop the orphan we just uploaded (best effort).
+      try { await env.storage.ref(uploaded.path).delete(); } catch (delError) { console.warn('Could not delete the orphaned upload.', uploaded.path, delError); }
+      throw error;
+    }
+    const deleteError = uploaded.path !== result.old.path ? await csDeleteStorage(env, sheetId, result.old) : 'same path - not deleted';
+    const auditError = await csAudit(env, 'count_sheet_file_replaced', sheetId,
+      { sheetId, position: result.index, file: csMeta(result.old) },
+      { sheetId, position: result.index, file: csMeta(uploaded), reason: reason || '', oldStorageDeleted: !deleteError, oldStorageDeleteError: deleteError },
+      `Replaced count sheet file "${result.old.name || ''}" with "${uploaded.name}" on sheet ${sheetId}${reason ? ' - ' + reason : ''}${deleteError ? ' (old storage object could not be deleted)' : ''}`);
+    return { files: result.files, oldDeleteError: deleteError, auditError };
+  }
+  async function csRemoveFile(env, sheetId, fileId) {
+    csGate(env, sheetId);
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const result = await env.db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('That count sheet no longer exists.');
+      const files = Array.isArray((snap.data() || {}).files) ? snap.data().files.slice() : [];
+      const idx = files.findIndex(f => f && f.fileId === fileId);
+      if (idx < 0) throw new Error('That file is no longer on this count sheet. Please refresh and try again.');
+      const old = files[idx];
+      files.splice(idx, 1);
+      tx.update(ref, { files });
+      return { old, files, index: idx };
+    });
+    const deleteError = await csDeleteStorage(env, sheetId, result.old);
+    const auditError = await csAudit(env, 'count_sheet_file_removed', sheetId,
+      { sheetId, position: result.index, file: csMeta(result.old) },
+      { sheetId, remainingFileCount: result.files.length, oldStorageDeleted: !deleteError, oldStorageDeleteError: deleteError },
+      `Removed count sheet file "${result.old.name || ''}" from sheet ${sheetId}${result.files.length ? '' : ' (sheet now has no photo)'}${deleteError ? ' (storage object could not be deleted)' : ''}`);
+    return { files: result.files, oldDeleteError: deleteError, auditError };
+  }
+  // monthlyTotal: a number, or null to clear it. notes: string ('' clears).
+  async function csUpdateMonthly(env, sheetId, monthlyTotal, notes) {
+    csGate(env, sheetId);
+    if (monthlyTotal != null && (!isFinite(monthlyTotal) || monthlyTotal < 0)) throw new Error('Sheet total must be a valid amount.');
+    const ref = env.db.collection('countSheets').doc(sheetId);
+    const result = await env.db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('That monthly sheet no longer exists.');
+      const data = snap.data() || {};
+      if (data.scope !== 'month') throw new Error('Only a monthly sheet has a sheet total.');
+      tx.update(ref, { monthlyTotal: monthlyTotal == null ? firebase.firestore.FieldValue.delete() : monthlyTotal, notes: notes || '' });
+      return { month: data.month || '', before: { monthlyTotal: data.monthlyTotal == null ? null : data.monthlyTotal, notes: data.notes || '' } };
+    });
+    const after = { monthlyTotal: monthlyTotal == null ? null : monthlyTotal, notes: notes || '' };
+    const auditError = await csAudit(env, 'monthly_count_sheet_updated', sheetId,
+      { sheetId, month: result.month, ...result.before }, { sheetId, month: result.month, ...after },
+      `Updated monthly tally sheet ${result.month || sheetId}: total ${result.before.monthlyTotal == null ? '(none)' : result.before.monthlyTotal} -> ${after.monthlyTotal == null ? '(none)' : after.monthlyTotal}${result.before.notes !== after.notes ? ', notes changed' : ''}`);
+    return { monthlyTotal: after.monthlyTotal, notes: after.notes, auditError };
+  }
+  // Asks for a new monthly total then notes via prompt(); null = cancelled.
+  function csPromptMonthly(sheet) {
+    const curTotal = sheet && sheet.monthlyTotal != null && isFinite(Number(sheet.monthlyTotal)) ? String(Number(sheet.monthlyTotal)) : '';
+    const totalAnswer = window.prompt('Sheet total ₱ (leave blank to clear the total):', curTotal);
+    if (totalAnswer === null) return null;
+    let monthlyTotal = null;
+    if (totalAnswer.trim() !== '') {
+      monthlyTotal = Number(totalAnswer.replace(/,/g, ''));
+      if (!isFinite(monthlyTotal) || monthlyTotal < 0) { alert('Sheet total must be a valid amount.'); return null; }
+    }
+    const notesAnswer = window.prompt('Notes (leave blank to clear):', (sheet && sheet.notes) || '');
+    if (notesAnswer === null) return null;
+    return { monthlyTotal, notes: notesAnswer.trim() };
+  }
+  // One file picker (single file) for Replace.
+  function csPickOneFile(onFile) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.onchange = () => { const f = (input.files || [])[0]; if (f) onFile(f); };
+    input.click();
+  }
+
+
+  const csEnv = {
+    db, storage,
+    isTreasurer: () => currentRole === 'Treasurer',
+    upload: (sheetId, files) => uploadReviewSheetFiles(sheetId, files),
+    audit: (action, sheetId, before, after, summary) => writeReviewAuditLog(action, sheetId, before, after, `${summary} (via Report Preview review mode)`, 'countSheets')
+  };
+  let csChooserState = null; // which Replace/Remove chooser is open, so it can be re-opened after an action
+  let csBusy = false;
+
+  // Replace / Remove buttons (review-mode panels only: those rows are
+  // review-only, hidden in print and skipped by the Excel export). Ids ride
+  // in data- attributes, never inside an inline JS string.
+  function csActionBtnsHtml(kind, key, sheetId, fileId) {
+    if (currentRole !== 'Treasurer' || !reviewMode || !sheetId || !fileId) return '';
+    const attrs = `data-cs-kind="${escapeAttr(kind)}" data-cs-key="${escapeAttr(key)}" data-cs-sheet="${escapeAttr(sheetId)}" data-cs-file="${escapeAttr(fileId)}"`;
+    return ` <button type="button" class="rbtn rbtn-upload" title="Upload the right file in place of this one" data-cs-act="replace" ${attrs}>Replace</button>` +
+           ` <button type="button" class="rbtn rbtn-upload" style="color:#c0392b;" title="Remove this file (the sheet stays)" data-cs-act="remove" ${attrs}>Remove</button>`;
+  }
+  function csLocalSheet(kind, key, sheetId) {
+    if (kind === 'month') return (reviewMonthSheetMap.get(key) || []).find(sh => sh.id === sheetId && sh.scope === 'month') || null;
+    const sheet = reviewCountSheetMap.get(sheetId);
+    return sheet && sheet.scope !== 'month' ? sheet : null;
+  }
+  function csAfterChange(kind, key, sheetId, patch) {
+    const local = csLocalSheet(kind, key, sheetId);
+    if (local) Object.keys(patch).forEach(k => { if (patch[k] === undefined || patch[k] === null && k === 'monthlyTotal') delete local[k]; else local[k] = patch[k]; });
+    closeReviewReceiptViewer();
+    if (kind === 'month') renderReviewMonthlyLine(); else refreshIncomeDateGroup(key);
+    const chooser = csChooserState;
+    csChooserState = null;
+    if (chooser && chooser.kind === kind && chooser.key === key && local && (local.files || []).length) {
+      if (kind === 'month') openReviewMonthlySheet(key); else openReviewCountSheet(key);
+    }
+  }
+  async function handleCsAction(act, kind, key, sheetId, fileId) {
+    if (csBusy || currentRole !== 'Treasurer' || !reviewMode) return;
+    if (kind !== 'week' && kind !== 'month') return;
+    const sheet = csLocalSheet(kind, key, sheetId);
+    if (!sheet) { alert('That count sheet is no longer loaded. Please reload the preview.'); return; }
+    const file = (sheet.files || []).find(f => f && f.fileId === fileId);
+    try {
+      if (act === 'editmonthly') {
+        if (kind !== 'month') return;
+        const answer = csPromptMonthly(sheet);
+        if (!answer) return;
+        csBusy = true;
+        const res = await csUpdateMonthly(csEnv, sheetId, answer.monthlyTotal, answer.notes);
+        csAfterChange(kind, key, sheetId, { monthlyTotal: res.monthlyTotal, notes: res.notes });
+        alert('Monthly sheet updated.' + (res.auditError ? ' (The audit entry could not be written.)' : ''));
+      } else if (act === 'remove') {
+        if (!file) { alert('That file is no longer on this sheet. Please reload the preview.'); return; }
+        if (!confirm(`Remove "${file.name || 'this file'}" from this ${kind === 'month' ? 'monthly' : 'count'} sheet?\n\nThe sheet itself${kind === 'month' ? '' : ' and its income entries'} stay; only this file is removed.`)) return;
+        csBusy = true;
+        const res = await csRemoveFile(csEnv, sheetId, fileId);
+        csAfterChange(kind, key, sheetId, { files: res.files });
+        alert('File removed.' + (res.oldDeleteError ? ' (The stored copy could not be deleted; it has been noted in the audit log.)' : ''));
+      } else if (act === 'replace') {
+        if (!file) { alert('That file is no longer on this sheet. Please reload the preview.'); return; }
+        csPickOneFile(async newFile => {
+          const err = csFileError(newFile);
+          if (err) return alert(err);
+          const reason = window.prompt(`Reason for replacing "${file.name || 'this file'}" (optional):`, '');
+          if (reason === null) return;
+          csBusy = true;
+          try {
+            const res = await csReplaceFile(csEnv, sheetId, fileId, newFile, reason.trim());
+            csAfterChange(kind, key, sheetId, { files: res.files });
+            alert('File replaced.' + (res.oldDeleteError ? ' (The old stored copy could not be deleted; it has been noted in the audit log.)' : ''));
+          } catch (error) {
+            console.error(error);
+            alert('Error replacing file: ' + (error.message || error));
+          } finally { csBusy = false; }
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Error: ' + (error.message || error));
+    } finally {
+      if (act !== 'replace') csBusy = false;
+    }
+  }
+  document.addEventListener('click', event => {
+    const btn = event.target && event.target.closest ? event.target.closest('[data-cs-act]') : null;
+    if (!btn) return;
+    event.preventDefault();
+    handleCsAction(btn.dataset.csAct, btn.dataset.csKind, btn.dataset.csKey, btn.dataset.csSheet, btn.dataset.csFile);
+  });
 
   // ── Treasurer: attach a count sheet to a date with no linked entries ───
   // Mirrors income-log.html's Attach Count Sheet flow exactly (no shared
