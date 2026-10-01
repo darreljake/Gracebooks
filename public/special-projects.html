@@ -51,6 +51,10 @@
     .badge-pledge { background: #eafaf1; color: #1e8449; }
     .badge-direct { background: #eaf2f8; color: #1a5276; }
     .badge-fundraising { background: #f4ecf7; color: #6c3483; }
+    .badge-amber { background: #fcf3cf; color: #7d6608; }
+    .badge-red { background: #fadbd8; color: #922b21; }
+    .net-proceeds-card.warn { border-color: #f7dc6f; background: #fef9e7; }
+    .net-proceeds-card.over { border-color: #f1948a; background: #fdedec; }
     .checkline { display: flex; align-items: flex-start; gap: 8px; font-weight: 600; color: #22313f; cursor: pointer; }
     .checkline input { width: auto; margin: 2px 0 0; flex: none; }
     .net-proceeds-card { border: 1px solid #edf2f5; border-radius: 8px; padding: 16px; margin-bottom: 14px; background: #fbfcfd; }
@@ -476,6 +480,7 @@
           <label>Description</label>
           <input id="post-income-description" placeholder="What was this activity for? (e.g. Anniversary Lechon sale)" />
         </div>
+        <div class="muted" style="margin-bottom:10px;">Record late collections and costs in this project, not in Tithe Entry or Expenses &mdash; each posting adds only the difference not yet posted, so nothing is counted twice.</div>
         <div class="muted" style="margin-bottom:10px;">Posts as <strong>Occasional Offering</strong> income into the <strong>General Fund</strong> account chosen above, and will appear in Income Entry, Print Report, Reports, and Financial Overview. The description is used as the account details on the income record.</div>
         <div class="modal-actions">
           <button class="btn ghost" type="button" onclick="closeModal('post-income-modal')">Cancel</button>
@@ -563,6 +568,95 @@
       if (!project) return false;
       if (project.projectType === 'Fund Raising') return true;
       return project.projectType === 'Activity Contribution' && project.postProceedsToGeneralFund === true;
+    }
+
+    // ── STAGED PROCEEDS POSTINGS ─────────────────────────────────────────
+    // A project can post its net proceeds in several stages. Each posting is
+    // its own income doc; `proceedsPostings` lists them. Older projects only
+    // carry the single linkedIncome* fields, which are read as one posting.
+    function toCentavos(value) { return Math.round(Number(value || 0) * 100); }
+
+    function getProceedsPostings(project) {
+      if (!project) return [];
+      if (Array.isArray(project.proceedsPostings) && project.proceedsPostings.length) return project.proceedsPostings;
+      if (project.linkedIncomeId) {
+        return [{
+          incomeId: project.linkedIncomeId,
+          amount: Number(project.linkedIncomeAmount || 0),
+          date: String(project.linkedIncomePostedAt || '').slice(0, 10),
+          account: project.linkedIncomeAccount,
+          category: project.linkedIncomeCategory,
+          kind: 'posting',
+          legacy: true
+        }];
+      }
+      return [];
+    }
+
+    // Integer-centavo math so repeated postings never drift. unposted > 0:
+    // money still to post; unposted < 0: over-posted.
+    function proceedsPostingSummary(project, totals) {
+      const postings = getProceedsPostings(project);
+      const postedCents = postings.reduce((sum, p) => sum + toCentavos(p.amount), 0);
+      const unpostedCents = toCentavos(totals.netProceeds) - postedCents;
+      return {
+        postings,
+        totalPosted: postedCents / 100,
+        unposted: Math.abs(unpostedCents) < 1 ? 0 : unpostedCents / 100,
+        postedCents,
+        unpostedCents
+      };
+    }
+
+    // Small status badge: green fully posted, amber gap, red over-posted.
+    function proceedsStatusBadge(summary) {
+      if (summary.unposted > 0) return `<span class="badge badge-amber">${peso(summary.unposted)} not yet posted</span>`;
+      if (summary.unposted < 0) return `<span class="badge badge-red">Over-posted by ${peso(Math.abs(summary.unposted))}</span>`;
+      if (summary.postings.length) return '<span class="badge badge-open">Fully posted</span>';
+      return '<span class="badge badge-fundraising">Not posted</span>';
+    }
+
+    // Firestore rejects undefined; drop it and the in-memory legacy marker.
+    function cleanPosting(posting) {
+      const out = {};
+      Object.keys(posting).forEach(key => {
+        if (key === 'legacy' || posting[key] === undefined) return;
+        out[key] = posting[key];
+      });
+      return out;
+    }
+
+    // Keeps the legacy single-posting fields in step so other pages that read
+    // linkedIncome* keep working.
+    function proceedsProjectFields(postings) {
+      const del = firebase.firestore.FieldValue.delete();
+      const updatedAt = new Date().toISOString();
+      if (!postings.length) {
+        return {
+          proceedsPostings: del,
+          linkedIncomeId: del,
+          linkedIncomeAmount: del,
+          linkedIncomeAccount: del,
+          linkedIncomeCategory: del,
+          linkedIncomePostedAt: del,
+          updatedAt
+        };
+      }
+      const latest = postings[postings.length - 1];
+      return {
+        proceedsPostings: postings.map(cleanPosting),
+        linkedIncomeId: postings[0].incomeId,
+        linkedIncomeAmount: postings.reduce((sum, p) => sum + toCentavos(p.amount), 0) / 100,
+        linkedIncomeAccount: latest.account || del,
+        linkedIncomeCategory: latest.category || del,
+        linkedIncomePostedAt: latest.postedAt || del,
+        updatedAt
+      };
+    }
+
+    function monthLabelFromIso(iso) {
+      const d = new Date(String(iso).slice(0, 10) + 'T00:00:00');
+      return isNaN(d) ? String(iso).slice(0, 7) : d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     }
 
     function isActivityContribution(project) {
@@ -901,12 +995,12 @@
         updatedAt: new Date().toISOString()
       };
       // A project that already posted net proceeds must not lose its proceeds
-      // workspace - the Un-post action lives there, so the posted income doc
+      // workspace - the Undo Posting action lives there, so the posted income doc
       // would be stranded with no way to reverse it from this page.
       if (editingProjectId) {
         const current = projects.find(p => p.id === editingProjectId);
-        if (current && current.linkedIncomeId && !proceedsEnabled({ ...current, ...payload })) {
-          return alert('This project has net proceeds already posted to income. Un-post them first before changing the project type or turning off General Fund posting.');
+        if (current && getProceedsPostings(current).length && !proceedsEnabled({ ...current, ...payload })) {
+          return alert('This project has net proceeds already posted to income. Undo its postings first before changing the project type or turning off General Fund posting.');
         }
       }
 
@@ -1149,6 +1243,7 @@
       if (!roleIs('Treasurer')) return alert('Only the Treasurer can add project funding.');
       const project = getActiveProject();
       if (!project) return alert('Select a project first.');
+      if (!confirmClosedProjectEntry(project)) return;
       if (!fundingDraft.length) {
         const draftItem = collectFundingInput();
         if (!draftItem) return;
@@ -1182,6 +1277,7 @@
       const project = getActiveProject();
       if (!project) return alert('Select a project first.');
       if (!editingEntryId) return saveFundingDraft();
+      if (!confirmClosedProjectEntry(project)) return;
 
       const item = collectFundingInput();
       if (!item) return;
@@ -1256,6 +1352,12 @@
       btn.disabled = false;
     }
 
+    // Entries added to a closed proceeds project change its net proceeds.
+    function confirmClosedProjectEntry(project) {
+      if (!project || project.status !== 'Closed' || !proceedsEnabled(project)) return true;
+      return confirm('This project is closed. Adding entries changes its net proceeds \u2014 continue?');
+    }
+
     async function toggleProjectFinished(projectId) {
       if (!roleIs('Treasurer')) return alert('Only the Treasurer can close or reopen projects.');
       const project = projects.find(p => p.id === projectId);
@@ -1263,7 +1365,13 @@
       const currentStatus = project.status || 'Open';
       const nextStatus = currentStatus === 'Closed' ? 'Open' : 'Closed';
       const verb = nextStatus === 'Closed' ? 'finish/close' : 'reopen';
-      if (!confirm(`Do you want to ${verb} "${project.name}"?`)) return;
+      let closeNote = '';
+      if (nextStatus === 'Closed' && proceedsEnabled(project)) {
+        const sum = proceedsPostingSummary(project, projectTotals(project.id));
+        if (sum.unposted > 0) closeNote = `\n\n${peso(sum.unposted)} of net proceeds is not yet posted to income.`;
+        else if (sum.unposted < 0) closeNote = `\n\nThis project is over-posted by ${peso(Math.abs(sum.unposted))} (posted more than its current net proceeds).`;
+      }
+      if (!confirm(`Do you want to ${verb} "${project.name}"?${closeNote}`)) return;
 
       const beforeData = { ...project };
       const payload = {
@@ -1315,6 +1423,7 @@
       if (!roleIs('Treasurer')) return alert('Only the Treasurer can delete projects.');
       const project = projects.find(p => p.id === projectId);
       if (!project) return alert('Project not found.');
+      if (getProceedsPostings(project).length) return alert('This project has proceeds posted to income. Undo its postings first (deleting them would change reported months).');
       const projectCosts = costs.filter(c => c.projectId === projectId);
       const projectEntries = entries.filter(e => e.projectId === projectId);
       const cleanupNote = projectCosts.length || projectEntries.length
@@ -1435,6 +1544,7 @@
       const proofFile = document.getElementById('receipt-proof').files[0];
       if (!date || !description || amount <= 0) return alert('Enter date, description, and a valid amount.');
       if (!validateReceiptFile(proofFile)) return;
+      if (!confirmClosedProjectEntry(project)) return;
 
       const payload = {
         projectId: project.id,
@@ -1492,24 +1602,87 @@
     }
 
     // ── POST NET PROCEEDS TO INCOME (General Fund) ───────────────────────
+    // Staged postings: each posting adds only the difference between current
+    // net proceeds and what earlier postings already put into income.
+    let postModalExpectedCents = 0;
+
     function openPostIncomeModal() {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can post net proceeds to income.');
       const project = getActiveProject();
       if (!project) return alert('Select a project first.');
       if (!proceedsEnabled(project)) return alert('This project is not set up to post proceeds to income. Edit the project and tick "Post this activity\'s proceeds as income to the General Fund".');
       const totals = projectTotals(project.id);
       const labels = proceedsLabels(project);
-      if (totals.netProceeds <= 0) return alert(`Net proceeds must be greater than zero before posting to income (${labels.gross.toLowerCase()} must exceed expenses incurred).`);
-      document.getElementById('post-income-title').textContent = 'Post Net Proceeds to General Fund';
-      document.getElementById('post-income-sub').textContent = `Logs the net proceeds of ${project.name} as General Fund income.`;
+      const sum = proceedsPostingSummary(project, totals);
+      if (sum.unposted <= 0) return alert(sum.postings.length
+        ? 'Nothing is left to post - net proceeds are already fully posted.'
+        : `Net proceeds must be greater than zero before posting to income (${labels.gross.toLowerCase()} must exceed expenses incurred).`);
+      postModalExpectedCents = sum.postedCents;
+      const additional = sum.postings.length > 0;
+      document.getElementById('post-income-title').textContent = additional ? 'Post Additional Net Proceeds' : 'Post Net Proceeds to General Fund';
+      document.getElementById('post-income-sub').textContent = `Logs ${additional ? 'the not-yet-posted part of ' : ''}the net proceeds of ${project.name} as General Fund income.`;
       document.getElementById('post-income-breakdown').innerHTML = `
         <div class="stat"><div class="label">${escapeHtml(labels.gross)}</div><div class="value">${peso(totals.grossReceipts)}</div></div>
         <div class="stat"><div class="label">Expenses Incurred</div><div class="value">${peso(totals.expensesIncurred)}</div></div>
-        <div class="stat"><div class="label">Net Proceeds</div><div class="value">${peso(totals.netProceeds)}</div></div>`;
+        <div class="stat"><div class="label">Net Proceeds</div><div class="value">${peso(totals.netProceeds)}</div></div>
+        <div class="stat"><div class="label">Already Posted (${sum.postings.length} posting${sum.postings.length === 1 ? '' : 's'})</div><div class="value">${peso(sum.totalPosted)}</div></div>
+        <div class="stat"><div class="label">This Posting</div><div class="value">${peso(sum.unposted)}</div></div>`;
       document.getElementById('post-income-date').value = todayIso;
-      document.getElementById('post-income-account').value = 'cash-hand';
-      fillIncomeCategorySelect(labels.defaultCategory);
+      const last = sum.postings[sum.postings.length - 1];
+      document.getElementById('post-income-account').value = last && GENERAL_FUND_ACCOUNTS.includes(last.account) ? last.account : 'cash-hand';
+      fillIncomeCategorySelect((last && last.category) || labels.defaultCategory);
       document.getElementById('post-income-description').value = project.name;
       openModal('post-income-modal');
+    }
+
+    // Shared by regular postings and negative corrections. Reads the project
+    // fresh inside a transaction so two postings cannot both rely on a stale
+    // "already posted" figure. Returns { stale: true } when postings changed.
+    async function commitProceedsPosting(project, expectedPostedCents, build) {
+      const projectRef = db.collection('specialProjects').doc(project.id);
+      const incomeRef = db.collection('income').doc();
+      let result = null;
+      try {
+        await db.runTransaction(async tx => {
+          const snap = await tx.get(projectRef);
+          if (!snap.exists) throw new Error('Project not found.');
+          const fresh = { id: snap.id, ...snap.data() };
+          const freshPostings = getProceedsPostings(fresh);
+          const freshCents = freshPostings.reduce((sum, p) => sum + toCentavos(p.amount), 0);
+          if (freshCents !== expectedPostedCents) {
+            const err = new Error('stale');
+            err.stale = true;
+            throw err;
+          }
+          const index = freshPostings.length + 1;
+          const built = build(index, freshCents / 100);
+          const postedAt = new Date().toISOString();
+          const posting = {
+            incomeId: incomeRef.id,
+            amount: built.amount,
+            date: built.incomePayload.date,
+            account: built.incomePayload.targetAccount,
+            category: built.incomePayload.budgetCategory,
+            kind: built.kind,
+            netAtPost: built.netAtPost,
+            grossAtPost: built.grossAtPost,
+            expensesAtPost: built.expensesAtPost,
+            postedAt,
+            postedBy: { uid: (activeProfile && activeProfile.uid) || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || '', name: (activeProfile && activeProfile.name) || '', role: (activeProfile && activeProfile.role) || '' }
+          };
+          const all = [...freshPostings, posting];
+          tx.set(incomeRef, built.incomePayload);
+          tx.update(projectRef, proceedsProjectFields(all));
+          result = { incomeId: incomeRef.id, index, posting, totalPostedAfter: all.reduce((sum, p) => sum + toCentavos(p.amount), 0) / 100, incomePayload: built.incomePayload };
+        });
+      } catch (err) {
+        if (err && err.stale) {
+          alert('Postings changed since you opened this — please reload');
+          return { stale: true };
+        }
+        throw err;
+      }
+      return result;
     }
 
     async function confirmPostIncome() {
@@ -1517,10 +1690,11 @@
       const project = getActiveProject();
       if (!project) return alert('Select a project first.');
       if (!proceedsEnabled(project)) return alert('This project is not set up to post proceeds to income.');
-      if (project.linkedIncomeId) return alert('This project already has a net proceeds posting. Un-post it first if you need to repost.');
       const totals = projectTotals(project.id);
       const labels = proceedsLabels(project);
-      if (totals.netProceeds <= 0) return alert('Net proceeds must be greater than zero before posting to income.');
+      const sum = proceedsPostingSummary(project, totals);
+      if (sum.postedCents !== postModalExpectedCents) return alert('Postings changed since you opened this — please reload');
+      if (sum.unposted <= 0) return alert('There is no unposted net proceeds amount to post.');
       const date = document.getElementById('post-income-date').value;
       if (!date) return alert('Select a date.');
       const account = document.getElementById('post-income-account').value;
@@ -1529,69 +1703,154 @@
       if (!GENERAL_FUND_ACCOUNTS.includes(account)) return alert('Net proceeds can only be posted to a General Fund account (Cash on Hand or Cash in Bank).');
       const budgetCategory = document.getElementById('post-income-category').value || labels.defaultCategory;
       const description = document.getElementById('post-income-description').value.trim() || project.name;
-
-      const incomePayload = {
-        date,
-        memberId: 'GENERAL',
-        member: 'General Collection',
-        type: PROCEEDS_INCOME_TYPE,
-        amount: totals.netProceeds,
-        payment: account === 'cash-bank' ? 'Bank Transfer' : 'Cash',
-        budgetCategory,
-        budgetDetails: description,
-        notes: `Net proceeds from "${project.name}": ${labels.gross} ${peso(totals.grossReceipts)} - Expenses ${peso(totals.expensesIncurred)} = Net ${peso(totals.netProceeds)}`,
-        targetAccount: account,
-        specialProjectId: project.id,
-        specialProjectName: project.name,
-        timestamp: new Date().toISOString()
-      };
+      const amount = sum.unpostedCents / 100;
 
       const btn = document.getElementById('post-income-save-btn');
       btn.disabled = true;
       try {
-        const incomeRef = await db.collection('income').add(incomePayload);
-        const projectUpdate = {
-          linkedIncomeId: incomeRef.id,
-          linkedIncomeAmount: totals.netProceeds,
-          linkedIncomeAccount: account,
-          linkedIncomeCategory: budgetCategory,
-          linkedIncomePostedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        await db.collection('specialProjects').doc(project.id).update(projectUpdate);
-        await writeAuditLog('special_project_income_posted', 'income', incomeRef.id, null, incomePayload, `Posted net proceeds for ${project.name} to ${accountNames[account] || account} under ${budgetCategory}`);
-        await loadProjects();
-        activeTab = 'fundraising';
-        renderAll();
-        closeModal('post-income-modal');
+        const res = await commitProceedsPosting(project, sum.postedCents, (index, previouslyPosted) => ({
+          kind: 'posting',
+          amount,
+          netAtPost: totals.netProceeds,
+          grossAtPost: totals.grossReceipts,
+          expensesAtPost: totals.expensesIncurred,
+          incomePayload: {
+            date,
+            memberId: 'GENERAL',
+            member: 'General Collection',
+            type: PROCEEDS_INCOME_TYPE,
+            amount,
+            payment: account === 'cash-bank' ? 'Bank Transfer' : 'Cash',
+            budgetCategory,
+            budgetDetails: description,
+            notes: index === 1
+              ? `Net proceeds from "${project.name}" (posting 1): ${labels.gross} ${peso(totals.grossReceipts)} - Expenses ${peso(totals.expensesIncurred)} = Net ${peso(totals.netProceeds)}`
+              : `Net proceeds from "${project.name}" (posting ${index}): Net ${peso(totals.netProceeds)} - previously posted ${peso(previouslyPosted)} = ${peso(amount)}`,
+            targetAccount: account,
+            specialProjectId: project.id,
+            specialProjectName: project.name,
+            proceedsPostingIndex: index,
+            timestamp: new Date().toISOString()
+          }
+        }));
+        if (res && !res.stale) {
+          await writeAuditLog('special_project_income_posted', 'income', res.incomeId, null,
+            { ...res.incomePayload, postingIndex: res.index, amount, totalPostedAfter: res.totalPostedAfter },
+            `Posted net proceeds (posting ${res.index}, ${peso(amount)}) for ${project.name} to ${accountNames[account] || account} under ${budgetCategory}; total posted ${peso(res.totalPostedAfter)}`);
+          await loadProjects();
+          activeTab = 'fundraising';
+          renderAll();
+          closeModal('post-income-modal');
+        }
       } catch (err) {
         alert(err.message);
       }
       btn.disabled = false;
     }
 
-    async function unpostNetProceeds(projectId) {
-      if (!roleIs('Treasurer')) return alert('Only the Treasurer can un-post net proceeds.');
+    // Over-posted: net proceeds fell below what was posted (a late cost). Post
+    // a negative adjustment income doc; earlier postings are never touched.
+    async function recordProceedsCorrection(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can record a proceeds correction.');
       const project = projects.find(p => p.id === projectId);
-      if (!project || !project.linkedIncomeId) return alert('No net proceeds posting found.');
-      if (!confirm('Un-post net proceeds from Income? This deletes the linked income record so it stops appearing in Income Entry, Print Report, Reports, and Financial Overview.')) return;
+      if (!project || !proceedsEnabled(project)) return alert('Project not found.');
+      const totals = projectTotals(project.id);
+      const sum = proceedsPostingSummary(project, totals);
+      if (sum.unposted >= 0 || !sum.postings.length) return alert('This project is not over-posted.');
+      const amount = sum.unpostedCents / 100;
+      if (!confirm(`Record a correction of -${peso(Math.abs(amount))} to General Fund income for "${project.name}"?\n\nThis adds a negative income entry; earlier postings stay as they are.`)) return;
+      const date = (prompt('Date for this correction (YYYY-MM-DD):', todayIso) || '').trim();
+      if (!date) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date + 'T00:00:00'))) return alert('Enter the date as YYYY-MM-DD.');
+      const labels = proceedsLabels(project);
+      const last = sum.postings[sum.postings.length - 1];
+      const account = GENERAL_FUND_ACCOUNTS.includes(last.account) ? last.account : 'cash-hand';
+      const budgetCategory = last.category || labels.defaultCategory;
+      try {
+        const res = await commitProceedsPosting(project, sum.postedCents, (index, previouslyPosted) => ({
+          kind: 'adjustment',
+          amount,
+          netAtPost: totals.netProceeds,
+          grossAtPost: totals.grossReceipts,
+          expensesAtPost: totals.expensesIncurred,
+          incomePayload: {
+            date,
+            memberId: 'GENERAL',
+            member: 'General Collection',
+            type: PROCEEDS_INCOME_TYPE,
+            amount,
+            payment: account === 'cash-bank' ? 'Bank Transfer' : 'Cash',
+            budgetCategory,
+            budgetDetails: `Correction - ${project.name}`,
+            notes: `Correction to net proceeds from "${project.name}" (posting ${index}): Net ${peso(totals.netProceeds)} - previously posted ${peso(previouslyPosted)} = ${peso(amount)}`,
+            targetAccount: account,
+            specialProjectId: project.id,
+            specialProjectName: project.name,
+            proceedsPostingIndex: index,
+            timestamp: new Date().toISOString()
+          }
+        }));
+        if (res && !res.stale) {
+          await writeAuditLog('special_project_income_adjusted', 'income', res.incomeId, null,
+            { ...res.incomePayload, postingIndex: res.index, amount, totalPostedAfter: res.totalPostedAfter },
+            `Recorded proceeds correction (posting ${res.index}, ${peso(amount)}) for ${project.name}; total posted ${peso(res.totalPostedAfter)}`);
+          await loadProjects();
+          activeTab = 'fundraising';
+          renderAll();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    }
 
-      const beforeIncomeId = project.linkedIncomeId;
-      const batch = db.batch();
-      batch.delete(db.collection('income').doc(beforeIncomeId));
-      batch.update(db.collection('specialProjects').doc(projectId), {
-        linkedIncomeId: firebase.firestore.FieldValue.delete(),
-        linkedIncomeAmount: firebase.firestore.FieldValue.delete(),
-        linkedIncomeAccount: firebase.firestore.FieldValue.delete(),
-        linkedIncomeCategory: firebase.firestore.FieldValue.delete(),
-        linkedIncomePostedAt: firebase.firestore.FieldValue.delete(),
-        updatedAt: new Date().toISOString()
-      });
-      await batch.commit();
-      await writeAuditLog('special_project_income_unposted', 'income', beforeIncomeId, { specialProjectId: projectId }, null, `Un-posted net proceeds for ${project.name}`);
-      await loadProjects();
-      activeTab = 'fundraising';
-      renderAll();
+    // Deletes ONLY the most recent posting's income doc.
+    async function undoLastPosting(projectId) {
+      if (!roleIs('Treasurer')) return alert('Only the Treasurer can undo proceeds postings.');
+      const project = projects.find(p => p.id === projectId);
+      if (!project) return alert('Project not found.');
+      const postings = getProceedsPostings(project);
+      if (!postings.length) return alert('No net proceeds posting found.');
+      const last = postings[postings.length - 1];
+      const lastDate = String(last.date || '').slice(0, 10);
+      let warn = '';
+      if (lastDate && lastDate.slice(0, 7) < todayIso.slice(0, 7)) {
+        warn = `\n\nThis posting is dated ${monthLabelFromIso(lastDate)}, which may already be in a submitted/approved monthly report.`;
+      }
+      if (!confirm(`Undo the last posting for "${project.name}"?\n\n${last.kind === 'adjustment' ? 'Correction' : 'Posting'} dated ${lastDate || 'unknown date'} for ${Number(last.amount) < 0 ? "-" : ""}${peso(Math.abs(Number(last.amount)))} will be deleted from Income.${warn}`)) return;
+
+      const projectRef = db.collection('specialProjects').doc(projectId);
+      try {
+        let remainingCents = 0;
+        await db.runTransaction(async tx => {
+          const snap = await tx.get(projectRef);
+          if (!snap.exists) throw new Error('Project not found.');
+          const fresh = { id: snap.id, ...snap.data() };
+          const freshPostings = getProceedsPostings(fresh);
+          const freshLast = freshPostings[freshPostings.length - 1];
+          if (!freshLast || freshLast.incomeId !== last.incomeId) {
+            const err = new Error('stale');
+            err.stale = true;
+            throw err;
+          }
+          const remaining = freshPostings.slice(0, -1);
+          remainingCents = remaining.reduce((sum, p) => sum + toCentavos(p.amount), 0);
+          tx.delete(db.collection('income').doc(last.incomeId));
+          tx.update(projectRef, proceedsProjectFields(remaining));
+        });
+        await writeAuditLog('special_project_income_unposted', 'income', last.incomeId,
+          { specialProjectId: projectId, posting: cleanPosting(last), postingIndex: postings.length },
+          { totalPostedAfter: remainingCents / 100 },
+          `Undid last ${last.kind === 'adjustment' ? 'correction' : 'posting'} (${peso(last.amount)}, ${lastDate}) for ${project.name}`);
+        await loadProjects();
+        activeTab = 'fundraising';
+        renderAll();
+      } catch (err) {
+        if (err && err.stale) {
+          alert('Postings changed since you opened this — please reload');
+        } else {
+          alert(err.message);
+        }
+      }
     }
 
     function clearFundingForm() {
@@ -1671,7 +1930,7 @@
             <div class="project-quick">
               <span class="badge ${p.status === 'Closed' ? 'badge-closed' : 'badge-open'}">${escapeHtml(p.status || 'Open')}</span>
               ${showsProceeds ? `
-              <span class="badge badge-fundraising">${p.linkedIncomeId ? 'Posted' : 'Not posted'}</span>
+              ${proceedsStatusBadge(proceedsPostingSummary(p, t))}
               <span class="project-amount">${peso(t.grossReceipts)} ${isActivityContribution(p) ? 'collected' : 'gross'}</span>
               <span class="project-amount">${peso(t.expensesIncurred)} spent</span>
               <span class="project-amount">${peso(t.netProceeds)} net</span>
@@ -1715,6 +1974,7 @@
       const isClosed = project.status === 'Closed';
       const showsProceeds = proceedsEnabled(project);
       const labels = proceedsLabels(project);
+      const postSum = showsProceeds ? proceedsPostingSummary(project, t) : null;
       workspace.innerHTML = `
         <div class="workspace-head">
           <div class="workspace-title">
@@ -1725,7 +1985,8 @@
             <button class="icon-btn" type="button" aria-label="Close" onclick="closeModal('project-detail-modal')">&times;</button>
             ${roleIs('Treasurer') && !isClosed ? '<button class="btn secondary" onclick="openCostModal()">Add Cost</button><button class="btn secondary" onclick="openFundingModal()">Add Funding</button><button class="btn ghost" onclick="openLinkExpenseModal()">Link Expense</button>' : ''}
             ${roleIs('Treasurer') && showsProceeds && !isClosed ? `<button class="btn secondary" onclick="openReceiptModal()">Add ${escapeHtml(labels.item)}</button>` : ''}
-            ${roleIs('Treasurer') && showsProceeds ? `<button class="btn ${project.linkedIncomeId ? 'ghost' : 'secondary'}" onclick="${project.linkedIncomeId ? `unpostNetProceeds('${project.id}')` : 'openPostIncomeModal()'}">${project.linkedIncomeId ? 'Un-post Net Proceeds' : 'Post Net Proceeds to General Fund'}</button>` : ''}
+            ${roleIs('Treasurer') && showsProceeds && postSum.unposted > 0 ? `<button class="btn secondary" onclick="openPostIncomeModal()">${postSum.postings.length ? 'Post Additional ' + peso(postSum.unposted) : 'Post Net Proceeds to General Fund'}</button>` : ''}
+            ${roleIs('Treasurer') && showsProceeds && postSum.postings.length ? `<button class="btn ghost" onclick="undoLastPosting('${project.id}')">Undo Last Posting</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ghost" onclick="openProjectModal('${project.id}')">Edit Project</button><button class="btn ghost" onclick="deleteProject('${project.id}')">Delete Project</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${isClosed ? 'secondary' : 'ghost'}" onclick="toggleProjectFinished('${project.id}')">${isClosed ? 'Reopen Project' : 'Mark Finished'}</button>` : ''}
             ${roleIs('Treasurer') ? `<button class="btn ${project.printReportPublished ? 'ghost' : 'secondary'}" onclick="toggleProjectPrintReport('${project.id}')">${project.printReportPublished ? 'Remove from Print Report' : 'Push to Print Report'}</button>` : ''}
@@ -1737,7 +1998,7 @@
           <div class="kpi"><div class="label">${escapeHtml(labels.gross)}</div><div class="value">${peso(t.grossReceipts)}</div></div>
           <div class="kpi"><div class="label">Expenses Incurred</div><div class="value">${peso(t.expensesIncurred)}</div></div>
           <div class="kpi"><div class="label">Net Proceeds</div><div class="value">${peso(t.netProceeds)}</div></div>
-          <div class="kpi"><div class="label">Posted to Income</div><div class="value">${project.linkedIncomeId ? peso(project.linkedIncomeAmount) : 'Not yet'}</div></div>
+          <div class="kpi"><div class="label">Posted to Income</div><div class="value">${postSum.postings.length ? peso(postSum.totalPosted) : 'Not yet'}</div></div>
           ` : `
           <div class="kpi"><div class="label">Total Cost</div><div class="value">${peso(t.plannedCost)}</div></div>
           <div class="kpi"><div class="label">Funding Secured</div><div class="value">${peso(t.funding)}</div></div>
@@ -1827,9 +2088,34 @@
           </table>
         </div>` : '<div class="empty">No expenses linked yet. Use "Add Funding" (Church Fund) or "Link Expense" to record money spent on this activity.</div>';
 
-      const postedNote = project.linkedIncomeId
-        ? `<div class="net-proceeds-card posted"><strong>Posted to Income</strong><div class="muted">${peso(project.linkedIncomeAmount)} posted on ${escapeHtml((project.linkedIncomePostedAt || '').slice(0, 10))} to ${escapeHtml(accountNames[project.linkedIncomeAccount] || project.linkedIncomeAccount || '')}${project.linkedIncomeCategory ? ' under ' + escapeHtml(project.linkedIncomeCategory) : ''}.</div></div>`
-        : `<div class="net-proceeds-card"><strong>Not yet posted to Income</strong><div class="muted">Net proceeds recompute live as ${isActivityContribution(project) ? 'contributions' : 'receipts'}/expenses change. Use "Post Net Proceeds to General Fund" above once the activity is tallied.</div></div>`;
+      const sum = proceedsPostingSummary(project, totals);
+      const isTreasurer = roleIs('Treasurer');
+      let postedNote;
+      if (!sum.postings.length) {
+        postedNote = `<div class="net-proceeds-card"><strong>Not yet posted to Income</strong> ${sum.unposted > 0 ? proceedsStatusBadge(sum) : ''}<div class="muted">Net proceeds recompute live as ${isActivityContribution(project) ? 'contributions' : 'receipts'}/expenses change. Use "Post Net Proceeds to General Fund" above once the activity is tallied, or post part of it now and the rest later.</div></div>`;
+      } else {
+        const cardClass = sum.unposted < 0 ? 'over' : (sum.unposted > 0 ? 'warn' : 'posted');
+        const history = `<div class="table-wrap"><table>
+            <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Account</th><th>Amount</th></tr></thead>
+            <tbody>${sum.postings.map((p, i) => `<tr>
+              <td>${i + 1}</td>
+              <td>${escapeHtml(p.date || '-')}</td>
+              <td>${p.kind === 'adjustment' ? 'Correction' : 'Posting'}</td>
+              <td>${escapeHtml(accountNames[p.account] || p.account || '-')}</td>
+              <td class="amount">${Number(p.amount || 0) < 0 ? '-' : ''}${peso(Math.abs(Number(p.amount || 0)))}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>`;
+        const overWarn = sum.unposted < 0
+          ? `<div style="margin:10px 0;color:#922b21;"><strong>Over-posted by ${peso(Math.abs(sum.unposted))}</strong> &mdash; net proceeds are now lower than what was posted.${isTreasurer ? ` <button class="btn secondary" style="margin-top:8px;" onclick="recordProceedsCorrection('${project.id}')">Record correction (&minus;${peso(Math.abs(sum.unposted))})</button>` : ''}</div>`
+          : '';
+        const fullNote = sum.unposted === 0 ? '<div class="muted" style="margin-top:6px;">Fully posted &mdash; nothing left to post.</div>' : '';
+        postedNote = `<div class="net-proceeds-card ${cardClass}"><strong>Posted to Income</strong> ${proceedsStatusBadge(sum)}
+          ${overWarn}
+          ${history}
+          <div class="report-line"><span>Total Posted (${sum.postings.length} posting${sum.postings.length === 1 ? '' : 's'})</span><span>${peso(sum.totalPosted)}</span></div>
+          <div class="report-line"><span>Net Proceeds Now</span><span>${peso(totals.netProceeds)}</span></div>
+          ${fullNote}</div>`;
+      }
 
       return `
         <div class="section-card">
@@ -1933,7 +2219,13 @@
           <div class="report-line total"><span>${escapeHtml(labels.grossTotal)}</span><span>${peso(totals.grossReceipts)}</span></div>
           <div class="report-line total"><span>Expenses Incurred</span><span>${peso(totals.expensesIncurred)}</span></div>
           <div class="report-line total"><span>Net Proceeds</span><span>${peso(totals.netProceeds)}</span></div>
-          ${project.linkedIncomeId ? `<div class="muted" style="margin-top:6px;">Posted to Income on ${escapeHtml((project.linkedIncomePostedAt || '').slice(0, 10))} - ${peso(project.linkedIncomeAmount)}</div>` : ''}
+          ${(() => {
+            const sum = proceedsPostingSummary(project, totals);
+            if (!sum.postings.length) return '';
+            return sum.postings.map(p => `<div class="report-line indent"><span>${p.kind === 'adjustment' ? 'Correction' : 'Posted to Income'} - ${escapeHtml(p.date || '-')}</span><span>${Number(p.amount || 0) < 0 ? '-' : ''}${peso(Math.abs(Number(p.amount || 0)))}</span></div>`).join('')
+              + `<div class="report-line total"><span>Total Posted to Income</span><span>${peso(sum.totalPosted)}</span></div>`
+              + (sum.unposted !== 0 ? `<div class="muted" style="margin-top:6px;">${sum.unposted > 0 ? peso(sum.unposted) + ' not yet posted' : 'Over-posted by ' + peso(Math.abs(sum.unposted))}</div>` : '');
+          })()}
         </div>`;
     }
 
@@ -2040,6 +2332,7 @@
       const project = getActiveProject();
       const expense = expenses.find(e => e.id === expenseId);
       if (!project || !expense) return alert('Select a project and expense first.');
+      if (!confirmClosedProjectEntry(project)) return;
       if (!confirm(`Link this expense to "${project.name}"?`)) return;
 
       const entryRef = db.collection('specialProjectEntries').doc();

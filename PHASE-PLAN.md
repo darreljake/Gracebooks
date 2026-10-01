@@ -858,3 +858,11 @@ Status: Done (code side); deploy pending.
 
 - `budget-vs-actual.html` Cash Budget tab: new "Trend-Based Cash Projection - Cash Levels (Financial Overview basis)" section below Projected Cash Flow Timing. Starts from live Available Operating Cash (one-time fetch, extended to also gather monthly General Fund cash series, essential monthly expense and current/next-year budgets) and projects 3/6/12 months (default 6) using `financial-overview.html`'s `getCashForecast()` rates (3-month actual trend, or Conservative/Hybrid default), grading each month Green/Yellow/Red/Black with months-of-cover and an alert for the first Red/Black month or level drop.
 - By design differs from FO by applying each month's own budget rather than a flat two-month average; FO helpers are copied (`trendBudgetedForMonth`, `trendCashLevel`) and must stay in step. Included in the Treasurer's "Generate & Save Version" snapshot. No Firestore rules change, no new writes.
+
+## Special Projects: staged proceeds postings (2026-10-01)
+
+Status: Done (code side); deploy pending.
+
+- Owner wanted to post an ongoing project's proceeds without risking duplicate income when late receipts arrive. `special-projects.html` now posts net proceeds in stages: each posting adds only current net minus total already posted (centavo math, transaction with a stale-total guard), shows "₱X not yet posted" / "Over-posted by ₱X" / "Fully posted" badges and a posting history, records over-posting as a negative correction posting, and replaces Un-post with Undo Last Posting (earlier-month warning). Deleting a project with postings is refused; closed-project entries ask first. Legacy single-posting projects keep working (legacy fields kept in sync). `print-report.html` lists each posting.
+- Owner confirmed: event costs are paid from the event's own collections (net is the right basis); construction projects stay project-ledger only (no change needed - they never post income).
+- Verified with a Playwright run against a stateful Firestore stub: post 30,000 → late receipt → post additional 5,000 → stale-total abort → late cost → over-posted 8,000 → correction −8,000 → undo → delete refused → legacy project additional posting + undo with month warning → construction project unaffected; no page errors.
