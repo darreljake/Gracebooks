@@ -844,6 +844,14 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   let reviewMode = false;
   let reviewGateChecked = false;
   let currentWorkflowStatus = '';
+  // Pass-through ("in and out") collections: settings/passThroughItems = { items: [{ side: 'income'|'expense', key, label, ... }] },
+  // tagged by the Treasurer on council-dashboard.html. A tagged Miscellaneous (Unbudgeted) line is shown under its own heading
+  // instead (same amounts, only the heading changes). Keys use the same label logic as the Miscellaneous lines:
+  // side + '|' + normalizeGroupKey(pickMiscLabel(...)). Read once; a failed read or no tags = nothing changes.
+  const PT_INC_MAIN = 'Pass-through Collections (for remittance)';
+  const PT_EXP_MAIN = 'Pass-through Remittances';
+  let passThroughKeys = new Set();
+  const isPassThroughLabel = (side, label) => passThroughKeys.size > 0 && passThroughKeys.has(side + '|' + normalizeGroupKey(label));
   let reviewIncGroups = null; // set by buildIncGroups(fInc) each render; entries kept per sub-line
   let reviewExpGroups = null; // set by buildExpGroups(fExp) each render; entries kept per sub-line
   let reviewIncLineEntries = {}; // 'inc|main|subKey' -> income docs for that displayed line
@@ -1213,6 +1221,13 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     if (s.exists) { accountOrder = s.data(); }
     render();
   });
+
+  db.collection('settings').doc('passThroughItems').get().then(s => {
+    const items = s.exists && Array.isArray(s.data().items) ? s.data().items : [];
+    if (!items.length) return;
+    passThroughKeys = new Set(items.filter(i => i && i.side).map(i => i.side + '|' + normalizeGroupKey(i.key || i.label)));
+    render();
+  }).catch(err => console.warn('Pass-through items unavailable', err && err.message));
 
   // Listener para sa Beginning Balance
   db.collection('settings').doc('beginningBalances').get().then(s => {
@@ -2237,14 +2252,16 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           sub = pickMiscLabel([budgetCat, d.budgetDetails, d.notes, { text: isRealPayerName(resolveMemberName(d)) ? resolveMemberName(d) : '' }, mainType], 'Other Unbudgeted Income (no details recorded)');
       }
 
+      // Tagged pass-through line: same amounts, own heading (see passThroughKeys).
+      if (finalMain === MISC_MAIN && isPassThroughLabel('income', sub)) finalMain = PT_INC_MAIN;
       if (!incGroups[finalMain]) incGroups[finalMain] = { t: 0, s: {}, sLabels: {} };
       const group = incGroups[finalMain];
       // Miscellaneous sub-labels merge case/whitespace-insensitively so near
       // -duplicate spellings ("Meralco" vs "MERALCO") land on one line
       // instead of splitting the same income across several; budgeted mains
       // keep their exact budget wording as the key, unchanged.
-      const subKey = finalMain === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted income') : sub;
-      if (finalMain === MISC_MAIN && !group.sLabels[subKey]) group.sLabels[subKey] = sub;
+      const subKey = (finalMain === MISC_MAIN || finalMain === PT_INC_MAIN) ? (normalizeGroupKey(sub) || 'other unbudgeted income') : sub;
+      if ((finalMain === MISC_MAIN || finalMain === PT_INC_MAIN) && !group.sLabels[subKey]) group.sLabels[subKey] = sub;
       if (!group.s[subKey]) group.s[subKey] = { t: 0, m: {}, ids: {}, cnt: 0, entries: [] };
 
       let amt = parseFloat(d.amount || 0);
@@ -2276,11 +2293,28 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       return (g && g.s[subLabel]) ? g.s[subLabel].t : 0;
     }
 
+    // Pass-through collections still to be remitted: collected - remitted, cumulative through the period end (only
+    // computed when something is tagged; no tags = nothing below changes).
+    let ptStillToRemit = 0, ptExpInPeriod = false;
+    if (passThroughKeys.size > 0) {
+      const upToEnd = d => d.date && new Date(d.date) <= periodEndDate;
+      const cumIn = buildIncGroups(incomeData.filter(upToEnd).filter(isGeneralFundIncome))[PT_INC_MAIN];
+      const cumOut = buildExpGroups(expenseData.filter(upToEnd).filter(isGeneralFundExpense))[PT_EXP_MAIN];
+      ptStillToRemit = (cumIn ? cumIn.t : 0) - (cumOut ? cumOut.total : 0);
+      ptExpInPeriod = !!buildExpGroups(fExp)[PT_EXP_MAIN];
+    }
+    const ptStillRow = () => Math.abs(ptStillToRemit) < 0.005 ? '' : `
+        <tr>
+          <td class="col-desc indent-2 misc-note" colspan="${COLSPAN - 1}">Still to remit: ₱ ${fmt(ptStillToRemit)}</td>
+          <td class="col-main"></td>
+        </tr>`;
     let incRows = '';
     // Annual only: every Miscellaneous (Unbudgeted) line, both sides, for the
     // "Unbudgeted items to consider for next year's budget" block.
     const unbudgetedItems = [];
     const sortedIncMainKeys = Object.keys(incGroups).sort((a, b) => {
+       if (a === PT_INC_MAIN) return 1;
+       if (b === PT_INC_MAIN) return -1;
        if (a === MISC_MAIN) return 1;
        if (b === MISC_MAIN) return -1;
        const order = ['Source of Funds', 'Occasional Offering'];
@@ -2296,7 +2330,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       const g = incGroups[main];
       if (g.t === 0) return;
 
-      const isMisc = main === MISC_MAIN;
+      const isMisc = main === MISC_MAIN || main === PT_INC_MAIN; // pass-through lines are labelled and shown without a budget like Miscellaneous
       incRows += `
         <tr>
           <td class="col-desc indent-1" style="font-weight:bold;">${escapeHtml(main)}</td>
@@ -2304,13 +2338,15 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           <td class="col-main">₱ ${fmt(g.t)}</td>
           ${budgetCellsHtml(incBudgetMainTotals[main], (ytdIncGroups[main] || {}).t || 0, false, isMisc)}
         </tr>`;
-      if (isMisc) {
+      if (main === MISC_MAIN) {
         incRows += `
         <tr>
           <td class="col-desc indent-2 misc-note" colspan="${COLSPAN - 1}">Items not in the approved budget — consider adding a budget line.</td>
           <td class="col-main"></td>
         </tr>`;
       }
+
+      if (main === PT_INC_MAIN && !ptExpInPeriod) incRows += ptStillRow();
 
       const sortedIncomeSubKeys = Object.keys(g.s).sort((a, b) => {
         const la = g.sLabels[a] || a, lb = g.sLabels[b] || b;
@@ -2331,7 +2367,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           const miscEntries = g.s[subKey].entries;
           const miscWho = miscSingleExtra(miscEntries, subLabel, miscEntries.length === 1 ? resolveMemberName(miscEntries[0]) : '');
           entryCountHtml = ` <span class="entry-count">(${escapeHtml(miscDetailText(miscEntries, isAnnual, miscWho))})</span>`;
-          unbudgetedItems.push({ label: subLabel, who: miscWho, side: 'Income', count: miscEntries.length, months: miscWhen(miscEntries, true), total: g.s[subKey].t });
+          if (main === MISC_MAIN) unbudgetedItems.push({ label: subLabel, who: miscWho, side: 'Income', count: miscEntries.length, months: miscWhen(miscEntries, true), total: g.s[subKey].t });
         }
         const incSundayLine = subLabel.toLowerCase().includes('loose') || subLabel.toLowerCase().includes('sunday school');
         const incEntries = g.s[subKey].entries;
@@ -2452,10 +2488,12 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         sub = 'Others';
       }
 
+      // Tagged pass-through remittance: same amounts, own heading (see passThroughKeys).
+      if (main === MISC_MAIN && isPassThroughLabel('expense', sub)) main = PT_EXP_MAIN;
       if (!expGroups[main]) expGroups[main] = { total: 0, subs: {}, subLabels: {}, subCounts: {}, subEntries: {} };
       const group = expGroups[main];
-      const subKey = main === MISC_MAIN ? (normalizeGroupKey(sub) || 'other unbudgeted') : sub;
-      if (main === MISC_MAIN && !group.subLabels[subKey]) group.subLabels[subKey] = sub;
+      const subKey = (main === MISC_MAIN || main === PT_EXP_MAIN) ? (normalizeGroupKey(sub) || 'other unbudgeted') : sub;
+      if ((main === MISC_MAIN || main === PT_EXP_MAIN) && !group.subLabels[subKey]) group.subLabels[subKey] = sub;
       if (subKey) {
         group.subs[subKey] = (group.subs[subKey] || 0) + parseFloat(d.amount || 0);
         group.subCounts[subKey] = (group.subCounts[subKey] || 0) + 1;
@@ -2526,6 +2564,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     let expRows = '';
 
     const sortedExpMainKeys = Object.keys(expGroups).sort((a, b) => {
+      if (a === PT_EXP_MAIN) return 1;
+      if (b === PT_EXP_MAIN) return -1;
       if (a === MISC_MAIN) return 1;
       if (b === MISC_MAIN) return -1;
 
@@ -2540,7 +2580,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
 
     sortedExpMainKeys.forEach(main => {
       const g = expGroups[main];
-      const isMiscExp = main === MISC_MAIN;
+      const isMiscExp = main === MISC_MAIN || main === PT_EXP_MAIN; // pass-through lines: no budget, labelled like Miscellaneous
       expRows += `
         <tr>
           <td class="col-desc indent-1" style="font-weight: bold;">${escapeHtml(main)}</td>
@@ -2548,7 +2588,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           <td class="col-main">₱ ${fmt(g.total)}</td>
           ${budgetCellsHtml(expBudgetMainTotals[main], (ytdExpGroups[main] || {}).total || 0, true, isMiscExp)}
         </tr>`;
-      if (isMiscExp) {
+      if (main === MISC_MAIN) {
         expRows += `
         <tr>
           <td class="col-desc indent-2 misc-note" colspan="${COLSPAN - 1}">Items not in the approved budget — consider adding a budget line.</td>
@@ -2556,8 +2596,10 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         </tr>`;
       }
 
+      if (main === PT_EXP_MAIN) expRows += ptStillRow();
+
       const sortedSubKeys = Object.keys(g.subs).sort((a, b) => {
-        if (main === MISC_MAIN) {
+        if (main === MISC_MAIN || main === PT_EXP_MAIN) {
           // No budget-defined order for unbudgeted lines - alphabetise by
           // the display label instead of the normalized grouping key.
           const la = g.subLabels[a] || a, lb = g.subLabels[b] || b;
@@ -2579,7 +2621,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         const subLabel = g.subLabels[subKey] || subKey;
         // A Miscellaneous label is free text and shown whole: never split at
         // " - " into a sub-category plus a detail row.
-        const parts = main === MISC_MAIN ? { subCategory: subLabel, detail: '' } : getExpenseDisplayParts(main, subLabel);
+        const parts = (main === MISC_MAIN || main === PT_EXP_MAIN) ? { subCategory: subLabel, detail: '' } : getExpenseDisplayParts(main, subLabel);
         let group = nestedSubs.find(item => item.subCategory === parts.subCategory);
         if (!group) {
           group = { subCategory: parts.subCategory, total: 0, rows: [], count: 0, entries: [] };
@@ -2599,7 +2641,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         if (isMiscExp) {
           const miscWho = miscSingleExtra(group.entries, group.subCategory, group.entries.length === 1 ? group.entries[0].payee : '');
           entryCountHtml = ` <span class="entry-count">(${escapeHtml(miscDetailText(group.entries, isAnnual, miscWho))})</span>`;
-          unbudgetedItems.push({ label: group.subCategory, who: miscWho, side: 'Expense', count: group.entries.length, months: miscWhen(group.entries, true), total: group.total });
+          if (main === MISC_MAIN) unbudgetedItems.push({ label: group.subCategory, who: miscWho, side: 'Expense', count: group.entries.length, months: miscWhen(group.entries, true), total: group.total });
         }
         // Review mode only: see the income-side comment above.
         const expLineKey = 'exp|' + main + '|' + group.subCategory;
