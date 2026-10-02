@@ -1,0 +1,2390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Council Dashboard — GraceBooks</title>
+  <style id="dash-css">
+    /* Council Dashboard: "Sunday story" - big calm numbers on clean cards, UMC cross-and-flame
+       accents (deep red / warm gold / navy). Chart colours: categorical slots 1-6 of the validated
+       reference palette (blue, orange, aqua, yellow, magenta, green) + a neutral for "Other";
+       status colours are reserved for cash levels / good-bad and always ship with a label. */
+    :root {
+      --red: #8B0000; --red-d: #6a0000; --gold: #C9A84C; --gold-l: #f6edd0; --navy: #14233f; --navy-2: #22365e;
+      --ink: #1f2937; --ink-2: #4b5563; --muted: #6b7280; --line: #e5e0d4; --bg: #f5f1e8; --card: #ffffff;
+      --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s-other: #8a8f98;
+      --green: #1e8449; --green-bg: #e9f7ef; --yellow: #9a7d0a; --yellow-bg: #fef9e7; --redst: #c0392b; --red-bg: #fdedec; --black: #212121;
+      --good: #1e8449; --bad: #b3261e;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; line-height: 1.4; }
+    button, select { font-family: inherit; }
+
+    /* ── Top bar / controls ─────────────────────────────── */
+    .topbar { background: var(--red); color: #fff; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; box-shadow: 0 2px 10px rgba(0,0,0,.2); }
+    .topbar h1 { font-size: 20px; font-weight: 700; letter-spacing: .2px; flex: 1 1 auto; }
+    .topbar h1 small { display: block; font-size: 12px; font-weight: 400; opacity: .85; }
+    .btn { border: 0; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 600; cursor: pointer; background: rgba(255,255,255,.18); color: #fff; }
+    .btn:hover { background: rgba(255,255,255,.3); }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn.gold { background: var(--gold); color: var(--navy); }
+    .btn.gold:hover { background: #d8b95c; }
+    .controls { background: var(--navy); color: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .seg { display: inline-flex; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; overflow: hidden; }
+    .seg button { background: transparent; color: #fff; border: 0; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+    .seg button.on { background: var(--gold); color: var(--navy); font-weight: 700; }
+    .controls select { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.35); background: #fff; color: var(--navy); font-size: 14px; }
+    .controls .spacer { flex: 1 1 auto; }
+    .controls .btn { background: rgba(255,255,255,.14); }
+    .controls .btn.gold { background: var(--gold); }
+    .period-label { font-size: 13px; opacity: .85; }
+
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chips button, .presets button { border: 1px solid rgba(255,255,255,.35); background: transparent; color: #fff; border-radius: 999px; padding: 7px 12px; font-size: 14px; cursor: pointer; min-width: 46px; }
+    .chips button.on { background: var(--gold); color: var(--navy); font-weight: 800; border-color: var(--gold); }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+    .presets button { background: rgba(255,255,255,.1); font-size: 13px; padding: 6px 10px; }
+    .presets button:hover, .chips button:hover { background: rgba(255,255,255,.25); }
+    .chips button.on:hover { background: #d8b95c; }
+    .follow-bar { position: sticky; top: 0; z-index: 40; background: #0b5ed7; color: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 600; }
+    .follow-bar .btn { background: rgba(255,255,255,.2); }
+    #btn-follow.pulse { background: var(--gold); color: var(--navy); animation: pulse 1.4s infinite; }
+    #btn-broadcast.live { background: #b3261e; animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(201,168,76,.7); } 70% { box-shadow: 0 0 0 10px rgba(201,168,76,0); } 100% { box-shadow: 0 0 0 0 rgba(201,168,76,0); } }
+    @media (prefers-reduced-motion: reduce) { #btn-follow.pulse, #btn-broadcast.live { animation: none; } }
+    body.presenting .follow-bar { position: fixed; left: 0; right: 0; top: 0; }
+
+    /* ── Dashboard shell ───────────────────────────────── */
+    #dash { max-width: 1240px; margin: 0 auto; padding: 18px 16px 60px; }
+    .status-msg { background: #fff; border: 1px dashed var(--line); border-radius: 12px; padding: 30px 18px; text-align: center; color: var(--muted); font-size: 16px; }
+    .status-msg.err { color: var(--bad); border-color: #f1b5b0; }
+
+    .slide { background: var(--card); border-radius: 18px; box-shadow: 0 3px 16px rgba(20,35,63,.09); margin-bottom: 26px; overflow: hidden; border-top: 6px solid var(--red); }
+    .slide-head { display: flex; align-items: center; gap: 14px; padding: 18px 22px 8px; }
+    .slide-num { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; background: var(--navy); color: var(--gold); font-weight: 800; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+    .slide-head h2 { font-size: 26px; color: var(--red); line-height: 1.15; }
+    .slide-head .q { font-size: 15px; color: var(--ink-2); margin-top: 2px; }
+    .slide-body { padding: 8px 22px 18px; display: grid; gap: 18px; }
+    .grid2 { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; }
+    .grid3 { display: grid; gap: 14px; grid-template-columns: repeat(3, 1fr); }
+    .panel { background: #fcfaf5; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+    .panel h3 { font-size: 15px; color: var(--navy); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .panel h3 .hint { font-size: 12px; font-weight: 400; color: var(--muted); }
+    .svgwrap { width: 100%; min-width: 0; }
+    .svgwrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+    .svgwrap text { font-family: inherit; fill: var(--ink-2); }
+
+    /* KPI tiles */
+    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+    .tile { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+    .tile .lbl { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+    .tile .val { font-size: 26px; font-weight: 800; color: var(--navy); line-height: 1.1; margin-top: 4px; white-space: nowrap; }
+    .tile .sub { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+    .tile .spark { margin-top: 6px; height: 34px; }
+    .tile.na { background: #f3f1ec; border-style: dashed; }
+    .tile.na .val { font-size: 15px; color: var(--muted); font-weight: 600; }
+    .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .chip.up { background: var(--green-bg); color: var(--good); }
+    .chip.down { background: var(--red-bg); color: var(--bad); }
+    .chip.flat { background: #eee; color: var(--ink-2); }
+    .pos { color: var(--good); } .neg { color: var(--bad); }
+
+    /* Hero */
+    .hero { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); color: #fff; border-radius: 16px; padding: 22px 20px; display: grid; gap: 18px; grid-template-columns: 1fr auto 1fr 1fr; align-items: center; }
+    .hero .big { min-width: 0; }
+    .hero .big .lbl { font-size: 14px; letter-spacing: .6px; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+    .hero .big .num { font-size: clamp(30px, 3.6vw, 50px); font-weight: 800; line-height: 1.05; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .hero .big .num.neg { color: #ff9b94; } .hero .big .num.pos { color: #8be2b0; }
+    .hero .big .cmp { font-size: 14px; margin-top: 6px; color: #dbe3f3; }
+    .hero .chip.up { background: #1e8449; color: #fff; } .hero .chip.down { background: #b3261e; color: #fff; } .hero .chip.flat { background: #5a6a8a; color: #fff; }
+    .ring-box { text-align: center; }
+    .ring-box .ring-cap { font-size: 13px; color: #dbe3f3; margin-top: 4px; }
+    .ring-box svg text { fill: #fff; }
+    .lvl { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 14px; }
+    .lvl.green { background: var(--green-bg); color: var(--green); border: 1px solid #a9dfbf; }
+    .lvl.yellow { background: var(--yellow-bg); color: var(--yellow); border: 1px solid #f7dc6f; }
+    .lvl.red { background: var(--red-bg); color: var(--redst); border: 1px solid #f5b7b1; }
+    .lvl.black { background: var(--black); color: #fff; border: 1px solid var(--black); }
+
+    /* progress / pace bar */
+    .pbar { position: relative; height: 22px; background: #ece8dd; border-radius: 11px; overflow: visible; margin: 8px 0 4px; }
+    .pbar .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 11px; min-width: 6px; }
+    .pbar .tick { position: absolute; top: -5px; bottom: -5px; width: 3px; background: var(--navy); border-radius: 2px; }
+    .pbar-cap { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+    /* lists / tables */
+    .tbl-scroll { overflow-x: auto; max-width: 100%; }
+    table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.t th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); padding: 6px 8px; border-bottom: 2px solid var(--line); white-space: nowrap; }
+    table.t td { padding: 7px 8px; border-bottom: 1px solid #efeadf; vertical-align: top; }
+    table.t td.n, table.t th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    ul.rank { list-style: none; display: grid; gap: 6px; }
+    ul.rank li { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; padding: 6px 0; border-bottom: 1px solid #efeadf; }
+    ul.rank li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+    ul.rank li span:last-child { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+    .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    details.tv { margin-top: 8px; font-size: 13px; }
+    details.tv summary { cursor: pointer; color: var(--navy-2); font-weight: 600; }
+    .sentences { list-style: none; display: grid; gap: 8px; }
+    .sentences li { font-size: 17px; line-height: 1.35; padding-left: 26px; position: relative; }
+    .sentences li::before { content: ''; position: absolute; left: 4px; top: 7px; width: 11px; height: 11px; border-radius: 50%; background: var(--gold); }
+    .sentences .coin { font-weight: 800; color: var(--navy); }
+    .note { font-size: 13px; color: var(--muted); }
+
+    /* talking points */
+    .points { border-top: 2px dashed var(--line); background: var(--gold-l); padding: 14px 22px 16px; }
+    .points h3 { font-size: 13px; letter-spacing: .6px; text-transform: uppercase; color: var(--red); margin-bottom: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .points ul { list-style: none; display: grid; gap: 6px; }
+    .points li { font-size: 18px; color: var(--navy); padding-left: 24px; position: relative; line-height: 1.35; }
+    .points li::before { content: '\2726'; position: absolute; left: 0; color: var(--red); }
+    .points textarea { width: 100%; min-height: 96px; font-size: 16px; padding: 10px; border: 1px solid var(--gold); border-radius: 8px; font-family: inherit; color: var(--navy); }
+    .edited-badge { font-size: 11px; background: var(--navy); color: #fff; border-radius: 999px; padding: 1px 8px; text-transform: none; letter-spacing: 0; }
+
+    /* navigation helpers */
+    .tools { display: none; }
+    body.presenting .per100-toggle { display: none; }
+    body.presenting.following .slide { height: calc(100vh - 54px); margin-top: 54px; }
+    .pres-ui { display: none; }
+
+    /* waffle legend sentences */
+    .coin-row { display: flex; align-items: flex-start; gap: 10px; font-size: 17px; padding: 5px 0; }
+    .coin-row i { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; margin-top: 4px; }
+    .coin-row b { color: var(--navy); }
+
+    #tip { position: fixed; z-index: 99; pointer-events: none; background: var(--navy); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 13px; max-width: 260px; display: none; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+
+    /* ── Responsive ────────────────────────────────────── */
+    @media (max-width: 899px) {
+      .grid2, .grid3 { grid-template-columns: 1fr; }
+      .hero { grid-template-columns: 1fr; text-align: center; }
+      .ring-box { order: -1; }
+    }
+    @media (max-width: 600px) {
+      .topbar h1 { font-size: 18px; }
+      #dash { padding: 12px 12px 40px; }
+      .slide-head { padding: 14px 14px 6px; gap: 10px; }
+      .slide-head h2 { font-size: 21px; }
+      .slide-num { width: 38px; height: 38px; font-size: 18px; }
+      .slide-body { padding: 6px 14px 14px; }
+      .points { padding: 12px 14px; }
+      .points li { font-size: 16px; }
+      .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .tile .val { font-size: 21px; }
+      .hero { padding: 16px 14px; }
+      .controls { padding: 10px 12px; }
+      .controls .btn { padding: 8px 10px; font-size: 13px; }
+    }
+
+    /* ── Presentation mode ─────────────────────────────── */
+    body.presenting { overflow: hidden; background: var(--navy); }
+    body.presenting .topbar, body.presenting .controls { display: none; }
+    body.presenting #dash { max-width: none; height: 100vh; padding: 0; margin: 0; }
+    body.presenting .slide { display: none; margin: 0; border-radius: 0; height: 100vh; overflow-y: auto; border-top-width: 10px; }
+    body.presenting .slide.active { display: block; }
+    body.presenting .slide-head h2 { font-size: clamp(26px, 3.6vw, 48px); }
+    body.presenting .slide-head .q { font-size: clamp(16px, 1.8vw, 24px); }
+    body.presenting .slide-num { width: 64px; height: 64px; font-size: 30px; }
+    body.presenting .slide-body { padding: 10px 4vw 18px; }
+    body.presenting .tile .val { font-size: clamp(24px, 2.3vw, 36px); }
+    body.presenting .tiles { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+    body.presenting .tile .lbl, body.presenting .tile .sub, body.presenting table.t, body.presenting ul.rank li, body.presenting .legend { font-size: clamp(13px, 1.15vw, 18px); }
+    body.presenting .points { padding: 16px 4vw 70px; }
+    body.presenting .points li { font-size: clamp(18px, 2vw, 28px); }
+    body.presenting .coin-row { font-size: clamp(17px, 1.8vw, 26px); }
+    body.presenting .hero .big .num { font-size: clamp(32px, 3.6vw, 58px); }
+    body.presenting .tools, body.presenting details.tv { display: none; }
+    body.presenting .pres-ui { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: rgba(20,35,63,.94); color: #fff; padding: 8px 16px; align-items: center; gap: 12px; }
+    body.presenting .pres-ui .dots { flex: 1; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+    body.presenting .pres-ui .dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.3); display: block; }
+    body.presenting .pres-ui .dots i.on { background: var(--gold); }
+    body.presenting .pres-ui .ctr { font-weight: 700; min-width: 56px; }
+    body.presenting .pres-ui .btn { padding: 6px 12px; }
+
+    /* ── Print: one section per page, no buttons ───────── */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .topbar, .controls, .tools, .per100-toggle, .follow-bar, .pres-ui, details.tv, #tip, .edit-only { display: none !important; }
+      #dash { max-width: none; padding: 0; }
+      .slide { box-shadow: none; border-radius: 0; break-after: page; page-break-after: always; margin: 0; border-top: 6px solid var(--red); }
+      .slide:last-child { break-after: auto; page-break-after: auto; }
+      .slide, .panel, .tile { break-inside: avoid; }
+      .points { background: var(--gold-l); }
+      .hero { background: var(--navy) !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <button class="btn" id="btn-back" onclick="location.href='index.html'">&larr; Back</button>
+    <h1>Council Dashboard<small id="who-line">Tagaytay United Methodist Church</small></h1>
+    <button class="btn" onclick="window.print()">Print / PDF</button>
+  </div>
+  <div class="controls" id="controls">
+    <select id="sel-year" aria-label="Year"></select>
+    <div class="chips" id="month-chips" role="group" aria-label="Months to include"></div>
+    <div class="presets" id="presets" role="group" aria-label="Quick selections">
+      <button type="button" data-p="this">This month</button><button type="button" data-p="last">Last month</button>
+      <button type="button" data-p="q1">Q1</button><button type="button" data-p="q2">Q2</button><button type="button" data-p="q3">Q3</button><button type="button" data-p="q4">Q4</button>
+      <button type="button" data-p="ytd">YTD</button><button type="button" data-p="year">Full year</button><button type="button" data-p="clear">Clear</button>
+    </div>
+    <span class="period-label" id="period-label"></span>
+    <span class="spacer"></span>
+    <span class="period-label" id="follow-hint"></span>
+    <button class="btn" id="btn-follow" style="display:none" onclick="toggleFollow()">Follow Treasurer</button>
+    <button class="btn" id="btn-edit" style="display:none" onclick="toggleEditPoints()">Edit talking points</button>
+    <button class="btn" id="btn-save-points" style="display:none" onclick="saveTalkingPoints()">Save talking points</button>
+    <button class="btn" id="btn-reset-points" style="display:none" onclick="resetTalkingPoints()">Reset to auto</button>
+    <button class="btn" id="btn-cancel-points" style="display:none" onclick="cancelEditPoints()">Cancel</button>
+    <button class="btn gold" id="save-version-btn" style="display:none" onclick="saveCouncilVersion()">Generate &amp; Save Version</button>
+    <button class="btn" id="btn-broadcast" style="display:none" onclick="toggleBroadcast()">&#128225; Start presenting</button>
+    <button class="btn gold" id="btn-present" onclick="startPresentation()">&#9654; Slide show</button>
+  </div>
+  <div class="follow-bar" id="follow-bar" style="display:none">
+    <span id="follow-text"></span>
+    <button class="btn" id="btn-resume" style="display:none" onclick="resumeFollow()">Resume following</button>
+    <button class="btn" onclick="toggleFollow()">Stop following</button>
+  </div>
+
+  <div id="dash"><div class="status-msg" id="loading-msg">Loading the numbers&hellip;</div></div>
+
+  <div class="pres-ui" id="pres-ui">
+    <button class="btn" onclick="presNav(-1)" aria-label="Previous slide">&larr;</button>
+    <span class="ctr" id="pres-ctr">1 / 1</span>
+    <div class="dots" id="pres-dots"></div>
+    <button class="btn" onclick="presNav(1)" aria-label="Next slide">&rarr;</button>
+    <button class="btn" onclick="stopPresentation()">Esc &times;</button>
+  </div>
+  <div id="tip" role="tooltip"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+<script>
+  // ═══════════════════════════════════════════════════════════════════════
+  // COUNCIL DASHBOARD - see COUNCIL-DASHBOARD-PLAN.md / CLAUDE.md.
+  // Pipeline: loadRaw() (one-time reads) -> applyBasis(raw) -> computeKpis(raw, period)
+  //           -> render*(kpi) / autoTalkingPoints(kpi) / snapshot. Rendering never queries Firestore.
+  // Every basis helper in section 1 is COPIED (no shared modules in this repo) from the page named in
+  // its comment - keep them in step with their source.
+  // ═══════════════════════════════════════════════════════════════════════
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  // Roles allowed on the page (all can read income/expenses/budgets/churchObligations/specialProjects*,
+  // per firestore.rules). Others are sent back to index.html, as financial-overview.html does.
+  const COUNCIL_ALLOWED_ROLES = ['Treasurer', 'Pastor', 'Auditor', 'Finance Chair', 'Chairperson', 'Finance Committee'];
+  const CONTROLS_ROLES = ['Treasurer', 'Auditor'];                                   // section 9
+  const ROLL_READ_ROLES = ['Treasurer', 'Membership Secretary', 'Deaconess', 'Pastor', 'Chairperson']; // membershipRoll rules
+  const LIQ_READ_ROLES = ['Treasurer', 'Auditor', 'Pastor', 'Deaconess', 'Admin Assistant'];           // liquidationRequests rules
+  let activeUserProfile = null;
+
+  const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const LONG_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+  const escapeAttr = escapeHtml;
+  // copied from print-report.html fmt()
+  function fmt(num) {
+    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 1. BASIS HELPERS (verbatim copies)
+  // ───────────────────────────────────────────────────────────────────────
+  // copied from print-report.html - keep in step
+  const FINANCIAL_ACCOUNTS = [
+    { id:'cash-hand',  name:'Cash on Hand' },
+    { id:'cash-bank',  name:'Cash in Bank' },
+    { id:'petty-cash', name:'Petty Cash Fund' },
+    { id:'building',   name:'Building Fund' },
+    { id:'mission',    name:'Mission Fund' },
+    { id:'investment', name:'Investments/TD' }
+  ];
+
+  // Module-level basis state, named exactly as in print-report.html so the copied helpers below
+  // can stay verbatim. applyBasis() (re)builds it from the raw one-time reads.
+  let incomeData = [];
+  let expenseData = [];
+  let allIncomeData = [];
+  let allExpenseData = [];
+  let rawIncomeDocs = null;
+  let liquidationItemizedById = null;
+  let obligationsData = [];
+  let accountOrder = { income: [], expense: [] };
+  let beginningAccounts = {};
+  let generalFundAccounts = {};
+
+  // copied from print-report.html - keep in step
+  const GENERAL_FUND_EXPENSE_ACCOUNTS = ['cash-hand', 'cash-bank', 'cash', 'cash on hand', 'cash in bank', 'bank transfer', 'bank'];
+  function isReportableSpecialProjectExpense(d) {
+    if (!d || !d.isSpecialProject) return true;
+    const account = (d.targetAccId || d.payment || 'cash-hand').toString().trim().toLowerCase();
+    return GENERAL_FUND_EXPENSE_ACCOUNTS.includes(account);
+  }
+
+  // copied from print-report.html (mirrored there from budget-vs-actual.html) - keep in step
+  function getScheduleMonths(sched) {
+    if (!sched) return [];
+    if (Array.isArray(sched.months) && sched.months.length) {
+      return [...new Set(sched.months.map(m => parseInt(m)).filter(m => Number.isInteger(m) && m >= 0 && m <= 11))].sort((a,b)=>a-b);
+    }
+    if (Number.isInteger(sched.month)) return [sched.month];
+    return [];
+  }
+  function isRecurringExpense(key, budgetsObj) {
+    const sched = (budgetsObj.expenseSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function expenseBudgetForMonth(key, month, budgetsObj) {
+    const ann = (budgetsObj.expense || {})[key] || 0;
+    if (isRecurringExpense(key, budgetsObj)) return ann / 12;
+    const months = getScheduleMonths((budgetsObj.expenseSchedule || {})[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
+  }
+  function isRecurringIncome(key, budgetsObj) {
+    const sched = (budgetsObj.incomeSchedule || {})[key];
+    return !sched || sched.recurring !== false;
+  }
+  function incomeBudgetForMonth(key, month, budgetsObj) {
+    const ann = (budgetsObj.income || {})[key] || 0;
+    if (isRecurringIncome(key, budgetsObj)) return ann / 12;
+    const months = getScheduleMonths((budgetsObj.incomeSchedule || {})[key]);
+    if (!months.length) return 0;
+    return months.includes(month) ? ann / months.length : 0;
+  }
+
+  // copied from print-report.html - keep in step
+  function formatCategoryName(str) {
+    if (!str) return '';
+    str = String(str).trim();
+    if (!str) return '';
+    return str.split(' ').map(word => {
+      if (!word) return word;
+      const letters = word.replace(/[^a-zA-Z]/g, '');
+      if (letters.length > 0 && letters === letters.toUpperCase()) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+  }
+  function getMemberId(d) {
+    return (d.memberId || d.memberID || d.memberCode || '').toString().trim();
+  }
+
+  // copied from print-report.html - keep in step
+  function getObligationPaidAmount(o) {
+    if (o.paidAmount !== undefined) return Math.max(0, parseFloat(o.paidAmount) || 0);
+    return o.status === 'Paid' ? (parseFloat(o.amount) || 0) : 0;
+  }
+  function getObligationBalance(o) {
+    const amount = Math.max(0, parseFloat(o.amount) || 0);
+    return Math.max(0, amount - getObligationPaidAmount(o));
+  }
+  function getObligationStatus(o) {
+    const amount = Math.max(0, parseFloat(o.amount) || 0);
+    const paidAmount = Math.min(amount, getObligationPaidAmount(o));
+    if (amount > 0 && paidAmount >= amount) return 'Paid';
+    if (paidAmount > 0) return 'Partially Paid';
+    return 'Unpaid';
+  }
+
+  // copied from print-report.html - keep in step
+  // The Building Fund is ALWAYS a restricted fund in this statement, whatever the Treasurer's
+  // per-account "General Fund" setting says. Every other account follows the setting.
+  function isGeneralFundAccount(id) {
+    if (id === 'building') return false;
+    return generalFundAccounts[id] !== false;
+  }
+  // Building Fund money = explicit 'building' account, or category/type text naming the Building Fund.
+  function isBuildingFundEntry(d, isExpense) {
+    if (!d) return false;
+    if ((isExpense ? getExpenseAccountId(d) : getIncomeAccountId(d)) === 'building') return true;
+    return [d.budgetCategory, d.type, d.category].some(v => String(v || '').toLowerCase().includes('building fund'));
+  }
+  function isGeneralFundIncome(d) {
+    return !isBuildingFundEntry(d, false) && isGeneralFundAccount(getIncomeAccountId(d));
+  }
+  function isGeneralFundExpense(d) {
+    return !isBuildingFundEntry(d, true) && isGeneralFundAccount(getExpenseAccountId(d));
+  }
+  function getIncomeReportAccountId(d) {
+    const id = getIncomeAccountId(d);
+    return (isBuildingFundEntry(d, false) && isGeneralFundAccount(id)) ? 'building' : id;
+  }
+  function getExpenseReportAccountId(d) {
+    const id = getExpenseAccountId(d);
+    return (isBuildingFundEntry(d, true) && isGeneralFundAccount(id)) ? 'building' : id;
+  }
+  // Income account: a typed fund overrides any explicit account, else targetAccount, else bank for Bank Transfer, else cash-hand.
+  function getIncomeAccountId(d) {
+    if (d.type === 'Building Fund') return 'building';
+    if (d.type === 'Mission Fund') return 'mission';
+    if (d.type === 'Investment Income') return 'investment';
+    if (d.targetAccount) return d.targetAccount;
+    return d.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+  }
+  function getExpenseAccountId(d) {
+    return d.targetAccId || (d.payment === 'Bank Transfer' ? 'cash-bank' : d.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
+  }
+  // Payroll is an expense at gross, but only the NET pay leaves cash at once (withheld amounts leave via deduction-payment later).
+  function getExpenseCashImpact(d) {
+    const netPay = parseFloat(d.netPay);
+    const hasNetPayroll = d.isPayrollGenerated && !d.isBenefit && Number.isFinite(netPay);
+    return hasNetPayroll ? Math.max(0, netPay) : (parseFloat(d.amount) || 0);
+  }
+  // True per-account cash balances through endDate (same rules as financial-overview.html's combineAndRender()).
+  function getAccountBalancesThrough(endDate) {
+    const balances = {};
+    FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
+
+    allIncomeData.forEach(d => {
+      if (!d.date || new Date(d.date) > endDate) return;
+      const id = getIncomeAccountId(d);
+      if (balances[id] === undefined) return;
+      balances[id] += parseFloat(d.amount || 0);
+    });
+
+    allExpenseData.forEach(d => {
+      if (!d.date || new Date(d.date) > endDate) return;
+      const id = getExpenseAccountId(d);
+      if (balances[id] === undefined) return;
+      balances[id] -= getExpenseCashImpact(d);
+    });
+
+    return balances;
+  }
+  function getGeneralFundBeginningBalance() {
+    return FINANCIAL_ACCOUNTS
+      .filter(account => isGeneralFundAccount(account.id))
+      .reduce((sum, account) => sum + (parseFloat(beginningAccounts[account.id]) || 0), 0);
+  }
+
+  // copied from print-report.html - keep in step
+  // Legacy "Cash Advance Return" income docs that double-credit the fund are dropped from every income-side pool.
+  const CASH_ADVANCE_RETURN_LABEL = 'cash advance return';
+  const PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
+  function isCashAdvanceReturnDoc(d) {
+    return !!d && [d.category, d.budgetCategory, d.type].some(v => String(v || '').trim().toLowerCase() === CASH_ADVANCE_RETURN_LABEL);
+  }
+  function requestWasItemized(reqId) {
+    if (!reqId) return false;
+    if (liquidationItemizedById) return liquidationItemizedById.get(reqId) === true;
+    return allExpenseData.some(e => e.linkedLiquidationRequestId === reqId && e.category !== PLACEHOLDER_ADVANCE_CATEGORY);
+  }
+  function isDuplicateCashAdvanceReturn(d) {
+    return isCashAdvanceReturnDoc(d) && requestWasItemized(d.linkedLiquidationRequestId);
+  }
+  function rebuildIncomeData() {
+    if (!rawIncomeDocs) return;
+    allIncomeData = rawIncomeDocs.filter(d => !d.isSpecialProject && !isDuplicateCashAdvanceReturn(d));
+    incomeData = allIncomeData.filter(d => {
+      if (d.type === 'transfer') return false;
+      if (d.isSpecialProject) return false;
+      return true;
+    });
+  }
+
+  // copied from print-report.html generateReportHTML() (nested there) - keep in step
+  // Cumulative GF payroll withheld minus remitted through a date (both balances are put on "net of withholdings held").
+  function outstandingWithholdingsThrough(throughDate) {
+    let withheld = 0;
+    let remitted = 0;
+    allExpenseData.forEach(d => {
+      if (!d.date) return;
+      const dt = new Date(d.date);
+      if (dt > throughDate) return;
+      if (!isGeneralFundAccount(getExpenseAccountId(d))) return;
+      if (d.isPayrollGenerated && !d.isBenefit) {
+        const netPay = parseFloat(d.netPay);
+        if (Number.isFinite(netPay)) withheld += Math.max(0, parseFloat(d.amount || 0) - netPay);
+      } else if (d.type === 'deduction-payment') {
+        remitted += parseFloat(d.amount || 0);
+      }
+    });
+    return withheld - remitted;
+  }
+  // Building Fund money sitting in General Fund accounts (earmarked, not free GF cash).
+  function buildingFundHeldInGfThrough(throughDate) {
+    let held = 0;
+    incomeData.forEach(d => {
+      if (!d.date || new Date(d.date) > throughDate) return;
+      if (isBuildingFundEntry(d, false) && isGeneralFundAccount(getIncomeAccountId(d))) held += parseFloat(d.amount || 0);
+    });
+    expenseData.forEach(d => {
+      if (!d.date || new Date(d.date) > throughDate) return;
+      if (isBuildingFundEntry(d, true) && isGeneralFundAccount(getExpenseAccountId(d))) held -= parseFloat(d.amount || 0);
+    });
+    return held;
+  }
+
+  // copied from financial-overview.html getCashLevel() (Section 15 thresholds) - keep in step
+  function getCashLevel(months) {
+    if (!Number.isFinite(months)) {
+      return { color: 'yellow', level: 'Needs Setup', control: 'Set essential monthly operating expense to activate SOP monitoring.' };
+    }
+    if (months >= 3) return { color:'green', level:'Stable', control:'Normal operations; ordinary controls continue.' };
+    if (months >= 1) return { color:'yellow', level:'Caution', control:'Treasurer informs Finance Chair; closer review of non-routine spending; 30-60 day cash forecast if trending down.' };
+    if (months >= 0.5) return { color:'red', level:'Critical', control:'Finance Committee and Auditor notified; essential obligations only unless specifically approved; payment priority list applies.' };
+    return { color:'black', level:'Emergency', control:'Spending freeze except survival essentials; emergency Finance/Council action required.' };
+  }
+  // copied from budget-vs-actual.html trendBudgetedForMonth/trendBudgetHasAmounts/trendCashLevel - keep in step
+  function trendBudgetedForMonth(budgetDoc, side, month) {
+    const amounts = (budgetDoc && budgetDoc[side]) || {};
+    const schedule = (budgetDoc && budgetDoc[side === 'income' ? 'incomeSchedule' : 'expenseSchedule']) || {};
+    return Object.keys(amounts).reduce((s, k) => {
+      if (k.toLowerCase().includes('transfer')) return s;
+      const ann = parseFloat(amounts[k]) || 0;
+      const sched = schedule[k];
+      if (sched && sched.recurring === false) {
+        const months = getScheduleMonths(sched);
+        return s + (months.length && months.includes(month) ? ann / months.length : 0);
+      }
+      return s + ann / 12;
+    }, 0);
+  }
+  function trendBudgetHasAmounts(budgetDoc) {
+    if (!budgetDoc) return false;
+    return ['income', 'expense'].some(side => Object.keys(budgetDoc[side] || {})
+      .some(k => !k.toLowerCase().includes('transfer') && (parseFloat(budgetDoc[side][k]) || 0) > 0));
+  }
+  function trendCashLevel(months) {
+    if (!Number.isFinite(months)) return { color: 'yellow', level: 'Needs Setup' };
+    if (months >= 3) return { color: 'green', level: 'Stable' };
+    if (months >= 1) return { color: 'yellow', level: 'Caution' };
+    if (months >= 0.5) return { color: 'red', level: 'Critical' };
+    return { color: 'black', level: 'Emergency' };
+  }
+
+  // copied from budget-vs-actual.html fetchLiveAvailableOperatingCash() (the computation only; the reads
+  // are shared with this page's own one-time loader) - keep in step. Deliberately counts EVERYTHING
+  // Financial Overview counts (duplicate legacy cash advance returns included) as of today.
+  const LIVE_CASH_ACCOUNTS = ['cash-hand', 'cash-bank', 'petty-cash', 'building', 'mission', 'investment'];
+  function liveCashParseLocalDate(value) {
+    const parts = String(value || '').slice(0, 10).split('-').map(Number);
+    if (parts.length === 3 && parts.every(Boolean)) return new Date(parts[0], parts[1] - 1, parts[2]);
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+  function computeLiveCash(incomeDocs, expenseDocs, beginningDocData, ccs, now) {
+    function liveCashIsEffectiveAsOfToday(dateValue) {
+      const dt = liveCashParseLocalDate(dateValue);
+      if (!dt) return false;
+      const today = new Date(now.getTime());
+      today.setHours(23, 59, 59, 999);
+      return dt <= today;
+    }
+    const accounts = {};
+    LIVE_CASH_ACCOUNTS.forEach(id => { accounts[id] = { balance: 0, includedInGeneralFund: true }; });
+    if (beginningDocData) {
+      const beg = beginningDocData.accounts || {};
+      const included = beginningDocData.generalFundAccounts || {};
+      LIVE_CASH_ACCOUNTS.forEach(id => {
+        accounts[id].balance = parseFloat(beg[id]) || 0;
+        accounts[id].includedInGeneralFund = included[id] !== false;
+      });
+    }
+    const txns = [];
+    incomeDocs.forEach(data => {
+      if (data.isSpecialProject) return;
+      let targetAccId = data.targetAccount;
+      if (data.type === 'Building Fund') targetAccId = 'building';
+      else if (data.type === 'Mission Fund') targetAccId = 'mission';
+      else if (data.type === 'Investment Income') targetAccId = 'investment';
+      else if (!targetAccId) targetAccId = data.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+      txns.push({ sign: 1, targetAccId, amount: parseFloat(data.amount) || 0, date: data.date || '2026-01-01' });
+    });
+    let grossPayrollDeductions = 0;
+    let paidDeductionPayments = 0;
+    expenseDocs.forEach(data => {
+      const targetAccId = data.targetAccId || (data.payment === 'Bank Transfer' ? 'cash-bank' : data.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
+      const grossAmount = parseFloat(data.amount) || 0;
+      const netPay = parseFloat(data.netPay);
+      const isDeductionPayment = data.type === 'deduction-payment';
+      const hasNetPayroll = data.isPayrollGenerated && !data.isBenefit && Number.isFinite(netPay);
+      const cashImpactAmount = hasNetPayroll ? Math.max(0, netPay) : grossAmount;
+      const date = data.date || '2026-01-01';
+      txns.push({ sign: -1, targetAccId, amount: cashImpactAmount, date });
+      if (liveCashIsEffectiveAsOfToday(date)) {
+        if (hasNetPayroll) grossPayrollDeductions += Math.max(0, grossAmount - netPay);
+        if (isDeductionPayment) paidDeductionPayments += grossAmount;
+      }
+    });
+    // Same pass builds financial-overview.html's getMonthlyIncomeExpenseSeries() input (cash-hand + cash-bank,
+    // transfers included, payroll at net-pay cash impact) - the "actual trend" behind its cash forecast.
+    const gfByMonth = {};
+    txns.forEach(t => {
+      if (!liveCashIsEffectiveAsOfToday(t.date)) return;
+      const acc = accounts[t.targetAccId];
+      if (acc) acc.balance += t.sign * t.amount;
+      if (t.targetAccId === 'cash-hand' || t.targetAccId === 'cash-bank') {
+        const ym = String(t.date || '').slice(0, 7);
+        if (!ym) return;
+        if (!gfByMonth[ym]) gfByMonth[ym] = { income: 0, expense: 0 };
+        if (t.sign > 0) gfByMonth[ym].income += t.amount;
+        else gfByMonth[ym].expense += t.amount;
+      }
+    });
+    const gfMonthlySeries = Object.keys(gfByMonth).sort().map(ym => ({ ym, income: gfByMonth[ym].income, expense: gfByMonth[ym].expense }));
+    const generalCash = accounts['cash-hand'].balance + accounts['cash-bank'].balance;
+    const restrictedDesignated = ['petty-cash', 'building', 'mission', 'investment']
+      .filter(id => accounts[id].includedInGeneralFund === false)
+      .reduce((s, id) => s + accounts[id].balance, 0);
+    const payrollPayable = Math.max(0, grossPayrollDeductions - paidDeductionPayments);
+    const approvedPayables = (parseFloat((ccs || {}).approvedPayables) || 0) + payrollPayable;
+    const essential = parseFloat((ccs || {}).essentialMonthlyExpense) || 0;
+    return {
+      availableOperatingCash: generalCash - restrictedDesignated - approvedPayables,
+      generalCash, restrictedDesignated, payrollPayable, approvedPayables, essential, gfMonthlySeries
+    };
+  }
+  // copied from budget-vs-actual.html computeTrendProjection() (Conservative Hybrid basis, parameterised by
+  // `now`/horizon/budgets instead of page globals) - keep in step.
+  function computeTrendProjection(live, forecastBudgets, now, horizon, conservative) {
+    const currentYm = now.toISOString().slice(0, 7);
+    const used = live.gfMonthlySeries.filter(r => r.ym < currentYm).slice(-3);
+    if (!used.length) return { noTrend: true, rows: [] };
+    const avgIncome = used.reduce((s, r) => s + r.income, 0) / used.length;
+    const avgExpense = used.reduce((s, r) => s + r.expense, 0) / used.length;
+    const realYear = now.getFullYear();
+    const essential = live.essential;
+    const startCash = live.availableOperatingCash;
+    const startLevel = trendCashLevel(essential > 0 ? startCash / essential : NaN);
+    let running = startCash;
+    const rows = [];
+    for (let i = 1; i <= horizon; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      // Next year's budget once it has amounts; otherwise the current year's schedule wraps (as FO does).
+      const budgetDoc = trendBudgetHasAmounts(forecastBudgets[y]) ? forecastBudgets[y] : forecastBudgets[realYear];
+      const budgetedIncome = trendBudgetedForMonth(budgetDoc, 'income', m);
+      const budgetedExpense = trendBudgetedForMonth(budgetDoc, 'expense', m);
+      const hasBudget = budgetedIncome > 0 || budgetedExpense > 0;
+      const inflow = conservative && hasBudget ? Math.min(avgIncome, budgetedIncome) : avgIncome;
+      const outflow = conservative && hasBudget ? Math.max(avgExpense, budgetedExpense) : avgExpense;
+      const net = inflow - outflow;
+      running += net;
+      const cover = essential > 0 ? running / essential : NaN;
+      rows.push({ label: `${SHORT_MONTHS[m]} ${y}`, inflow, outflow, net, cash: running, cover, level: trendCashLevel(cover) });
+    }
+    return { avgIncome, avgExpense, monthsUsed: used.map(r => r.ym), startCash, startLevel, essential, rows };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 2. LOADER - one-time reads only (no onSnapshot). Queries only collections the role may read.
+  // ───────────────────────────────────────────────────────────────────────
+  const budgetsByYear = {};      // year -> doc data | null
+  const reviewByDocId = {};      // reportReviews doc id -> data | null
+  async function getDocData(coll, id) {
+    try {
+      const doc = await db.collection(coll).doc(id).get();
+      return doc.exists ? doc.data() : null;
+    } catch (err) { console.warn('Unable to read', coll, id, err && err.message); return null; }
+  }
+  async function getCollection(coll) {
+    try {
+      const snap = await db.collection(coll).get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (err) { console.warn('Unable to read', coll, err && err.message); return null; }
+  }
+  async function ensureBudgets(years) {
+    await Promise.all(years.map(async y => {
+      if (Object.prototype.hasOwnProperty.call(budgetsByYear, y)) return;
+      budgetsByYear[y] = await getDocData('budgets', String(y));
+    }));
+  }
+  async function ensureReview(docId) {
+    if (Object.prototype.hasOwnProperty.call(reviewByDocId, docId)) return;
+    reviewByDocId[docId] = await getDocData('reportReviews', docId);
+  }
+  async function loadRaw(profile) {
+    const role = profile.role;
+    const realYear = new Date().getFullYear();
+    const [income, expenses, obligations, projects, projectEntries, projectCosts, attendance, countSheets,
+           beginning, structure, cashControl, yearsCfg, liq, roll] = await Promise.all([
+      getCollection('income'), getCollection('expenses'), getCollection('churchObligations'),
+      getCollection('specialProjects'), getCollection('specialProjectEntries'), getCollection('specialProjectCosts'),
+      getCollection('attendance'), getCollection('countSheets'),
+      getDocData('settings', 'beginningBalances'), getDocData('settings', 'accountStructure'),
+      getDocData('settings', 'cashControlSettings'), getDocData('settings', 'yearsConfig'),
+      LIQ_READ_ROLES.includes(role) ? getCollection('liquidationRequests') : Promise.resolve(null),
+      ROLL_READ_ROLES.includes(role) ? getCollection('membershipRoll') : Promise.resolve(null)
+    ]);
+    await ensureBudgets([realYear, realYear + 1]);
+    const dflt = d => d.date ? d : { ...d, date: '2026-01-01', dateDefaulted: true }; // undated = 2026-01-01, as in Financial Overview
+    return {
+      income: income ? income.map(dflt) : null,
+      expenses: expenses ? expenses.map(dflt) : null,
+      obligations: obligations || [], projects: projects || [], projectEntries: projectEntries || [], projectCosts: projectCosts || [],
+      attendance: attendance || [], countSheets: countSheets, // null = unreadable
+      beginning, structure, cashControl, yearsCfg, liquidation: liq, membershipRoll: roll
+    };
+  }
+
+  // Rebuild the print-report.html basis arrays from the raw reads (same filters as its listeners).
+  function applyBasis(raw) {
+    beginningAccounts = (raw.beginning && raw.beginning.accounts) || {};
+    generalFundAccounts = (raw.beginning && raw.beginning.generalFundAccounts) || {};
+    accountOrder = raw.structure || { income: [], expense: [] };
+    obligationsData = raw.obligations || [];
+    liquidationItemizedById = null;
+    if (raw.liquidation) {
+      liquidationItemizedById = new Map();
+      raw.liquidation.forEach(d => liquidationItemizedById.set(d.id, Array.isArray(d.liquidationItems) && d.liquidationItems.length > 0));
+    }
+    allExpenseData = raw.expenses || [];
+    // Deduction-payment entries settle a liability already expensed at gross; special-project spending only counts
+    // when paid from Cash on Hand / Cash in Bank (print-report.html's expenseData filter).
+    expenseData = allExpenseData.filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment' && isReportableSpecialProjectExpense(d));
+    rawIncomeDocs = raw.income || [];
+    rebuildIncomeData();
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 3. PERIOD = a year + a sorted set of months (single month, run, or non-contiguous)
+  // ───────────────────────────────────────────────────────────────────────
+  const pad2 = n => String(n).padStart(2, '0');
+  function makePeriod(year, monthIdxs) {
+    const months = [...new Set(monthIdxs.filter(m => m >= 0 && m <= 11))].sort((a, b) => a - b);
+    const first = months[0], last = months[months.length - 1];
+    const contiguous = months.length > 0 && (last - first + 1) === months.length;
+    let label = '';
+    if (!months.length) label = 'No months selected';
+    else if (months.length === 12) label = `Full year ${year}`;
+    else if (months.length === 1) label = `${LONG_MONTHS[first]} ${year}`;
+    else if (contiguous) label = `${SHORT_MONTHS[first]}-${SHORT_MONTHS[last]} ${year}`;
+    else label = `${months.map(m => SHORT_MONTHS[m]).join(', ')} ${year}`;
+    const keys = months.map(m => `${year}-${pad2(m + 1)}`);
+    // Talking-points doc id suffix: single month = YYYY-MM (plan), else YYYY-MM_MM..., whole year = YYYY-FY.
+    const notesKey = months.length === 12 ? `${year}-FY` : months.length === 1 ? keys[0] : `${year}-${months.map(m => pad2(m + 1)).join('_')}`;
+    return { year, months, first, last, contiguous, label, keys, notesKey, count: months.length };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 4. computeKpis(raw, period, now) - PURE (given raw + period); applyBasis() first.
+  // ───────────────────────────────────────────────────────────────────────
+  // copied from reports.html - keep in step
+  function isTitheRecord(d) {
+    const category = `${d.budgetCategory || ''} ${d.category || ''} ${d.type || ''}`.toLowerCase();
+    return category.includes('tithe') && !category.includes('loose');
+  }
+  function isLooseOfferingRecord(d) {
+    const category = `${d.budgetCategory || ''} ${d.category || ''} ${d.type || ''} ${d.member || ''}`.toLowerCase();
+    return category.includes('loose');
+  }
+  function isNamedTither(d) {
+    return isTitheRecord(d)
+      && d.member
+      && d.member.trim() !== ''
+      && d.member !== 'Anonymous'
+      && d.member !== 'General Collection'
+      && d.member.toLowerCase() !== 'loose offering';
+  }
+  function isNowMinistryExpense(d) {
+    const category = `${d.category || ''} ${d.budgetCategory || ''}`.toLowerCase();
+    return category.includes('nurture') || category.includes('outreach') || category.includes('witness');
+  }
+  // Giver identity is INTERNAL ONLY (counting unique givers) - never rendered.
+  function titherKey(d) { return getMemberId(d) || String(d.member || '').trim().toLowerCase(); }
+
+  // copied from print-report.html generateReportHTML() budget-structure block - keep in step
+  function buildBudgetStructure() {
+    const expOrderMain = [], expOrderSub = {}, catKeyToMain = {}, catKeyToSub = {};
+    const isBuildingFundKey = k => String(k || '').toLowerCase().includes('building fund');
+    const gfExpenseKeys = (accountOrder.expense || []).filter(k => !isBuildingFundKey(k));
+    const gfIncomeKeys = (accountOrder.income || []).filter(k => !isBuildingFundKey(k));
+    const expAllKeys = gfExpenseKeys;
+    function resolveMainGroup(k, allKeys) {
+      if (!k.includes(' - ')) return k;
+      const parts = k.split(' - ');
+      for (let i = parts.length - 1; i >= 1; i--) {
+        const prefix = parts.slice(0, i).join(' - ');
+        const prefixDash = prefix + ' - ';
+        if (allKeys.some(other => other !== k && other.startsWith(prefixDash))) return prefix;
+      }
+      return parts[0];
+    }
+    expAllKeys.forEach(k => {
+      let rawMain = resolveMainGroup(k, expAllKeys);
+      let rawSub  = k.startsWith(rawMain + ' - ') ? k.slice(rawMain.length + 3).trim() : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ').trim() : '');
+      let m = formatCategoryName(rawMain);
+      let s = rawSub || k;
+      if (!expOrderMain.includes(m)) expOrderMain.push(m);
+      if (!expOrderSub[m]) expOrderSub[m] = [];
+      if (!expOrderSub[m].includes(s)) expOrderSub[m].push(s);
+      catKeyToMain[k] = m;
+      catKeyToSub[k]  = s;
+    });
+    const incOrderMain = [], incOrderSub = {}, incKeyToMain = {}, incKeyToSub = {};
+    gfIncomeKeys.forEach(k => {
+      let parts = k.split(' - ');
+      let m = formatCategoryName(parts[0].trim());
+      let s = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : 'Others';
+      if (!incOrderMain.includes(m)) incOrderMain.push(m);
+      if (!incOrderSub[m]) incOrderSub[m] = [];
+      if (!incOrderSub[m].includes(s)) incOrderSub[m].push(s);
+      incKeyToMain[k] = m;
+      incKeyToSub[k] = s;
+    });
+    return { expOrderMain, expOrderSub, catKeyToMain, catKeyToSub, incOrderMain, incOrderSub, incKeyToMain, incKeyToSub, gfExpenseKeys, gfIncomeKeys };
+  }
+  const MISC_MAIN = 'Miscellaneous (Unbudgeted)';
+  // Main/sub classification copied from print-report.html buildExpGroups()/buildIncGroups() (labels for the
+  // Miscellaneous sub-lines are not needed here, only which MAIN bucket an entry lands in) - keep in step.
+  function classifyExpense(d, S) {
+    const rawVal = (d.category || '').trim();
+    const rawLow = rawVal.toLowerCase();
+    let main, sub;
+    if (S.catKeyToMain[rawVal]) {
+      main = S.catKeyToMain[rawVal];
+      sub  = S.catKeyToSub[rawVal];
+    } else {
+      let parts = rawVal.includes(' - ') ? rawVal.split(' - ') : [rawVal];
+      main = parts[0].trim() ? formatCategoryName(parts[0].trim()) : MISC_MAIN;
+      sub  = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : '';
+      const checkMain = main.toLowerCase();
+      if (rawLow.includes('not in') || checkMain === 'others' || checkMain === 'unbudgeted'
+          || checkMain === 'miscellaneous' || !S.expOrderMain.includes(main)) {
+        main = MISC_MAIN;
+      }
+    }
+    if (main === MISC_MAIN) sub = 'Unbudgeted';
+    else if (!sub || sub.toLowerCase() === 'n/a') sub = 'Others';
+    return { main, sub };
+  }
+  function classifyIncome(d, S) {
+    let mainType = (d.type || '').trim();
+    let budgetCat = (d.budgetCategory || d.category || '').trim();
+    let subLow = budgetCat.toLowerCase();
+    let mainLow = mainType.toLowerCase();
+    let checkMain = formatCategoryName(mainType);
+    let finalMain = '';
+    let sub = '';
+    let isKnown = false;
+    if (S.incOrderMain.length === 0) isKnown = true;
+    else if (S.incOrderMain.includes(checkMain)) isKnown = true;
+    if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school') || mainType === 'Occasional Offering') isKnown = true;
+    if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
+      finalMain = MISC_MAIN; sub = 'Unbudgeted';
+    } else if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school')) {
+      finalMain = 'Source of Funds';
+      if (subLow.includes('tithe')) sub = 'Tithes';
+      else if (subLow.includes('loose') || subLow === 'offering') sub = 'Loose Offering';
+      else if (subLow.includes('sunday school')) sub = 'Sunday School';
+      else sub = formatCategoryName(budgetCat);
+    } else if (mainType === 'Occasional Offering') {
+      finalMain = 'Occasional Offering';
+      let cleanedSub = budgetCat;
+      if (cleanedSub.toLowerCase().startsWith('occasional offering')) cleanedSub = cleanedSub.replace(/occasional offering/i, '').replace(/^[\s\-]+/, '').trim();
+      if (!cleanedSub) cleanedSub = 'General';
+      sub = formatCategoryName(cleanedSub) || 'Others';
+    } else {
+      finalMain = checkMain;
+      sub = formatCategoryName(budgetCat) || 'Others';
+    }
+    if (finalMain !== MISC_MAIN && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) { finalMain = MISC_MAIN; sub = 'Unbudgeted'; }
+    return { main: finalMain, sub };
+  }
+  function groupByMainSub(list, classify, S) {
+    const g = {};
+    list.forEach(d => {
+      const c = classify(d, S);
+      const amt = parseFloat(d.amount || 0);
+      if (!g[c.main]) g[c.main] = { t: 0, s: {} };
+      g[c.main].t += amt;
+      g[c.main].s[c.sub] = (g[c.main].s[c.sub] || 0) + amt;
+    });
+    return g;
+  }
+
+  // Parse a stored ISO date as a LOCAL calendar date (for Sunday/week bucketing and "today" comparisons only).
+  function localDate(value) {
+    const p = String(value || '').slice(0, 10).split('-').map(Number);
+    return p.length === 3 && p.every(Boolean) ? new Date(p[0], p[1] - 1, p[2]) : null;
+  }
+  function isoOf(dt) { return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`; }
+  const monthIdx = dt => dt.getFullYear() * 12 + dt.getMonth();
+
+  // Statement over a year + month set. For a single month or any contiguous run this is exactly print-report.html's
+  // generateReportHTML() arithmetic (Beginning Balance through the day before the first month, Ending Balance
+  // through the end of the last). A non-contiguous selection additionally reports the unselected months in between
+  // as `inBetween` so Beginning + Receipts - Disbursements + Transfers + In-between = Ending still ties out.
+  function computeStatement(year, monthsArr) {
+    const first = monthsArr[0], last = monthsArr[monthsArr.length - 1];
+    const monthSet = new Set(monthsArr);
+    const targetDate = new Date(year, first, 1);
+    const periodEndDate = new Date(year, last + 1, 0, 23, 59, 59);
+    const dayBeforeStart = new Date(targetDate.getTime() - 1);
+
+    const gfAccounts = FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id));
+    const restrictedAccounts = FINANCIAL_ACCOUNTS.filter(a => !isGeneralFundAccount(a.id));
+    const gfIds = gfAccounts.map(a => a.id);
+    const restrictedIds = restrictedAccounts.map(a => a.id);
+    function sumIds(balances, ids) { return ids.reduce((s, id) => s + (parseFloat(balances[id]) || 0), 0); }
+
+    const beginningAccountBalances = getAccountBalancesThrough(dayBeforeStart);
+    const accountBalances = getAccountBalancesThrough(periodEndDate);
+    const gfTrueEndBalance = sumIds(accountBalances, gfIds);
+    const restrictedTrueEndBalance = sumIds(accountBalances, restrictedIds);
+
+    const outstandingWithholdingsBeforePeriod = outstandingWithholdingsThrough(dayBeforeStart);
+    const outstandingWithholdingsAtEnd = outstandingWithholdingsThrough(periodEndDate);
+    const buildingHeldBeforePeriod = buildingFundHeldInGfThrough(dayBeforeStart);
+    const buildingHeldAtEnd = buildingFundHeldInGfThrough(periodEndDate);
+    const begBal = sumIds(beginningAccountBalances, gfIds) - outstandingWithholdingsBeforePeriod - buildingHeldBeforePeriod;
+
+    const inSel = d => { if (!d.date) return false; const dt = new Date(d.date); return dt.getFullYear() === year && monthSet.has(dt.getMonth()); };
+    const inSpan = d => { if (!d.date) return false; const dt = new Date(d.date); return dt.getFullYear() === year && dt.getMonth() >= first && dt.getMonth() <= last; };
+
+    const periodIncome = incomeData.filter(inSel);
+    const periodExpense = expenseData.filter(inSel);
+    const fInc = periodIncome.filter(isGeneralFundIncome);
+    const fExp = periodExpense.filter(isGeneralFundExpense);
+    const restrictedIncomeRows = periodIncome.filter(d => !isGeneralFundIncome(d));
+    const restrictedExpenseRows = periodExpense.filter(d => !isGeneralFundExpense(d));
+
+    const periodTransferIn = allIncomeData.filter(d => d.type === 'transfer' && inSel(d));
+    const periodTransferOut = allExpenseData.filter(d => d.type === 'transfer' && inSel(d));
+    const transferIntoGF = periodTransferIn.filter(d => isGeneralFundAccount(getIncomeAccountId(d))).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const transferOutOfGF = periodTransferOut.filter(d => isGeneralFundAccount(getExpenseAccountId(d))).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const netTransferGF = transferIntoGF - transferOutOfGF;
+
+    const totalIn = fInc.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const totalOut = fExp.reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const netChange = totalIn - totalOut;
+
+    // The whole first..last span (equals the selection when it is contiguous).
+    const sInc = incomeData.filter(inSpan).filter(isGeneralFundIncome).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const sOut = expenseData.filter(inSpan).filter(isGeneralFundExpense).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const sTin = allIncomeData.filter(d => d.type === 'transfer' && inSpan(d) && isGeneralFundAccount(getIncomeAccountId(d))).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const sTout = allExpenseData.filter(d => d.type === 'transfer' && inSpan(d) && isGeneralFundAccount(getExpenseAccountId(d))).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const spanNet = (sInc - sOut) + (sTin - sTout);
+    const inBetween = spanNet - (netChange + netTransferGF);
+    const endBal = begBal + netChange + netTransferGF + inBetween;
+
+    const reconcileDiff = (gfTrueEndBalance - outstandingWithholdingsAtEnd - buildingHeldAtEnd) - endBal;
+    const reconcileIsClean = Math.abs(reconcileDiff) < 0.01;
+
+    const restrictedActivityAll = restrictedAccounts.map(a => {
+      const realInAmt = restrictedIncomeRows.filter(d => getIncomeReportAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const realOutAmt = restrictedExpenseRows.filter(d => getExpenseReportAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferInAmt = periodTransferIn.filter(d => getIncomeAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferOutAmt = periodTransferOut.filter(d => getExpenseAccountId(d) === a.id).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+      const transferNet = transferInAmt - transferOutAmt;
+      const inAmt = realInAmt + transferInAmt;
+      const outAmt = realOutAmt + transferOutAmt;
+      return { id: a.id, name: a.name, realInAmt, realOutAmt, transferNet, inAmt, outAmt, net: inAmt - outAmt, balance: parseFloat(accountBalances[a.id]) || 0 };
+    });
+    return {
+      begBal, totalIn, totalOut, netChange, netTransferGF, inBetween, endBal, reconcileDiff, reconcileIsClean,
+      outstandingWithholdingsAtEnd, buildingHeldAtEnd, gfTrueEndBalance, restrictedTrueEndBalance, accountBalances,
+      gfAccounts, restrictedAccounts, restrictedActivityAll, fInc, fExp, periodIncome
+    };
+  }
+
+  function pctChange(cur, prev) { return Math.abs(prev) > 0.005 ? ((cur - prev) / Math.abs(prev)) * 100 : null; }
+  const sumF = (arr, f) => arr.reduce((s, x) => s + (f(x) || 0), 0);
+
+  function computeKpis(raw, period, now) {
+    applyBasis(raw);
+    const year = period.year, months = period.months, last = period.last;
+    const monthSet = new Set(months);
+    const ytdMonths = Array.from({ length: last + 1 }, (_, i) => i);
+    const kpi = { period, now: now.toISOString(), unavailable: {}, role: activeUserProfile ? activeUserProfile.role : '' };
+
+    // ── Statement (General Fund basis, same as Print Report) ──
+    const st = computeStatement(year, months);
+    const stYtd = computeStatement(year, ytdMonths);
+    kpi.stmt = {
+      begBal: st.begBal, receipts: st.totalIn, disbursements: st.totalOut, net: st.netChange, transfers: st.netTransferGF,
+      inBetween: st.inBetween, endBal: st.endBal, reconcileDiff: st.reconcileDiff, reconcileClean: st.reconcileIsClean,
+      contiguous: period.contiguous
+    };
+    kpi.ytd = { receipts: stYtd.totalIn, disbursements: stYtd.totalOut, net: stYtd.netChange };
+
+    // ── Monthly buckets (General Fund) for series, last-year comparison, giving ──
+    const buckets = {};
+    const slot = dt => { const i = monthIdx(dt); return buckets[i] || (buckets[i] = { rec: 0, dis: 0, tithes: 0, loose: 0, tithers: new Set() }); };
+    const gfIncAll = incomeData.filter(isGeneralFundIncome);
+    const gfExpAll = expenseData.filter(isGeneralFundExpense);
+    gfIncAll.forEach(d => {
+      const dt = new Date(d.date); const b = slot(dt); const a = parseFloat(d.amount || 0);
+      b.rec += a;
+      if (isTitheRecord(d)) { b.tithes += a; if (isNamedTither(d)) b.tithers.add(titherKey(d)); }
+      if (isLooseOfferingRecord(d)) b.loose += a;
+    });
+    gfExpAll.forEach(d => { slot(new Date(d.date)).dis += parseFloat(d.amount || 0); });
+    const bk = (y, m) => buckets[y * 12 + m] || { rec: 0, dis: 0, tithes: 0, loose: 0, tithers: new Set() };
+    const sumB = (y, ms, f) => ms.reduce((s, m) => s + f(bk(y, m)), 0);
+    const unionTithers = (y, ms) => { const s = new Set(); ms.forEach(m => bk(y, m).tithers.forEach(k => s.add(k))); return s; };
+
+    kpi.prior = {
+      receipts: sumB(year - 1, months, b => b.rec), disbursements: sumB(year - 1, months, b => b.dis)
+    };
+    kpi.prior.net = kpi.prior.receipts - kpi.prior.disbursements;
+    kpi.priorYtd = { receipts: sumB(year - 1, ytdMonths, b => b.rec), disbursements: sumB(year - 1, ytdMonths, b => b.dis) };
+    kpi.priorYtd.net = kpi.priorYtd.receipts - kpi.priorYtd.disbursements;
+    kpi.change = {
+      receipts: pctChange(kpi.stmt.receipts, kpi.prior.receipts),
+      disbursements: pctChange(kpi.stmt.disbursements, kpi.prior.disbursements),
+      net: pctChange(kpi.stmt.net, kpi.prior.net),
+      ytdReceipts: pctChange(kpi.ytd.receipts, kpi.priorYtd.receipts)
+    };
+
+    // 12 months ending at the last selected month (rolling) - sparklines, combo chart
+    const attByIdx = {};
+    (raw.attendance || []).forEach(a => {
+      const y = parseInt(a.year || String(a.monthKey || '').slice(0, 4), 10);
+      const m = parseInt(a.month || String(a.monthKey || '').slice(5, 7), 10) - 1;
+      if (Number.isFinite(y) && Number.isFinite(m)) attByIdx[y * 12 + m] = (attByIdx[y * 12 + m] || 0) + (parseInt(a.attendance, 10) || 0);
+    });
+    const series = { labels: [], selected: [], receipts: [], disbursements: [], net: [], lastYearNet: [], lastYearReceipts: [], lastYearDisb: [], tithes: [], tithers: [], attendance: [] };
+    for (let i = 11; i >= 0; i--) {
+      const idx = year * 12 + last - i;
+      const y = Math.floor(idx / 12), m = idx % 12;
+      const b = bk(y, m), bl = bk(y - 1, m);
+      series.labels.push(`${SHORT_MONTHS[m]}${m === 0 || i === 11 ? ' ' + String(y).slice(2) : ''}`);
+      series.selected.push(y === year && monthSet.has(m));
+      series.receipts.push(b.rec); series.disbursements.push(b.dis); series.net.push(b.rec - b.dis);
+      series.lastYearNet.push(bl.rec - bl.dis); series.lastYearReceipts.push(bl.rec); series.lastYearDisb.push(bl.dis);
+      series.tithes.push(b.tithes); series.tithers.push(b.tithers.size); series.attendance.push(attByIdx[idx] || 0);
+    }
+    kpi.series = series;
+
+    // ── 2. Liquidity (Financial Overview basis, as of today) ──
+    const realYear = now.getFullYear();
+    const live = computeLiveCash(raw.income || [], raw.expenses || [], raw.beginning, raw.cashControl, now);
+    const months6 = live.essential > 0 ? live.availableOperatingCash / live.essential : NaN;
+    const proj = computeTrendProjection(live, { [realYear]: budgetsByYear[realYear] || {}, [realYear + 1]: budgetsByYear[realYear + 1] || {} }, now, 6, true);
+    let firstBad = null, firstDrop = null;
+    if (!proj.noTrend) {
+      const RANK = { green: 0, yellow: 1, red: 2, black: 3 };
+      proj.rows.forEach(r => {
+        if (!firstBad && (r.level.color === 'red' || r.level.color === 'black')) firstBad = r;
+        if (!firstDrop && RANK[r.level.color] > RANK[proj.startLevel.color]) firstDrop = r;
+      });
+    }
+    const asOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const todayBalances = getAccountBalancesThrough(asOfToday);
+    kpi.liquidity = {
+      available: live.availableOperatingCash, essential: live.essential, months: months6, level: getCashLevel(months6),
+      payrollPayable: live.payrollPayable, approvedPayables: live.approvedPayables, generalCash: live.generalCash, restrictedDesignated: live.restrictedDesignated,
+      projection: proj, firstBad, firstDrop,
+      // Restricted vs free cash on the statement basis, as of today
+      freeGf: sumF(FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id)), a => todayBalances[a.id])
+              - outstandingWithholdingsThrough(asOfToday) - buildingFundHeldInGfThrough(asOfToday),
+      withholdings: outstandingWithholdingsThrough(asOfToday), buildingHeld: buildingFundHeldInGfThrough(asOfToday),
+      gfCash: sumF(FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id)), a => todayBalances[a.id]),
+      restricted: FINANCIAL_ACCOUNTS.filter(a => !isGeneralFundAccount(a.id)).map(a => ({ id: a.id, name: a.name, balance: todayBalances[a.id] || 0 }))
+    };
+    kpi.liquidity.restrictedTotal = sumF(kpi.liquidity.restricted, r => r.balance);
+
+    // ── 3. Budget performance (sum of each selected month's own budget; schedule aware) ──
+    const S = buildBudgetStructure();
+    const budgetsObj = budgetsByYear[year] || null;
+    const bo = budgetsObj || { expense: {}, income: {}, expenseSchedule: {}, incomeSchedule: {} };
+    const sumBudget = (fn, key, ms) => ms.reduce((s, m) => s + fn(key, m, bo), 0);
+    function budgetTree(keys, kToMain, kToSub, fn, ms) {
+      const main = {}, annual = {};
+      keys.forEach(k => {
+        const m = kToMain[k], s = kToSub[k];
+        const v = sumBudget(fn, k, ms);
+        if (!main[m]) main[m] = { t: 0, a: 0, s: {} };
+        main[m].t += v; main[m].a += (bo[fn === expenseBudgetForMonth ? 'expense' : 'income'] || {})[k] || 0;
+        if (!main[m].s[s]) main[m].s[s] = { t: 0, a: 0 };
+        main[m].s[s].t += v; main[m].s[s].a += (bo[fn === expenseBudgetForMonth ? 'expense' : 'income'] || {})[k] || 0;
+      });
+      return main;
+    }
+    const expBudSel = budgetTree(S.gfExpenseKeys, S.catKeyToMain, S.catKeyToSub, expenseBudgetForMonth, months);
+    const incBudSel = budgetTree(S.gfIncomeKeys, S.incKeyToMain, S.incKeyToSub, incomeBudgetForMonth, months);
+    const expBudYtd = budgetTree(S.gfExpenseKeys, S.catKeyToMain, S.catKeyToSub, expenseBudgetForMonth, ytdMonths);
+    const incBudYtd = budgetTree(S.gfIncomeKeys, S.incKeyToMain, S.incKeyToSub, incomeBudgetForMonth, ytdMonths);
+    const expActSel = groupByMainSub(st.fExp, classifyExpense, S);
+    const incActSel = groupByMainSub(st.fInc, classifyIncome, S);
+    const sumTree = tree => Object.keys(tree).reduce((s, m) => s + tree[m].t, 0);
+    const sumAnnual = tree => Object.keys(tree).reduce((s, m) => s + tree[m].a, 0);
+    const hasBudget = !!budgetsObj && (Object.keys(bo.expense || {}).length + Object.keys(bo.income || {}).length) > 0;
+    // Budget and actual labels are matched case/whitespace-insensitively (formatCategoryName() turns "Source of Funds"
+    // into "Source Of Funds" on the budget side but the actual side keeps its own spelling), preferring the actual's.
+    const nk = x => String(x || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const pairUp = (budMap, actMap) => {
+      const out = {};
+      Object.keys(budMap).forEach(n => { out[nk(n)] = { name: n, bud: budMap[n] }; });
+      Object.keys(actMap).forEach(n => { out[nk(n)] = { ...(out[nk(n)] || {}), name: n, act: actMap[n] }; });
+      return Object.values(out);
+    };
+    const mainRows = (budTree, actTree) => pairUp(budTree, actTree).map(p => ({
+      name: p.name, actual: (p.act || {}).t || 0, budget: (p.bud || {}).t || 0, annual: (p.bud || {}).a || 0, isMisc: p.name === MISC_MAIN
+    })).filter(r => r.actual > 0.005 || r.budget > 0.005).sort((a, b) => Math.max(b.actual, b.budget) - Math.max(a.actual, a.budget));
+    const lineRows = (budTree, actTree) => {
+      const out = [];
+      pairUp(budTree, actTree).forEach(p => {
+        if (p.name === MISC_MAIN) return;
+        pairUp((p.bud || {}).s || {}, (p.act || {}).s || {}).forEach(sp => {
+          out.push({ name: nk(sp.name) === nk(p.name) ? p.name : `${p.name} › ${sp.name}`, actual: sp.act || 0, budget: (sp.bud || {}).t || 0 });
+        });
+      });
+      return out;
+    };
+    const expLines = lineRows(expBudSel, expActSel), incLines = lineRows(incBudSel, incActSel);
+    const incBudgetSel = sumTree(incBudSel), expBudgetSel = sumTree(expBudSel);
+    const incBudgetYtd = sumTree(incBudYtd), expBudgetYtd = sumTree(expBudYtd);
+    kpi.budget = {
+      hasBudget,
+      incomeActual: st.totalIn, incomeBudget: incBudgetSel, incomePct: incBudgetSel > 0 ? st.totalIn / incBudgetSel * 100 : null,
+      expenseActual: st.totalOut, expenseBudget: expBudgetSel, expensePct: expBudgetSel > 0 ? st.totalOut / expBudgetSel * 100 : null,
+      ytdIncomeActual: stYtd.totalIn, ytdIncomeBudget: incBudgetYtd, ytdIncomePct: incBudgetYtd > 0 ? stYtd.totalIn / incBudgetYtd * 100 : null,
+      ytdExpenseActual: stYtd.totalOut, ytdExpenseBudget: expBudgetYtd, ytdExpensePct: expBudgetYtd > 0 ? stYtd.totalOut / expBudgetYtd * 100 : null,
+      incomeAnnual: sumAnnual(incBudSel), expenseAnnual: sumAnnual(expBudSel),
+      pace: (last + 1) / 12 * 100,                       // straight-line YTD pace
+      schedulePace: sumAnnual(expBudYtd) > 0 ? expBudgetYtd / sumAnnual(expBudYtd) * 100 : null, // schedule-weighted YTD pace
+      expMain: mainRows(expBudSel, expActSel), incMain: mainRows(incBudSel, incActSel),
+      topOver: expLines.filter(r => r.budget > 0 && r.actual > r.budget).sort((a, b) => (b.actual - b.budget) - (a.actual - a.budget)).slice(0, 5),
+      topBehind: incLines.filter(r => r.budget > 0 && r.actual < r.budget).sort((a, b) => (b.budget - b.actual) - (a.budget - a.actual)).slice(0, 5),
+      unbudgetedExp: (expActSel[MISC_MAIN] || {}).t || 0, unbudgetedInc: (incActSel[MISC_MAIN] || {}).t || 0
+    };
+    const expActYtd = groupByMainSub(stYtd.fExp, classifyExpense, S), incActYtd = groupByMainSub(stYtd.fInc, classifyIncome, S);
+    kpi.budget.unbudgetedExpYtd = (expActYtd[MISC_MAIN] || {}).t || 0;
+    kpi.budget.unbudgetedIncYtd = (incActYtd[MISC_MAIN] || {}).t || 0;
+
+    // ── 4. Giving health (counts and percentages only - no giver names or amounts) ──
+    const tithesSel = sumB(year, months, b => b.tithes), tithesYtd = sumB(year, ytdMonths, b => b.tithes);
+    const tithesPrior = sumB(year - 1, months, b => b.tithes), tithesYtdPrior = sumB(year - 1, ytdMonths, b => b.tithes);
+    const tithersSel = unionTithers(year, months), tithersYtd = unionTithers(year, ytdMonths), tithersPrior = unionTithers(year - 1, months);
+    const attendanceSum = sumF(months, m => attByIdx[year * 12 + m]);
+    const attMonthsWithData = months.filter(m => (attByIdx[year * 12 + m] || 0) > 0).length;
+    const attendanceAvg = attMonthsWithData ? attendanceSum / attMonthsWithData : 0;
+    const attPriorMonths = months.filter(m => (attByIdx[(year - 1) * 12 + m] || 0) > 0);
+    const attendancePriorAvg = attPriorMonths.length ? sumF(attPriorMonths, m => attByIdx[(year - 1) * 12 + m]) / attPriorMonths.length : 0;
+    const attYtdMonths = ytdMonths.filter(m => (attByIdx[year * 12 + m] || 0) > 0);
+    const attendanceYtdAvg = attYtdMonths.length ? sumF(attYtdMonths, m => attByIdx[year * 12 + m]) / attYtdMonths.length : 0;
+    // new / lapsed (counts): tithe history over ALL named tithes
+    const everBefore = new Set(), inLastYear = new Set(), inLast3 = new Set();
+    gfIncAll.filter(isNamedTither).forEach(d => {
+      const dt = new Date(d.date), k = titherKey(d), idx = monthIdx(dt);
+      if (idx < year * 12) everBefore.add(k);
+      if (dt.getFullYear() === year - 1) inLastYear.add(k);
+      if (idx > year * 12 + last - 3 && idx <= year * 12 + last) inLast3.add(k);
+    });
+    const newTithers = [...tithersYtd].filter(k => !everBefore.has(k)).length;
+    const lapsedTithers = [...inLastYear].filter(k => !inLast3.has(k)).length;
+    // concentration: share of YTD tithes given by the top 10% of tithers (a single percentage)
+    const perTither = {};
+    gfIncAll.filter(d => isNamedTither(d) && new Date(d.date).getFullYear() === year && new Date(d.date).getMonth() <= last)
+      .forEach(d => { const k = titherKey(d); perTither[k] = (perTither[k] || 0) + parseFloat(d.amount || 0); });
+    const amts = Object.values(perTither).sort((a, b) => b - a);
+    const totNamed = amts.reduce((s, v) => s + v, 0);
+    const topN = Math.max(1, Math.ceil(amts.length * 0.1));
+    const concentration = amts.length >= 10 && totNamed > 0 ? amts.slice(0, topN).reduce((s, v) => s + v, 0) / totNamed * 100 : null;
+    // Weekly Sunday collections: last 13 Sundays up to the end of the selection (or today)
+    const endSel = new Date(year, last + 1, 0);
+    const endCap = endSel > now ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : endSel;
+    const lastSunday = new Date(endCap.getFullYear(), endCap.getMonth(), endCap.getDate() - endCap.getDay());
+    const weekTotals = {};
+    gfIncAll.forEach(d => {
+      const ld = localDate(d.date); if (!ld) return;
+      const ws = isoOf(new Date(ld.getFullYear(), ld.getMonth(), ld.getDate() - ld.getDay()));
+      weekTotals[ws] = (weekTotals[ws] || 0) + parseFloat(d.amount || 0);
+    });
+    const weeks = [];
+    for (let i = 12; i >= 0; i--) {
+      const wd = new Date(lastSunday.getFullYear(), lastSunday.getMonth(), lastSunday.getDate() - i * 7);
+      weeks.push({ date: isoOf(wd), label: `${wd.getDate()} ${SHORT_MONTHS[wd.getMonth()]}`, amount: weekTotals[isoOf(wd)] || 0 });
+    }
+    kpi.giving = {
+      tithes: tithesSel, tithesYtd, tithesPrior, tithesYtdPrior,
+      tithesChange: pctChange(tithesSel, tithesPrior), tithesYtdChange: pctChange(tithesYtd, tithesYtdPrior),
+      loose: sumB(year, months, b => b.loose), looseYtd: sumB(year, ytdMonths, b => b.loose),
+      loosePriorYtd: sumB(year - 1, ytdMonths, b => b.loose),
+      tithers: tithersSel.size, tithersYtd: tithersYtd.size, tithersPrior: tithersPrior.size,
+      tithersChange: pctChange(tithersSel.size, tithersPrior.size),
+      avgTithe: tithersSel.size ? tithesSel / tithersSel.size : 0,
+      participation: attendanceAvg > 0 ? tithersSel.size / attendanceAvg * 100 : null,
+      newTithers, lapsedTithers, concentration, weeks, titherSeries: series.tithers, tithesSeries: series.tithes
+    };
+
+    // ── 5. Where every ₱100 goes (GF disbursements by main category) ──
+    function per100Of(list) {
+      const g = groupByMainSub(list, classifyExpense, S);
+      const total = Object.keys(g).reduce((s, m) => s + g[m].t, 0);
+      const rows = Object.keys(g).map(name => ({ name, amount: g[name].t })).filter(r => r.amount > 0.005).sort((a, b) => b.amount - a.amount);
+      const top = rows.slice(0, 6);
+      const rest = rows.slice(6).reduce((s, r) => s + r.amount, 0);
+      if (rest > 0.005) top.push({ name: 'All other categories', amount: rest, other: true });
+      // largest-remainder rounding so the 100 dots always total exactly 100
+      const raws = top.map(r => total > 0 ? r.amount / total * 100 : 0);
+      const floors = raws.map(Math.floor);
+      let left = total > 0 ? 100 - floors.reduce((s, v) => s + v, 0) : 0;
+      raws.map((v, i) => ({ i, f: v - Math.floor(v) })).sort((a, b) => b.f - a.f).forEach(o => { if (left > 0) { floors[o.i]++; left--; } });
+      return { total, rows: top.map((r, i) => ({ ...r, share: raws[i], pesos: floors[i] })) };
+    }
+    const payrollOf = list => list.filter(d => d.isPayrollGenerated).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    const ministryOf = list => list.filter(isNowMinistryExpense).reduce((s, d) => s + parseFloat(d.amount || 0), 0);
+    kpi.per100 = {
+      period: per100Of(st.fExp), ytd: per100Of(stYtd.fExp),
+      staffRatio: st.totalOut > 0 ? payrollOf(st.fExp) / st.totalOut * 100 : null,
+      ministryRatio: st.totalOut > 0 ? ministryOf(st.fExp) / st.totalOut * 100 : null,
+      staffRatioYtd: stYtd.totalOut > 0 ? payrollOf(stYtd.fExp) / stYtd.totalOut * 100 : null,
+      ministryRatioYtd: stYtd.totalOut > 0 ? ministryOf(stYtd.fExp) / stYtd.totalOut * 100 : null
+    };
+
+    // ── 6. Church obligations ──
+    const todayIso = isoOf(now);
+    const obYear = obligationsData.filter(o => {
+      if (!o.dueDate) return true;
+      const dt = new Date(o.dueDate);
+      return !isNaN(dt.getTime()) && dt.getFullYear() === year;
+    });
+    const obSel = obYear.filter(o => { if (!o.dueDate) return false; const dt = new Date(o.dueDate); return monthSet.has(dt.getMonth()); });
+    const obTotals = list => {
+      const due = sumF(list, o => Math.max(0, parseFloat(o.amount || 0)));
+      const paid = sumF(list, o => Math.min(Math.max(0, parseFloat(o.amount || 0)), getObligationPaidAmount(o)));
+      return { due, paid, balance: sumF(list, o => getObligationBalance(o)), pct: due > 0 ? paid / due * 100 : null, count: list.length };
+    };
+    kpi.obligations = {
+      year: obTotals(obYear), selected: obTotals(obSel),
+      overdue: obYear.filter(o => o.dueDate && o.dueDate < todayIso && getObligationBalance(o) > 0).length,
+      overdueAmount: sumF(obYear.filter(o => o.dueDate && o.dueDate < todayIso && getObligationBalance(o) > 0), o => getObligationBalance(o)),
+      rows: obYear.slice().sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999'))).map(o => ({
+        name: o.name || 'Church Obligation', due: o.dueDate || '', amount: Math.max(0, parseFloat(o.amount || 0)),
+        paid: Math.min(Math.max(0, parseFloat(o.amount || 0)), getObligationPaidAmount(o)), status: getObligationStatus(o),
+        overdue: !!(o.dueDate && o.dueDate < todayIso && getObligationBalance(o) > 0)
+      }))
+    };
+
+    // ── 7. Special projects & Building Fund ──
+    // copied from special-projects.html projectTotals()/getProceedsPostings() - keep in step
+    const projectsOut = (raw.projects || []).filter(p => p.status !== 'Closed').map(p => {
+      const pc = (raw.projectCosts || []).filter(c => c.projectId === p.id);
+      const pe = (raw.projectEntries || []).filter(e => e.projectId === p.id && e.type !== 'Receipt');
+      const pr = (raw.projectEntries || []).filter(e => e.projectId === p.id && e.type === 'Receipt');
+      const costBreakdownTotal = sumF(pc, c => Number(c.amount || 0));
+      const plannedCost = Math.max(costBreakdownTotal, Number(p.targetCost || 0));
+      const churchFund = sumF(pe.filter(e => e.sourceType === 'Church Fund'), e => Number(e.amount || 0));
+      const otherFunding = sumF(pe.filter(e => e.sourceType !== 'Church Fund'), e => Number(e.amount || 0));
+      const grossReceipts = sumF(pr, e => Number(e.amount || 0));
+      const expensesIncurred = sumF(allExpenseData.filter(e => e.specialProjectId === p.id && e.type !== 'transfer'), e => Number(e.amount || 0));
+      let postings = [];
+      if (Array.isArray(p.proceedsPostings) && p.proceedsPostings.length) postings = p.proceedsPostings;
+      else if (p.linkedIncomeId) postings = [{ amount: Number(p.linkedIncomeAmount || 0) }];
+      return {
+        name: p.name || 'Special Project', type: p.projectType || 'Project Fund', status: p.status || 'Open',
+        target: plannedCost, raised: otherFunding + grossReceipts, churchFund, grossReceipts, costs: expensesIncurred,
+        net: grossReceipts - expensesIncurred, posted: sumF(postings, x => Number(x.amount || 0))
+      };
+    });
+    const bRow = st.restrictedActivityAll.find(r => r.id === 'building') || { realInAmt: 0, realOutAmt: 0, transferNet: 0, net: 0, balance: 0 };
+    const bRowYtd = stYtd.restrictedActivityAll.find(r => r.id === 'building') || { realInAmt: 0, realOutAmt: 0, transferNet: 0, net: 0 };
+    kpi.projects = {
+      list: projectsOut,
+      building: {
+        inAmt: bRow.realInAmt, outAmt: bRow.realOutAmt, transfers: bRow.transferNet, net: bRow.net,
+        balance: bRow.balance, heldInGf: st.buildingHeldAtEnd, total: bRow.balance + st.buildingHeldAtEnd,
+        ytdIn: bRowYtd.realInAmt, ytdOut: bRowYtd.realOutAmt, ytdTransfers: bRowYtd.transferNet
+      }
+    };
+
+    // ── 8. People ──
+    let roll = null;
+    if (raw.membershipRoll) {
+      const cnt = { Active: 0, Inactive: 0, Overseas: 0 };
+      let other = 0;
+      raw.membershipRoll.forEach(m => { const s = String(m.status || 'Active'); if (cnt[s] !== undefined) cnt[s]++; else other++; });
+      roll = { ...cnt, other, total: raw.membershipRoll.length };
+    } else kpi.unavailable.roll = true;
+    kpi.people = {
+      attendanceAvg, attendancePriorAvg, attendanceChange: pctChange(attendanceAvg, attendancePriorAvg), attendanceYtdAvg,
+      attendanceSum, monthsWithData: attMonthsWithData, series: series.attendance, roll
+    };
+
+    // ── 9. Stewardship & controls (Treasurer + Auditor only) ──
+    kpi.controls = CONTROLS_ROLES.includes(kpi.role) ? computeControls(raw, period, st, now) : null;
+    return kpi;
+  }
+
+  // Receipt/voucher coverage, count sheets, outstanding advances, workflow status, reconciliation.
+  function computeControls(raw, period, st, now) {
+    const year = period.year, monthSet = new Set(period.months);
+    const liq = new Map((raw.liquidation || []).map(r => [r.id, r]));
+    // Expenses that should carry a receipt/voucher: this selection's General Fund expenses excluding payroll and
+    // release-time cash-advance placeholders (awaiting liquidation).
+    const elig = st.fExp.filter(d => !d.isPayrollGenerated && d.type !== 'deduction-payment' && d.category !== PLACEHOLDER_ADVANCE_CATEGORY);
+    // simplified from print-report.html/report-workflow.html resolveExpenseReceipts() - keep in step
+    const hasReceipt = d => {
+      if (d.receiptUrl) return true;
+      const r = d.linkedLiquidationRequestId ? liq.get(d.linkedLiquidationRequestId) : null;
+      if (!r) return false;
+      const src = (d.liquidationSplit === 'reimburse' && d.sourceLiquidationRequestId && liq.get(d.sourceLiquidationRequestId)) || r;
+      return (src.liquidationReceipts || []).length + (src.supportingReceipts || []).length > 0 || !!r.receiptUrl;
+    };
+    const hasVoucher = d => {
+      if (d.voucherId) return true;
+      const r = d.linkedLiquidationRequestId ? liq.get(d.linkedLiquidationRequestId) : null;
+      return !!(r && r.voucherId);
+    };
+    const withReceipt = elig.filter(hasReceipt).length, withVoucher = elig.filter(hasVoucher).length;
+    // Count sheets: Sunday-dated income days in the selection
+    const sheets = (raw.countSheets || []).filter(s => s.scope !== 'month');
+    const byDate = {};
+    st.periodIncome.forEach(d => { (byDate[d.date] = byDate[d.date] || []).push(d); });
+    const sundays = Object.keys(byDate).filter(dt => { const l = localDate(dt); return l && l.getDay() === 0; });
+    let withSheet = 0, mismatches = 0, checked = 0;
+    sundays.forEach(dt => {
+      const entries = byDate[dt];
+      const dateSheets = sheets.filter(s => s.date === dt);
+      const linked = entries.some(e => e.countSheetId) || dateSheets.length > 0;
+      if (linked) withSheet++;
+      const counted = sumF(dateSheets, s => parseFloat(s.countedCashTotal) || 0);
+      if (counted > 0) {
+        checked++;
+        const cashRecorded = sumF(entries.filter(e => e.payment === 'Cash'), e => parseFloat(e.amount) || 0);
+        if (Math.abs(counted - cashRecorded) >= 0.01) mismatches++;
+      }
+    });
+    // Cash advances released but not yet liquidated (cash advances + older 'Liquidation' type)
+    const open = (raw.liquidation || []).filter(r => (r.type === 'Cash Advance' || r.type === 'Liquidation') && (r.status === 'Released' || r.status === 'Liquidation Submitted'));
+    let oldest = 0;
+    open.forEach(r => { const d = localDate(r.releasedAt || r.createdAt || ''); if (d) oldest = Math.max(oldest, Math.floor((now - d) / 86400000)); });
+    const wfId = period.count === 12 ? `annual-${year}` : (period.count === 1 ? `monthly-${year}-${pad2(period.first + 1)}` : '');
+    const review = wfId ? reviewByDocId[wfId] : null;
+    const WF = { draft: 'Draft', submitted_to_auditor: 'Submitted', returned_by_auditor: 'Returned', submitted_to_finance: 'Approved by Auditor',
+      returned_by_finance: 'Returned', routed_to_chairperson: 'Approved - signing', routed_to_pastor: 'Approved - signing', finalized: 'Signed' };
+    return {
+      expenseCount: elig.length, receiptPct: elig.length ? withReceipt / elig.length * 100 : null, voucherPct: elig.length ? withVoucher / elig.length * 100 : null,
+      missingReceipt: elig.length - withReceipt, missingVoucher: elig.length - withVoucher,
+      sundays: sundays.length, sundaysWithSheet: withSheet, countMismatches: mismatches, countChecked: checked, countSheetsReadable: raw.countSheets !== null,
+      advancesOpen: open.length, advancesAmount: sumF(open, r => Number(r.amount || 0)), advancesOldestDays: oldest,
+      workflowApplies: !!wfId, workflowStatus: wfId ? (review ? (WF[review.status] || review.status || 'Draft') : 'Not started') : '',
+      reconcileClean: st.reconcileIsClean, reconcileDiff: st.reconcileDiff
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 5. RENDERING (pure functions of kpi + sizing; hand-rolled inline SVG, no chart library)
+  // ───────────────────────────────────────────────────────────────────────
+  const peso = n => (n < 0 ? '-' : '') + '₱' + fmt(Math.abs(n));
+  const pesoW = n => (n < 0 ? '-' : '') + '₱' + Math.round(Math.abs(n)).toLocaleString('en-US');
+  function pesoShort(n) {
+    const a = Math.abs(n), s = n < 0 ? '-' : '';
+    if (a >= 1e6) return `${s}₱${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2)}M`;
+    if (a >= 1e4) return `${s}₱${(a / 1e3).toFixed(0)}k`;
+    if (a >= 1e3) return `${s}₱${(a / 1e3).toFixed(1)}k`;
+    return `${s}₱${Math.round(a)}`;
+  }
+  const pctTxt = (v, d = 0) => v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v.toFixed(d)}%`;
+  const num0 = n => Math.round(n).toLocaleString('en-US');
+  function chip(v, goodWhenUp = true) {
+    if (v === null || v === undefined || !Number.isFinite(v)) return '<span class="chip flat">no last-year data</span>';
+    if (Math.abs(v) < 0.5) return '<span class="chip flat">flat vs last year</span>';
+    const up = v > 0, good = up === goodWhenUp;
+    return `<span class="chip ${good ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(v).toFixed(0)}% vs last year</span>`;
+  }
+  function changeWords(v) {
+    if (v === null || v === undefined || !Number.isFinite(v)) return 'with no same-months figure from last year to compare';
+    if (Math.abs(v) < 0.5) return 'about the same as the same months last year';
+    return `${v > 0 ? 'up' : 'down'} ${Math.abs(v).toFixed(0)}% from the same months last year`;
+  }
+  const LEVEL_FILL = { green: '#2e9e5b', yellow: '#e0b11a', red: '#d6453a', black: '#212121' };
+  const LEVEL_ON_NAVY = { green: '#52d68a', yellow: '#f7cf47', red: '#ff7468', black: '#e5e7eb' };
+  const LEVEL_ICON = { green: '●', yellow: '▲', red: '◆', black: '■' };
+  function lvlBadge(l) { return `<span class="lvl ${l.color}"><span aria-hidden="true">${LEVEL_ICON[l.color] || ''}</span>${escapeHtml(l.color.toUpperCase())} · ${escapeHtml(l.level)}</span>`; }
+  const CAT_COLORS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)'];
+  const CAT_HEX = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
+  const OTHER_HEX = '#8a8f98';
+
+  function svgOpen(w, h, label) {
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${escapeAttr(label)}" preserveAspectRatio="xMidYMid meet">`;
+  }
+  const tip = t => ` data-tip="${escapeAttr(t)}"`;
+  function tableView(headers, rows) {
+    return `<details class="tv"><summary>Table view</summary><div class="tbl-scroll"><table class="t"><thead><tr>${headers.map((h, i) => `<th class="${i ? 'n' : ''}">${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${
+      rows.map(r => `<tr>${r.map((c, i) => `<td class="${i ? 'n' : ''}">${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
+  }
+
+  // sparkline (inline, 2px line, end dot with surface ring)
+  function spark(values, color, w = 130, h = 34) {
+    const v = values.map(x => Number.isFinite(x) ? x : 0);
+    const mn = Math.min(...v), mx = Math.max(...v), rng = (mx - mn) || 1, pad = 4;
+    const pts = v.map((x, i) => [pad + i * ((w - 2 * pad) / Math.max(1, v.length - 1)), h - pad - ((x - mn) / rng) * (h - 2 * pad)]);
+    const lastPt = pts[pts.length - 1];
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="Trend over the last 12 months" style="max-width:100%">
+      <polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastPt[0].toFixed(1)}" cy="${lastPt[1].toFixed(1)}" r="4" fill="${color}" stroke="#fff" stroke-width="2"/></svg>`;
+  }
+
+  // progress ring
+  function ring(pct, size, color, big, small, onDark) {
+    const r = size / 2 - 12, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, pct || 0)) / 100;
+    const track = onDark ? 'rgba(255,255,255,.18)' : '#ece8dd';
+    return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${escapeAttr(big + ' ' + small)}">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${track}" stroke-width="16"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="16" stroke-linecap="round"
+        stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+      <text x="${size / 2}" y="${size / 2 + 2}" text-anchor="middle" font-size="${size * 0.2}" font-weight="800" style="fill:${onDark ? '#fff' : 'var(--navy)'}">${escapeHtml(big)}</text>
+      <text x="${size / 2}" y="${size / 2 + size * 0.14}" text-anchor="middle" font-size="${Math.max(11, size * 0.075)}" style="fill:${onDark ? '#dbe3f3' : 'var(--muted)'}">${escapeHtml(small)}</text></svg>`;
+  }
+
+  // waterfall: Beginning -> Receipts -> Disbursements -> (Transfers) -> (Other months in between) -> Ending
+  function waterfallSvg(k, w) {
+    const s = k.stmt, narrow = w < 520;
+    const steps = [{ t: 'total', label: narrow ? 'Begin' : 'Beginning', v: s.begBal, color: 'var(--navy)' },
+      { t: 'delta', label: 'Receipts', v: s.receipts, color: 'var(--s1)' },
+      { t: 'delta', label: narrow ? 'Disbursed' : 'Disbursements', v: -s.disbursements, color: 'var(--s2)' }];
+    if (Math.abs(s.transfers) >= 0.005) steps.push({ t: 'delta', label: 'Transfers', v: s.transfers, color: 'var(--s-other)' });
+    if (!s.contiguous && Math.abs(s.inBetween) >= 0.005) steps.push({ t: 'delta', label: narrow ? 'Between' : 'Other months in between', v: s.inBetween, color: 'var(--s-other)', hatch: true });
+    steps.push({ t: 'total', label: 'Ending', v: s.endBal, color: 'var(--navy)' });
+    let run = 0;
+    const geo = steps.map(st => {
+      if (st.t === 'total') { run = st.v; return { ...st, from: null, to: st.v, level: st.v }; }
+      const from = run, to = run + st.v; run = to; return { ...st, from, to, level: to };
+    });
+    // Levels the bars actually reach (total bars run from the axis base up to their value).
+    const reach = [];
+    geo.forEach(g => { reach.push(g.to); if (g.from !== null) reach.push(g.from); });
+    const lvMin = Math.min(...reach), lvMax = Math.max(...reach), span = (lvMax - lvMin) || 1;
+    const biggestChange = Math.max(...geo.filter(g => g.t === 'delta').map(g => Math.abs(g.v)), 0);
+    // When the changes are small next to the balances the axis base is lifted (and flagged under the chart)
+    // so the receipts/disbursements bars are visible instead of slivers.
+    const lifted = lvMin > 0 && biggestChange < lvMin * 0.35;
+    const base = lifted ? Math.max(0, lvMin - Math.max(span, biggestChange) * 0.8) : Math.min(0, lvMin);
+    const mn = base, mx = lvMax + span * 0.04, rng = (mx - mn) || 1;
+    const top = 26, bottom = narrow ? 44 : 38, h = narrow ? 250 : 290, plotH = h - top - bottom;
+    const yOf = v => top + (1 - (v - mn) / rng) * plotH;
+    const n = geo.length, bw = w / n, barW = Math.min(88, bw * 0.62);
+    let out = svgOpen(w, h, `Cash waterfall from beginning balance ${peso(s.begBal)} to ending balance ${peso(s.endBal)}`);
+    if (!lifted) out += `<line x1="0" x2="${w}" y1="${yOf(0).toFixed(1)}" y2="${yOf(0).toFixed(1)}" stroke="#c9c3b3" stroke-width="1"/>`;
+    geo.forEach((g, i) => {
+      const pA = g.t === 'total' ? g.to : g.from, pB = g.t === 'total' ? (lifted ? mn : 0) : g.to;
+      const y1 = Math.min(yOf(pA), yOf(pB)), bh = Math.max(3, Math.abs(yOf(pA) - yOf(pB)));
+      const x = i * bw + (bw - barW) / 2;
+      const text = g.t === 'total' ? pesoShort(g.v) : `${g.v >= 0 ? '+' : '-'}${pesoShort(Math.abs(g.v)).replace('-', '')}`;
+      const full = g.t === 'total' ? peso(g.v) : `${g.v >= 0 ? '+' : '-'}${peso(Math.abs(g.v)).replace('-', '')}`;
+      out += `<rect x="${x.toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="4" fill="${g.color}"${g.hatch ? ' fill-opacity=".55" stroke="#6b7280" stroke-dasharray="4 3"' : ''}${tip(`${g.label}: ${full}`)}/>`;
+      const labelAbove = g.t === 'total' ? g.v >= 0 : g.v >= 0;
+      out += `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${(labelAbove ? y1 - 6 : y1 + bh + 14).toFixed(1)}" text-anchor="middle" font-size="${narrow ? 11 : 13}" font-weight="700" style="fill:var(--navy)">${escapeHtml(text)}</text>`;
+      out += `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${h - bottom + 20}" text-anchor="middle" font-size="${narrow ? 11 : 13}">${escapeHtml(g.label)}</text>`;
+      if (i < n - 1) out += `<line x1="${(x + barW).toFixed(1)}" x2="${((i + 1) * bw + (bw - barW) / 2).toFixed(1)}" y1="${yOf(g.level).toFixed(1)}" y2="${yOf(g.level).toFixed(1)}" stroke="#9aa3b2" stroke-width="1" stroke-dasharray="3 3"/>`;
+    });
+    out += '</svg>';
+    return out + (lifted ? `<div class="note">The vertical axis starts at ${escapeHtml(pesoShort(base))}, not zero, so the changes are visible.</div>` : '');
+  }
+
+  // semicircle cash-runway gauge: Black / Red / Yellow / Green bands, needle at months of cover
+  function gaugeSvg(months, level, w) {
+    const r = Math.min(w / 2 - 14, 170), cx = w / 2, cy = r + 16, bandW = 28;
+    // piecewise-linear dial so the narrow Black/Red bands stay readable: months -> fraction of the arc
+    const stops = [[0, 0], [0.5, 0.14], [1, 0.34], [3, 0.66], [6, 1]];
+    const frac = m => { const x = Math.max(0, Math.min(6, m)); for (let i = 1; i < stops.length; i++) if (x <= stops[i][0]) { const [a, fa] = stops[i - 1], [b, fb] = stops[i]; return fa + (x - a) / (b - a) * (fb - fa); } return 1; };
+    const pt = (f, rad) => { const a = Math.PI * (1 - f); return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)]; };
+    const arc = (f1, f2, color, title) => { const [x1, y1] = pt(f1, r), [x2, y2] = pt(f2, r); return `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${bandW}"${tip(title)}/>`; };
+    const g = 0.004;
+    let out = svgOpen(w, cy + 54, `Cash runway gauge, ${Number.isFinite(months) ? months.toFixed(1) + ' months of cover' : 'not set up'}, level ${level.level}`);
+    out += arc(0, 0.14 - g, LEVEL_FILL.black, 'Black: under 0.5 months') + arc(0.14, 0.34 - g, LEVEL_FILL.red, 'Red: 0.5 to 1 month')
+      + arc(0.34, 0.66 - g, LEVEL_FILL.yellow, 'Yellow: 1 to 3 months') + arc(0.66, 1, LEVEL_FILL.green, 'Green: 3 months or more');
+    [[0, '0'], [0.5, '½'], [1, '1'], [3, '3'], [6, '6+']].forEach(([m, t]) => { const [x, y] = pt(frac(m), r + bandW / 2 + 12); out += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="12">${t}</text>`; });
+    if (Number.isFinite(months)) {
+      const [nx, ny] = pt(frac(months), r - bandW / 2 - 6);
+      out += `<line x1="${cx}" y1="${cy}" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="var(--navy)" stroke-width="5" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="9" fill="var(--navy)" stroke="#fff" stroke-width="2"/>`;
+    }
+    out += `<text x="${cx}" y="${cy + 38}" text-anchor="middle" font-size="12">months of essential expenses covered</text></svg>`;
+    return out;
+  }
+
+  // 6-month projected Available Operating Cash with coloured level bands
+  function projectionSvg(liq, w) {
+    const p = liq.projection, narrow = w < 520, h = narrow ? 240 : 270, left = narrow ? 44 : 58, right = 10, top = 22, bottom = 34;
+    const pts = [{ label: 'Today', cash: liq.available }].concat(p.rows.map(r => ({ label: r.label.split(' ')[0], cash: r.cash, level: r.level, row: r })));
+    const E = liq.essential, vals = pts.map(x => x.cash);
+    let mn = Math.min(...vals, 0), mx = Math.max(...vals);
+    if (E > 0) { mx = Math.max(mx, E * 3.4); mn = Math.min(mn, 0); }
+    const rng = (mx - mn) || 1, plotH = h - top - bottom, plotW = w - left - right;
+    const yOf = v => top + (1 - (v - mn) / rng) * plotH, xOf = i => left + i * (plotW / (pts.length - 1));
+    let out = svgOpen(w, h, `Projected available operating cash for the next ${p.rows.length} months`);
+    if (E > 0) {
+      const bands = [[mn, E * 0.5, '#212121', .12, 'Black'], [E * 0.5, E, '#d6453a', .13, 'Red'], [E, E * 3, '#e0b11a', .15, 'Yellow'], [E * 3, mx, '#2e9e5b', .13, 'Green']];
+      bands.forEach(([a, b, c, o, nm]) => { const y1 = yOf(Math.min(b, mx)), y2 = yOf(Math.max(a, mn)); out += `<rect x="${left}" y="${y1.toFixed(1)}" width="${plotW}" height="${Math.max(0, y2 - y1).toFixed(1)}" fill="${c}" fill-opacity="${o}"/>`; });
+      let lastLy = -99; [[E * 3, '3 mo'], [E, '1 mo'], [E * 0.5, '½ mo']].forEach(([v, t]) => { const showLbl = Math.abs(yOf(v) - lastLy) >= 13; if (showLbl) lastLy = yOf(v); out += `<line x1="${left}" x2="${w - right}" y1="${yOf(v).toFixed(1)}" y2="${yOf(v).toFixed(1)}" stroke="#8b8576" stroke-width="1" stroke-dasharray="4 4"/>${showLbl ? `<text x="${left - 6}" y="${(yOf(v) + 4).toFixed(1)}" text-anchor="end" font-size="11">${t}</text>` : ''}`; });
+    }
+    out += `<line x1="${left}" x2="${w - right}" y1="${yOf(0).toFixed(1)}" y2="${yOf(0).toFixed(1)}" stroke="#9aa3b2" stroke-width="1"/>`;
+    out += `<polyline fill="none" stroke="var(--s1)" stroke-width="3" stroke-linejoin="round" points="${pts.map((x, i) => `${xOf(i).toFixed(1)},${yOf(x.cash).toFixed(1)}`).join(' ')}"/>`;
+    pts.forEach((x, i) => {
+      const lv = x.level ? ` (${x.level.color} · ${x.level.level})` : '';
+      out += `<circle cx="${xOf(i).toFixed(1)}" cy="${yOf(x.cash).toFixed(1)}" r="5" fill="var(--s1)" stroke="#fff" stroke-width="2"${tip(`${x.label}: ${peso(x.cash)}${lv}`)}/>`;
+      out += `<text x="${xOf(i).toFixed(1)}" y="${h - 14}" text-anchor="middle" font-size="${narrow ? 11 : 12}">${escapeHtml(x.label)}</text>`;
+    });
+    [0, pts.length - 1].forEach(i => { out += `<text x="${(xOf(i) + (i ? -4 : 4)).toFixed(1)}" y="${(yOf(pts[i].cash) - 10).toFixed(1)}" text-anchor="${i ? 'end' : 'start'}" font-size="12" font-weight="700" style="fill:var(--navy)">${escapeHtml(pesoShort(pts[i].cash))}</text>`; });
+    return out + '</svg>';
+  }
+
+  // budget bullet bars: bar = actual, tick = budget for the selected months
+  function bulletSvg(rows, w, side) {
+    if (!rows.length) return '<div class="note">No budget lines for this selection.</div>';
+    const narrowB = w < 480, rowH = narrowB ? 72 : 54, labelW = w, h = rows.length * rowH + 4;
+    let out = svgOpen(w, h, `Budget versus actual bullet bars, ${side}`);
+    rows.forEach((r, i) => {
+      const y = i * rowH + 4, maxv = Math.max(r.actual, r.budget, 1) * 1.1, bar = v => Math.max(0, Math.min(1, v / maxv)) * w;
+      const over = side === 'expense' && r.budget > 0 && r.actual > r.budget;
+      const behind = side === 'income' && r.budget > 0 && r.actual < r.budget;
+      const pct = r.budget > 0 ? `${(r.actual / r.budget * 100).toFixed(0)}%` : 'no budget';
+      const name = r.name.length > (w < 480 ? 24 : 44) ? r.name.slice(0, w < 480 ? 23 : 43) + '…' : r.name;
+      out += `<text x="0" y="${y + 14}" font-size="14" font-weight="600" style="fill:var(--navy)">${escapeHtml(name)}</text>`;
+      out += `<text x="${narrowB ? 0 : labelW}" y="${y + (narrowB ? 32 : 14)}" text-anchor="${narrowB ? 'start' : 'end'}" font-size="13" style="fill:${over ? 'var(--bad)' : 'var(--ink-2)'}" font-weight="${over ? 700 : 400}">${escapeHtml(pesoShort(r.actual))} of ${escapeHtml(r.budget > 0 ? pesoShort(r.budget) : '—')} · ${pct}${over ? ' over' : behind ? ' behind' : ''}</text>`;
+      out += `<rect x="0" y="${y + (narrowB ? 42 : 22)}" width="${w}" height="16" rx="8" fill="#ece8dd"/>`;
+      out += `<rect x="0" y="${y + (narrowB ? 42 : 22)}" width="${Math.max(4, bar(r.actual)).toFixed(1)}" height="16" rx="8" fill="${over ? '#b3261e' : 'var(--navy-2)'}"${tip(`${r.name}: spent/received ${peso(r.actual)}; budget for the selected months ${peso(r.budget)}`)}/>`;
+      if (r.budget > 0) out += ` <rect x="${(bar(r.budget) - 1.5).toFixed(1)}" y="${y + (narrowB ? 37 : 17)}" width="3" height="26" rx="1.5" fill="var(--gold)" stroke="#fff" stroke-width="1"/>`;
+    });
+    return out + '</svg>';
+  }
+
+  // "Every ₱100" waffle: 10x10 dots, row-major, in category order
+  function waffleSvg(rows, w) {
+    const size = Math.min(w, 360), cell = size / 10;
+    const cols = []; rows.forEach((r, i) => { for (let n = 0; n < r.pesos; n++) cols.push({ i, r }); });
+    let out = svgOpen(size, size, 'Every one hundred pesos of disbursements by category');
+    cols.forEach((c, idx) => {
+      const x = (idx % 10) * cell + cell / 2, y = Math.floor(idx / 10) * cell + cell / 2;
+      out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(cell * 0.4).toFixed(1)}" fill="${c.r.other ? OTHER_HEX : CAT_HEX[c.i]}"${tip(`${c.r.name}: ₱${c.r.pesos} of every ₱100`)}/>`;
+    });
+    return out + '</svg>';
+  }
+
+  // 12-month combo: receipts/disbursements bars + net line, last year's net as a ghost line
+  function comboSvg(k, w) {
+    const s = k.series, narrow = w < 520, h = narrow ? 270 : 310, left = narrow ? 42 : 56, right = 8, top = 14, bottom = 38;
+    const all = s.receipts.concat(s.disbursements, s.net, s.lastYearNet, [0]);
+    const mn = Math.min(...all), mx = Math.max(...all), rng = (mx - mn) || 1, plotH = h - top - bottom, plotW = w - left - right;
+    const yOf = v => top + (1 - (v - mn) / rng) * plotH, gw = plotW / 12, bw = Math.max(5, Math.min(22, gw * 0.36));
+    let out = svgOpen(w, h, 'Twelve month receipts, disbursements and net, with last year net');
+    for (let i = 0; i <= 4; i++) { const v = mn + rng * i / 4, y = yOf(v); out += `<line x1="${left}" x2="${w - right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#ece6d6" stroke-width="1"/><text x="${left - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11">${escapeHtml(pesoShort(v))}</text>`; }
+    out += `<line x1="${left}" x2="${w - right}" y1="${yOf(0).toFixed(1)}" y2="${yOf(0).toFixed(1)}" stroke="#9aa3b2" stroke-width="1"/>`;
+    const gx = i => left + i * gw + gw / 2;
+    s.labels.forEach((lab, i) => {
+      const x = gx(i), y0 = yOf(0);
+      const bar = (v, dx, color, name) => { const y = yOf(v), hh = Math.abs(y0 - y); return `<rect x="${(x + dx).toFixed(1)}" y="${Math.min(y, y0).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, hh).toFixed(1)}" rx="3" fill="${color}"${tip(`${lab}: ${name} ${peso(v)}`)}/>`; };
+      out += bar(s.receipts[i], -bw - 1, 'var(--s1)', 'receipts') + bar(s.disbursements[i], 1, 'var(--s2)', 'disbursements');
+      if (s.selected[i]) out += `<rect x="${(x - gw * 0.46).toFixed(1)}" y="${h - bottom + 22}" width="${(gw * 0.92).toFixed(1)}" height="4" rx="2" fill="var(--gold)"/>`;
+      if (!narrow || i % 2 === 0 || s.selected[i]) out += `<text x="${x.toFixed(1)}" y="${h - bottom + 16}" text-anchor="middle" font-size="${narrow ? 10 : 11}">${escapeHtml(lab)}</text>`;
+    });
+    const line = (arr, color, dash, wd) => `<polyline fill="none" stroke="${color}" stroke-width="${wd}"${dash ? ' stroke-dasharray="6 5"' : ''} stroke-linejoin="round" points="${arr.map((v, i) => `${gx(i).toFixed(1)},${yOf(v).toFixed(1)}`).join(' ')}"/>`;
+    out += line(s.lastYearNet, '#9aa3b2', true, 2) + line(s.net, 'var(--navy)', false, 2.5);
+    s.net.forEach((v, i) => { out += `<circle cx="${gx(i).toFixed(1)}" cy="${yOf(v).toFixed(1)}" r="4" fill="var(--navy)" stroke="#fff" stroke-width="2"${tip(`${s.labels[i]}: net ${peso(v)}; same month last year ${peso(s.lastYearNet[i])}`)}/>`; });
+    return out + '</svg>';
+  }
+
+  // 13-Sunday giving heatmap (sequential single-hue ramp, light to dark)
+  const HEAT = ['#f6edd0', '#ecd28a', '#d9ae3c', '#b5811a', '#7a4f08'];
+  function heatmapSvg(weeks, w) {
+    const perRow = w < 520 ? 7 : 13, gap = 6, cell = Math.min(74, Math.floor((w - gap * (perRow - 1)) / perRow)), rows = Math.ceil(weeks.length / perRow), cellH = cell + 4;
+    const mx = Math.max(...weeks.map(x => x.amount), 1);
+    let out = svgOpen(perRow * (cell + gap) - gap, rows * (cellH + gap) - gap, 'Weekly Sunday collections, last 13 Sundays, darker means more');
+    weeks.forEach((wk, i) => {
+      const x = (i % perRow) * (cell + gap), y = Math.floor(i / perRow) * (cellH + gap);
+      const lvl = wk.amount <= 0 ? -1 : Math.min(4, Math.floor(wk.amount / mx * 4.999));
+      const fill = lvl < 0 ? '#f1eee6' : HEAT[lvl], dark = lvl >= 3;
+      out += `<rect x="${x}" y="${y}" width="${cell}" height="${cellH}" rx="8" fill="${fill}"${tip(`Week of ${wk.label}: ${wk.amount > 0 ? peso(wk.amount) : 'no collection recorded'}`)}/>`;
+      out += `<text x="${x + cell / 2}" y="${y + 16}" text-anchor="middle" font-size="${cell < 50 ? 10 : 12}" style="fill:${dark ? '#fff' : 'var(--ink-2)'}">${escapeHtml(wk.label)}</text>`;
+      out += `<text x="${x + cell / 2}" y="${y + cellH - 12}" text-anchor="middle" font-size="${cell < 50 ? 11 : 14}" font-weight="700" style="fill:${dark ? '#fff' : 'var(--navy)'}">${wk.amount > 0 ? escapeHtml(pesoShort(wk.amount)) : '–'}</text>`;
+    });
+    return out + '</svg>';
+  }
+
+  // horizontal thermometer
+  function thermometer(pct, color, w) {
+    const h = 26, p = Math.max(0, Math.min(100, pct || 0));
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${p.toFixed(0)} percent"><rect x="0" y="4" width="${w}" height="18" rx="9" fill="#ece8dd"/><rect x="0" y="4" width="${Math.max(10, w * p / 100).toFixed(1)}" height="18" rx="9" fill="${color}"/><text x="${w - 6}" y="18" text-anchor="end" font-size="12" font-weight="700" style="fill:var(--navy)">${p.toFixed(0)}%</text></svg>`;
+  }
+
+  // ── KPI tile helpers ──
+  function tile(label, val, sub, sparkHtml) { return `<div class="tile"><div class="lbl">${escapeHtml(label)}</div><div class="val">${val}</div>${sub ? `<div class="sub">${sub}</div>` : ''}${sparkHtml ? `<div class="spark">${sparkHtml}</div>` : ''}</div>`; }
+  function naTile(label, why) { return `<div class="tile na"><div class="lbl">${escapeHtml(label)}</div><div class="val">Not available for your role</div>${why ? `<div class="sub">${escapeHtml(why)}</div>` : ''}</div>`; }
+  const signClass = v => v < 0 ? 'neg' : 'pos';
+  function countUp(n) { return `<span data-count="${n}">${pesoW(n)}</span>`; }
+
+  // ── Slide bodies ──
+  function slideHero(k, o) {
+    const s = k.stmt, L = k.liquidity, ringColor = LEVEL_ON_NAVY[L.level.color] || '#fff';
+    const monthsTxt = Number.isFinite(L.months) ? L.months.toFixed(1) : '—';
+    const cashRing = ring(Number.isFinite(L.months) ? Math.min(100, L.months / 6 * 100) : 0, 190, ringColor, monthsTxt, 'months of cover', true);
+    const big = (label, n, cls, cmp) => `<div class="big"><div class="lbl">${label}</div><div class="num ${cls}">${o.static ? pesoW(n) : countUp(n)}</div><div class="cmp">${cmp}</div></div>`;
+    const heroCmp = (ytd, ch, up) => `Year to date ${pesoW(ytd)}<br>${chip(ch, up)}`;
+    const hero = `<div class="hero">
+      ${big('Total Cash Receipts', s.receipts, '', heroCmp(k.ytd.receipts, k.change.receipts, true))}
+      <div class="ring-box">${cashRing}<div class="ring-cap"><span class="lvl ${L.level.color}">${LEVEL_ICON[L.level.color] || ''} ${escapeHtml(L.level.color.toUpperCase())} · ${escapeHtml(L.level.level)}</span></div><div class="ring-cap">cash level today</div></div>
+      ${big('Total Disbursements', s.disbursements, '', heroCmp(k.ytd.disbursements, k.change.disbursements, false))}
+      ${big(s.net >= 0 ? 'Net Surplus' : 'Net Deficit', s.net, s.net >= 0 ? 'pos' : 'neg', `Year to date <b>${pesoW(k.ytd.net)}</b><br>${chip(k.change.net, true)}`)}
+    </div>`;
+    const note = !s.contiguous ? `<div class="note" style="background:var(--yellow-bg);border:1px solid #f7dc6f;border-radius:10px;padding:8px 12px"><b>Non-consecutive months selected</b> - balances span ${SHORT_MONTHS[k.period.first]} to ${SHORT_MONTHS[k.period.last]}; receipts and disbursements cover the selected months only.</div>` : '';
+    const wf = `<div class="panel"><h3>How the cash moved <span class="hint">General Fund · same basis as the signed Print Report</span></h3>${note}<div class="svgwrap">${waterfallSvg(k, o.w.half)}</div>
+      ${tableView(['Step', 'Amount'], [['Beginning Balance', peso(s.begBal)], ['Receipts', peso(s.receipts)], ['Disbursements', peso(-s.disbursements)], ['Net fund transfers', peso(s.transfers)]].concat(!s.contiguous ? [['Other months in between', peso(s.inBetween)]] : []).concat([['Ending Balance', peso(s.endBal)]]))}</div>`;
+    const sr = k.series;
+    const tiles = `<div class="tiles">
+      ${tile('Ending Balance', `<span class="${signClass(s.endBal)}">${pesoW(s.endBal)}</span>`, `Beginning ${peso(s.begBal)}`, spark(sr.net.map((_, i) => sr.receipts[i] - sr.disbursements[i]), 'var(--navy)'))}
+      ${tile('Receipts, 12 months', pesoShort(sumF(sr.receipts, x => x)), 'rolling to the last selected month', spark(sr.receipts, 'var(--s1)'))}
+      ${tile('Disbursements, 12 months', pesoShort(sumF(sr.disbursements, x => x)), 'rolling to the last selected month', spark(sr.disbursements, 'var(--s2)'))}
+      ${tile('Year to date net', `<span class="${signClass(k.ytd.net)}">${pesoShort(k.ytd.net)}</span>`, `Receipts ${pesoShort(k.ytd.receipts)} − disbursements ${pesoShort(k.ytd.disbursements)}`)}
+    </div>`;
+    return hero + `<div class="grid2">${wf}<div class="panel"><h3>At a glance</h3>${tiles}</div></div>`;
+  }
+
+  function slideLiquidity(k, o) {
+    const L = k.liquidity, p = L.projection, hasE = L.essential > 0;
+    const left = `<div class="panel"><h3>Can we pay our bills? <span class="hint">as of today · Financial Overview basis</span></h3>
+      <div class="svgwrap" style="max-width:440px;margin:0 auto">${gaugeSvg(L.months, L.level, Math.min(o.w.half, 420))}</div>
+      <div style="text-align:center;margin-top:6px">${lvlBadge(L.level)}</div>
+      <div class="legend" style="justify-content:center"><span><i style="background:${LEVEL_FILL.black}"></i>Black &lt; ½ mo</span><span><i style="background:${LEVEL_FILL.red}"></i>Red ½-1</span><span><i style="background:${LEVEL_FILL.yellow}"></i>Yellow 1-3</span><span><i style="background:${LEVEL_FILL.green}"></i>Green ≥ 3</span></div></div>`;
+    const tiles = `<div class="panel"><h3>The numbers</h3><div class="tiles">
+      ${tile('Available operating cash', `<span class="${signClass(L.available)}">${pesoW(L.available)}</span>`, `Cash ${peso(L.generalCash)} − designated ${peso(L.restrictedDesignated)} − payables ${peso(L.approvedPayables)}`)}
+      ${tile('Months of cover', hasE ? `${Number.isFinite(L.months) ? L.months.toFixed(1) : '—'}` : 'Not set', hasE ? `Essential monthly expense ${peso(L.essential)}` : 'Set it in Financial Overview › Cash Controls')}
+    </div><div class="note" style="margin-top:8px">${escapeHtml(L.level.control)}</div></div>`;
+    let projHtml;
+    if (p.noTrend) projHtml = '<div class="note">Not enough completed months of recorded General Fund transactions yet to project cash.</div>';
+    else {
+      const alert = L.firstBad ? `<div class="chip down" style="font-size:14px;margin-bottom:8px">Reaches ${escapeHtml(L.firstBad.level.color.toUpperCase())} in ${escapeHtml(L.firstBad.label)} at the conservative trend</div>`
+        : L.firstDrop ? `<div class="chip flat" style="font-size:14px;margin-bottom:8px">Drops to ${escapeHtml(L.firstDrop.level.color.toUpperCase())} in ${escapeHtml(L.firstDrop.label)}</div>`
+        : `<div class="chip up" style="font-size:14px;margin-bottom:8px">Stays ${escapeHtml(p.startLevel.color.toUpperCase())} through ${escapeHtml(p.rows[p.rows.length - 1].label)}</div>`;
+      projHtml = `${alert}<div class="svgwrap">${projectionSvg(L, o.w.full)}</div>
+        <div class="note">Conservative (Hybrid): each month uses the lower of the recent income trend vs budgeted income and the higher of the recent expense trend vs budgeted expense (avg of ${escapeHtml(p.monthsUsed.join(', '))}).</div>
+        ${tableView(['Month', 'Cash', 'Months of cover', 'Level'], p.rows.map(r => [r.label, peso(r.cash), Number.isFinite(r.cover) ? Math.max(0, r.cover).toFixed(2) : '—', `${r.level.color} · ${r.level.level}`]))}`;
+    }
+    const proj = `<div class="panel"><h3>Next 6 months, projected <span class="hint">available operating cash</span></h3>${projHtml}</div>`;
+    const bar = (label, v, color) => `<tr><td><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${color};margin-right:6px"></i>${escapeHtml(label)}</td><td class="n">${peso(v)}</td></tr>`;
+    const split = `<div class="panel"><h3>Free cash vs. money set aside <span class="hint">as of today · statement basis</span></h3><div class="tbl-scroll"><table class="t"><tbody>
+      ${bar('General Fund cash (Cash on Hand + Bank)', L.gfCash, 'var(--s1)')}
+      ${bar('Less: payroll withholdings held for remittance', -L.withholdings, 'var(--s-other)')}
+      ${bar('Less: Building Fund money held in General Fund accounts', -L.buildingHeld, 'var(--s4)')}
+      <tr><td><b>Free General Fund cash</b></td><td class="n"><b>${peso(L.freeGf)}</b></td></tr>
+      ${L.restricted.filter(r => Math.abs(r.balance) >= 0.01).map(r => bar(r.name + ' (restricted)', r.balance, 'var(--s3)')).join('')}
+      </tbody></table></div><div class="note">Earmarked money is not free to spend on ordinary operations.</div></div>`;
+    return `<div class="grid2">${left}${tiles}</div>${proj}${split}`;
+  }
+
+  function slideBudget(k, o) {
+    const b = k.budget;
+    if (!b.hasBudget) return `<div class="panel"><div class="note" style="font-size:16px">No budget has been set up for ${k.period.year}. Set one up in Budget vs Actual to compare actuals with the plan.</div></div>`;
+    const pbar = (label, pct, fill, tickPct, cap) => `<div class="tile"><div class="lbl">${escapeHtml(label)}</div><div class="val">${pctTxt(pct)}</div>
+      <div class="pbar"><div class="fill" style="width:${Math.min(100, pct || 0)}%;background:${fill}"></div>${tickPct ? `<div class="tick" style="left:${Math.min(100, tickPct)}%"></div>` : ''}</div><div class="pbar-cap">${cap}</div></div>`;
+    const incFill = (b.incomePct || 0) >= 100 ? 'var(--good)' : 'var(--s1)';
+    const expFill = (b.expensePct || 0) > 100 ? 'var(--bad)' : 'var(--navy-2)';
+    const heads = `<div class="grid2">
+      ${pbar('Income achieved (selected months)', b.incomePct, incFill, null, `<span>${peso(b.incomeActual)} of ${peso(b.incomeBudget)}</span>`)}
+      ${pbar('Expenses used (selected months)', b.expensePct, expFill, null, `<span>${peso(b.expenseActual)} of ${peso(b.expenseBudget)}</span>`)}
+      ${pbar('Income, year to date', b.ytdIncomePct, (b.ytdIncomePct || 0) >= 100 ? 'var(--good)' : 'var(--s1)', null, `<span>${peso(b.ytdIncomeActual)} of ${peso(b.ytdIncomeBudget)} YTD budget</span>`)}
+      ${pbar('Expenses, year to date', b.ytdExpensePct, (b.ytdExpensePct || 0) > 100 ? 'var(--bad)' : 'var(--navy-2)', b.schedulePace || b.pace, `<span>${peso(b.ytdExpenseActual)} of ${peso(b.ytdExpenseBudget)} YTD budget</span><span>◼ ${((b.schedulePace || b.pace)).toFixed(0)}% of the year's budget is due by now</span>`)}
+    </div>`;
+    const expRows = b.expMain.slice(0, 9), incRows = b.incMain.slice(0, 6);
+    const bullets = `<div class="grid2">
+      <div class="panel"><h3>Spending by category <span class="hint">bar = spent · gold tick = budget for the selected months</span></h3><div class="svgwrap">${bulletSvg(expRows, o.w.half, 'expense')}</div>${tableView(['Category', 'Spent', 'Budget'], b.expMain.map(r => [r.name, peso(r.actual), peso(r.budget)]))}</div>
+      <div class="panel"><h3>Income by category <span class="hint">bar = received · gold tick = budget</span></h3><div class="svgwrap">${bulletSvg(incRows, o.w.half, 'income')}</div>${tableView(['Category', 'Received', 'Budget'], b.incMain.map(r => [r.name, peso(r.actual), peso(r.budget)]))}</div></div>`;
+    const li = (r, expense) => `<li><span>${escapeHtml(r.name)}</span><span class="${expense ? 'neg' : 'neg'}">${expense ? '+' : '−'}${peso(Math.abs(r.actual - r.budget))}</span></li>`;
+    const lists = `<div class="grid3">
+      <div class="panel"><h3>Top 5 over budget</h3>${b.topOver.length ? `<ul class="rank">${b.topOver.map(r => li(r, true)).join('')}</ul>` : '<div class="note">No expense line is over its budget for these months.</div>'}</div>
+      <div class="panel"><h3>Top 5 behind budget (income)</h3>${b.topBehind.length ? `<ul class="rank">${b.topBehind.map(r => li(r, false)).join('')}</ul>` : '<div class="note">No income line is behind budget for these months.</div>'}</div>
+      <div class="panel"><h3>Unbudgeted (Miscellaneous)</h3><div class="tiles" style="grid-template-columns:1fr 1fr">${tile('Spent, selected months', pesoW(b.unbudgetedExp), '')}${tile('Spent, year to date', pesoW(b.unbudgetedExpYtd), `Unbudgeted income YTD ${peso(b.unbudgetedIncYtd)}`)}</div></div></div>`;
+    return heads + bullets + lists;
+  }
+
+  function slideGiving(k, o) {
+    const g = k.giving, sr = k.series;
+    const tiles = `<div class="tiles">
+      ${tile('Tithes, selected months', pesoW(g.tithes), chip(g.tithesChange, true), spark(g.tithesSeries, 'var(--s1)'))}
+      ${tile('Tithes, year to date', pesoW(g.tithesYtd), chip(g.tithesYtdChange, true))}
+      ${tile('Loose offerings, YTD', pesoW(g.looseYtd), chip(pctChange(g.looseYtd, g.loosePriorYtd), true))}
+      ${tile('Unique tithers', num0(g.tithers), `${num0(g.tithersYtd)} this year to date · ${chip(g.tithersChange, true)}`, spark(g.titherSeries, 'var(--s3)'))}
+      ${tile('Average tithe per tither', pesoW(g.avgTithe), 'selected months')}
+      ${tile('Tither participation', g.participation === null ? '—' : pctTxt(g.participation, 1), g.participation === null ? 'attendance not recorded' : `${num0(g.tithers)} tithers / ${num0(k.people.attendanceAvg)} average attendance`)}
+      ${tile('New tithers this year', num0(g.newTithers), 'first tithe this year (count only)')}
+      ${tile('Lapsed tithers', num0(g.lapsedTithers), 'gave last year, nothing in the last 3 months (count only)')}
+      ${tile('Giving concentration', g.concentration === null ? '—' : pctTxt(g.concentration), g.concentration === null ? 'needs at least 10 tithers' : 'share of tithes from the top 10% of tithers')}
+    </div>`;
+    const heat = `<div class="panel"><h3>Sunday collections <span class="hint">last 13 Sundays · darker = more given</span></h3><div class="svgwrap">${heatmapSvg(g.weeks, o.w.full)}</div>
+      <div class="legend"><span>less</span>${HEAT.map(c => `<span><i style="background:${c}"></i></span>`).join('')}<span>more</span></div>
+      ${tableView(['Week of', 'Collection'], g.weeks.map(w => [w.label, peso(w.amount)]))}</div>`;
+    return tiles + heat + `<div class="note">Privacy: this page shows counts and percentages only - never a giver's name or amount.</div>`;
+  }
+
+  function slidePer100(k, o) {
+    const basis = o.per100 === 'ytd' ? 'ytd' : 'period', d = k.per100[basis];
+    const toggle = o.static ? '' : `<div class="seg per100-toggle" style="border-color:var(--line);margin-bottom:8px"><button onclick="setPer100('period')" class="${basis === 'period' ? 'on' : ''}" style="color:var(--navy)">Selected months</button><button onclick="setPer100('ytd')" class="${basis === 'ytd' ? 'on' : ''}" style="color:var(--navy)">Year to date</button></div>`;
+    if (!d.total) return `<div class="panel"><div class="note" style="font-size:16px">No General Fund disbursements recorded for these months.</div></div>`;
+    const sentence = r => {
+      const nm = escapeHtml(r.name);
+      return `<div class="coin-row"><i style="background:${r.other ? OTHER_HEX : CAT_COLORS[d.rows.indexOf(r)]}"></i><div><b>₱${r.pesos}</b> went to ${nm} <span class="note">(${peso(r.amount)})</span></div></div>`;
+    };
+    const ratios = `<div class="tiles" style="grid-template-columns:1fr 1fr">
+      ${tile('Staff cost ratio', pctTxt(basis === 'ytd' ? k.per100.staffRatioYtd : k.per100.staffRatio, 0), 'payroll (gross) ÷ total disbursements')}
+      ${tile('Ministry spending ratio', pctTxt(basis === 'ytd' ? k.per100.ministryRatioYtd : k.per100.ministryRatio, 0), 'Nurture, Outreach, Witness ÷ total')}</div>`;
+    return `<div class="grid2"><div class="panel"><h3>Every ₱100 we spent</h3>${toggle}<div class="svgwrap" style="max-width:360px;margin:0 auto">${waffleSvg(d.rows, o.w.half)}</div>
+      <div class="note" style="text-align:center">Total ${peso(d.total)} · each dot = ₱1 of every ₱100</div></div>
+      <div class="panel"><h3>In plain words</h3>${d.rows.map(sentence).join('')}<div style="margin-top:10px">${ratios}</div></div></div>
+      ${tableView(['Category', 'Amount', 'Per ₱100'], d.rows.map(r => [r.name, peso(r.amount), '₱' + r.pesos]))}`;
+  }
+
+  function slideObligations(k, o) {
+    const ob = k.obligations, y = ob.year;
+    if (!ob.rows.length) return `<div class="panel"><div class="note" style="font-size:16px">No church obligations are recorded for ${k.period.year}.</div></div>`;
+    const ringBox = `<div class="panel" style="text-align:center"><h3 style="justify-content:center">Apportionments paid, ${k.period.year}</h3>
+      <div class="svgwrap" style="max-width:200px;margin:0 auto">${ring(y.pct || 0, 200, (y.pct || 0) >= 100 ? 'var(--good)' : 'var(--s1)', pctTxt(y.pct), 'paid', false)}</div>
+      <div class="note">${peso(y.paid)} of ${peso(y.due)} · balance ${peso(y.balance)}</div></div>`;
+    const tiles = `<div class="panel"><h3>The numbers</h3><div class="tiles">
+      ${tile('Due this year', pesoW(y.due), `${y.count} obligation${y.count === 1 ? '' : 's'}`)}
+      ${tile('Paid', pesoW(y.paid), pctTxt(y.pct) + ' paid')}
+      ${tile('Balance', pesoW(y.balance), '')}
+      ${tile('Overdue', `<span class="${ob.overdue ? 'neg' : 'pos'}">${ob.overdue}</span>`, ob.overdue ? `${peso(ob.overdueAmount)} past due date` : 'nothing past its due date')}
+      ${tile('Due in selected months', pesoW(ob.selected.due), `${peso(ob.selected.paid)} paid · ${pctTxt(ob.selected.pct)}`)}
+    </div></div>`;
+    const tbl = `<div class="panel"><h3>Obligations</h3><div class="tbl-scroll"><table class="t"><thead><tr><th>Obligation</th><th>Due</th><th class="n">Amount</th><th class="n">Paid</th><th>Status</th></tr></thead><tbody>${
+      ob.rows.map(r => `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.due || '—')}</td><td class="n">${peso(r.amount)}</td><td class="n">${peso(r.paid)}</td><td>${r.overdue ? '<span class="chip down">Overdue</span> ' : ''}${escapeHtml(r.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    return `<div class="grid2">${ringBox}${tiles}</div>${tbl}`;
+  }
+
+  function slideProjects(k, o) {
+    const P = k.projects, B = P.building, tw = Math.max(120, Math.min(o.w.half, 380));
+    const cards = P.list.length ? P.list.map(p => {
+      const pct = p.target > 0 ? p.raised / p.target * 100 : null;
+      return `<div class="panel"><h3>${escapeHtml(p.name)} <span class="hint">${escapeHtml(p.type)}</span></h3>
+        ${pct !== null ? `<div class="svgwrap">${thermometer(pct, 'var(--s3)', tw)}</div>` : '<div class="note">No target set</div>'}
+        <div class="tbl-scroll"><table class="t"><tbody>
+          <tr><td>Target (planned cost)</td><td class="n">${p.target > 0 ? peso(p.target) : '—'}</td></tr>
+          <tr><td>Raised (pledges, gifts, receipts)</td><td class="n">${peso(p.raised)}</td></tr>
+          <tr><td>Church funds put in</td><td class="n">${peso(p.churchFund)}</td></tr>
+          <tr><td>Costs so far</td><td class="n">${peso(p.costs)}</td></tr>
+          ${p.grossReceipts > 0 || p.posted > 0 ? `<tr><td>Net proceeds (receipts − costs)</td><td class="n ${signClass(p.net)}">${peso(p.net)}</td></tr><tr><td>Posted to General Fund</td><td class="n">${peso(p.posted)}</td></tr>` : ''}
+        </tbody></table></div></div>`;
+    }).join('') : '<div class="panel"><div class="note">No active special projects.</div></div>';
+    const bf = `<div class="panel"><h3>Building Fund <span class="hint">restricted · reported separately</span></h3>
+      <div class="tiles">
+        ${tile('Receipts in, selected months', pesoW(B.inAmt), `year to date ${peso(B.ytdIn)}`)}
+        ${tile('Paid out, selected months', pesoW(B.outAmt), `year to date ${peso(B.ytdOut)}`)}
+        ${tile('Net transfers in/out', pesoW(B.transfers), `year to date ${peso(B.ytdTransfers)}`)}
+        ${tile('Balance', pesoW(B.total), `account ${peso(B.balance)}${Math.abs(B.heldInGf) >= 0.01 ? (B.heldInGf >= 0 ? ' + ' : ' − ') + peso(Math.abs(B.heldInGf)) + ' held in General Fund accounts' : ''}`)}
+      </div></div>`;
+    return `<div class="grid2">${cards}${bf}</div>`;
+  }
+
+  function slidePeople(k, o) {
+    const p = k.people, hasAtt = p.attendanceAvg > 0;
+    const att = `<div class="tiles">
+      ${tile(k.period.count > 1 ? 'Average monthly attendance' : 'Attendance', hasAtt ? num0(p.attendanceAvg) : '—', hasAtt ? chip(p.attendanceChange, true) : 'not recorded for these months', spark(p.series, 'var(--s3)'))}
+      ${tile('Attendance average, year to date', p.attendanceYtdAvg > 0 ? num0(p.attendanceYtdAvg) : '—', 'per month')}
+      ${tile('Same months last year', p.attendancePriorAvg > 0 ? num0(p.attendancePriorAvg) : '—', 'average per month')}
+    </div>`;
+    const r = p.roll;
+    const roll = r ? `<div class="tiles">${tile('Active members', num0(r.Active), `of ${num0(r.total)} on the roll`)}${tile('Inactive', num0(r.Inactive), '')}${tile('Overseas', num0(r.Overseas), '')}</div>`
+      : `<div class="tiles">${naTile('Membership roll', 'Visible to the Treasurer, Pastor and Chairperson')}</div>`;
+    return `<div class="grid2"><div class="panel"><h3>Worship attendance</h3>${att}</div><div class="panel"><h3>Membership roll</h3>${roll}</div></div>`;
+  }
+
+  function slideControls(k, o) {
+    const c = k.controls;
+    const good = (cond) => cond ? 'pos' : 'neg';
+    const pctOk = v => v === null ? '—' : `<span class="${v >= 90 ? 'pos' : v >= 60 ? '' : 'neg'}">${v.toFixed(0)}%</span>`;
+    const rec = `<div class="tile"><div class="lbl">Ending Balance check</div><div class="val ${c.reconcileClean ? 'pos' : 'neg'}">${c.reconcileClean ? '✓ Balanced' : '✗ Off by ' + peso(c.reconcileDiff)}</div><div class="sub">General Fund accounts vs the statement's Ending Balance</div></div>`;
+    return `<div class="tiles">
+      ${rec}
+      ${tile('Expenses with a receipt', pctOk(c.receiptPct), c.expenseCount ? `${c.expenseCount - c.missingReceipt} of ${c.expenseCount}` : 'no expenses to check')}
+      ${tile('Expenses with a cash voucher', pctOk(c.voucherPct), c.expenseCount ? `${c.expenseCount - c.missingVoucher} of ${c.expenseCount}` : 'no expenses to check')}
+      ${tile('Sundays with a count sheet', c.sundays ? `${c.sundaysWithSheet} / ${c.sundays}` : '—', c.countSheetsReadable ? (c.countChecked ? `${c.countMismatches} cash-count mismatch${c.countMismatches === 1 ? '' : 'es'} of ${c.countChecked} checked` : 'no denomination counts saved') : 'count sheets not readable')}
+      ${tile('Cash advances not yet liquidated', `<span class="${c.advancesOpen ? 'neg' : 'pos'}">${c.advancesOpen}</span>`, c.advancesOpen ? `${peso(c.advancesAmount)} · oldest ${c.advancesOldestDays} days` : 'all liquidated')}
+      ${tile('Report workflow', c.workflowApplies ? escapeHtml(c.workflowStatus) : 'n/a', c.workflowApplies ? 'monthly / annual report status' : 'applies to a single month or the full year')}
+    </div>`;
+  }
+
+  const SLIDES = [
+    { id: 'hero', title: 'Where we stand', q: 'How did the church do, and how healthy is our cash?', fn: slideHero },
+    { id: 'liquidity', title: 'Can we pay our bills?', q: 'Liquidity, runway and what cash is really free', fn: slideLiquidity },
+    { id: 'budget', title: 'Are we on plan?', q: 'Actuals against the approved budget', fn: slideBudget },
+    { id: 'giving', title: 'Is our giving base healthy?', q: 'Tithes, tithers and weekly collections', fn: slideGiving },
+    { id: 'per100', title: 'How we use the offering', q: 'Where every ₱100 goes', fn: slidePer100 },
+    { id: 'obligations', title: 'Faithful to the wider church?', q: 'Apportionments and other obligations', fn: slideObligations },
+    { id: 'projects', title: 'Our building and mission work', q: 'Special projects and the Building Fund', fn: slideProjects },
+    { id: 'people', title: 'Who we serve', q: 'Attendance and the membership roll', fn: slidePeople },
+    { id: 'controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES }
+  ];
+  function slidesFor(k) { return SLIDES.filter(s => !s.only || (s.id === 'controls' ? !!k.controls : true)); }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 6. TALKING POINTS: auto sentences from the kpi object; the Treasurer may edit them per slide
+  // ───────────────────────────────────────────────────────────────────────
+  function autoTalkingPoints(k) {
+    const s = k.stmt, L = k.liquidity, b = k.budget, g = k.giving, P = k.per100, ob = k.obligations, pj = k.projects, pe = k.people, lab = k.period.label;
+    const T = {};
+    T.hero = [
+      `Receipts for ${lab} were ${pesoW(s.receipts)}, ${changeWords(k.change.receipts)}.`,
+      `We spent ${pesoW(s.disbursements)} (${changeWords(k.change.disbursements)}), leaving a ${s.net >= 0 ? 'surplus' : 'deficit'} of ${pesoW(Math.abs(s.net))}.`,
+      `Year to date we have received ${pesoW(k.ytd.receipts)} and spent ${pesoW(k.ytd.disbursements)}: a ${k.ytd.net >= 0 ? 'surplus' : 'deficit'} of ${pesoW(Math.abs(k.ytd.net))}.`,
+      `The General Fund ${s.endBal >= 0 ? 'ended with' : 'ended at'} ${pesoW(s.endBal)}; cash level today is ${L.level.color.toUpperCase()} (${L.level.level})${Number.isFinite(L.months) ? ` with ${L.months.toFixed(1)} months of cover` : ''}.`
+    ];
+    T.liquidity = [];
+    if (Number.isFinite(L.months)) T.liquidity.push(`We hold ${pesoW(L.available)} of available operating cash - enough for ${L.months.toFixed(1)} months of essential expenses (${L.level.level}).`);
+    else T.liquidity.push(`Available operating cash is ${pesoW(L.available)}; the Essential Monthly Operating Expense is not set yet, so the cash level cannot be graded.`);
+    if (!L.projection.noTrend) {
+      if (L.firstBad) T.liquidity.push(`At the conservative trend, cash falls to ${L.firstBad.level.color.toUpperCase()} by ${L.firstBad.label} - the Council should discuss a plan now.`);
+      else if (L.firstDrop) T.liquidity.push(`At the conservative trend, the cash level slips to ${L.firstDrop.level.color.toUpperCase()} by ${L.firstDrop.label}.`);
+      else T.liquidity.push(`At the conservative trend, cash stays ${L.projection.startLevel.color.toUpperCase()} through ${L.projection.rows[L.projection.rows.length - 1].label}.`);
+    }
+    T.liquidity.push(`Of our cash, ${pesoW(L.freeGf)} is free General Fund money; ${pesoW(L.restrictedTotal + L.withholdings + L.buildingHeld)} is restricted or set aside (Building Fund, Mission, payroll withholdings).`);
+    T.budget = b.hasBudget ? [
+      `For ${lab}, income reached ${pctTxt(b.incomePct)} of budget and spending used ${pctTxt(b.expensePct)} of budget.`,
+      `Year to date, income is at ${pctTxt(b.ytdIncomePct)} of its budget and expenses at ${pctTxt(b.ytdExpensePct)}.`,
+      b.topOver.length ? `The biggest overspend is ${b.topOver[0].name}: ${pesoW(b.topOver[0].actual - b.topOver[0].budget)} over its budget.` : 'No expense line is over its budget for these months.',
+      `Unbudgeted spending this year to date: ${pesoW(b.unbudgetedExpYtd)}.`
+    ] : [`No budget has been set up for ${k.period.year}.`];
+    T.giving = [
+      `Tithes for ${lab} were ${pesoW(g.tithes)}, ${changeWords(g.tithesChange)}.`,
+      `${num0(g.tithers)} tithers gave in these months (${changeWords(g.tithersChange)}); ${num0(g.tithersYtd)} have given this year so far.`,
+      g.participation !== null ? `Tither participation is ${g.participation.toFixed(1)}% of average attendance.` : 'Attendance is not recorded for these months, so participation cannot be shown.',
+      `${num0(g.newTithers)} people began tithing this year; ${num0(g.lapsedTithers)} who gave last year have not given in the last three months.`
+    ];
+    T.per100 = P.period.total > 0 ? [
+      `Of every ₱100 spent in ${lab}, ₱${P.period.rows[0].pesos} went to ${P.period.rows[0].name}${P.period.rows[1] ? ` and ₱${P.period.rows[1].pesos} to ${P.period.rows[1].name}` : ''}.`,
+      `Staff costs were ${pctTxt(P.staffRatio)} of disbursements; Nurture, Outreach and Witness ministries were ${pctTxt(P.ministryRatio)}.`
+    ] : ['No General Fund disbursements were recorded for these months.'];
+    T.obligations = ob.rows.length ? [
+      `Church obligations for ${k.period.year}: ${pesoW(ob.year.paid)} paid of ${pesoW(ob.year.due)} (${pctTxt(ob.year.pct)}), balance ${pesoW(ob.year.balance)}.`,
+      ob.overdue ? `${ob.overdue} obligation${ob.overdue === 1 ? ' is' : 's are'} past the due date (${pesoW(ob.overdueAmount)}).` : 'Nothing is past its due date.'
+    ] : [`No church obligations are recorded for ${k.period.year}.`];
+    T.projects = [];
+    pj.list.forEach(p => T.projects.push(`${p.name}: ${pesoW(p.raised)} raised${p.target > 0 ? ` of a ${pesoW(p.target)} target` : ''}, ${pesoW(p.costs)} spent so far.`));
+    T.projects.push(`Building Fund: ${pesoW(pj.building.inAmt)} received and ${pesoW(pj.building.outAmt)} paid out in ${lab}; balance ${pesoW(pj.building.total)}.`);
+    T.people = [
+      pe.attendanceAvg > 0 ? `Average attendance for ${lab} was ${num0(pe.attendanceAvg)}, ${changeWords(pe.attendanceChange)}.` : `Attendance has not been recorded for ${lab}.`
+    ];
+    if (pe.roll) T.people.push(`The membership roll has ${num0(pe.roll.Active)} active, ${num0(pe.roll.Inactive)} inactive and ${num0(pe.roll.Overseas)} overseas members.`);
+    if (k.controls) {
+      const c = k.controls;
+      T.controls = [
+        c.reconcileClean ? 'The General Fund accounts reconcile to the statement Ending Balance to the centavo.' : `The Ending Balance check is off by ${pesoW(c.reconcileDiff)} - needs investigation.`,
+        c.receiptPct === null ? 'No expenses to check for receipts in these months.' : `${c.receiptPct.toFixed(0)}% of expenses have a receipt on file and ${c.voucherPct.toFixed(0)}% have a cash voucher.`,
+        c.advancesOpen ? `${c.advancesOpen} cash advance${c.advancesOpen === 1 ? '' : 's'} (${pesoW(c.advancesAmount)}) not yet liquidated; the oldest is ${c.advancesOldestDays} days old.` : 'All released cash advances have been liquidated.'
+      ];
+    }
+    return T;
+  }
+  function effectivePoints(id, k) {
+    const ov = ui.notes && ui.notes.points && ui.notes.points[id];
+    if (Array.isArray(ov) && ov.length) return { list: ov, edited: true };
+    return { list: (ui.auto && ui.auto[id]) || [], edited: false };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 7. PAGE STATE + ORCHESTRATION
+  // ───────────────────────────────────────────────────────────────────────
+  const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', presenting: false, editing: false, slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
+  const $ = id => document.getElementById(id);
+  const nowDate = () => new Date();
+  const isTreasurer = () => !!activeUserProfile && activeUserProfile.role === 'Treasurer';
+
+  function computeWidths() {
+    const presenting = ui.presenting, vw = window.innerWidth;
+    const avail = presenting ? vw : Math.min($('dash').clientWidth || vw, 1240);
+    const bodyPad = presenting ? vw * 0.08 : (vw <= 600 ? 28 : 44);
+    const inner = Math.max(240, avail - bodyPad), full = Math.max(220, inner - 32);
+    const two = vw >= 900;
+    ui.w = { full: Math.floor(full), half: Math.floor(two ? (inner - 18) / 2 - 32 : full) };
+  }
+
+  function slideHtml(def, num, k, o) {
+    const pts = effectivePoints(def.id, k);
+    let body;
+    try { body = def.fn(k, o); } catch (e) { console.error('Slide failed', def.id, e); body = `<div class="panel"><div class="note">This section could not be drawn.</div></div>`; }
+    let points;
+    if (o.editing && !o.static) {
+      points = `<div class="points"><h3>Talking points <span class="hint note" style="text-transform:none;letter-spacing:0">one per line</span></h3><textarea data-points="${def.id}" aria-label="Talking points for ${escapeAttr(def.title)}">${escapeHtml(pts.list.join('\n'))}</textarea></div>`;
+    } else if (pts.list.length) {
+      points = `<div class="points"><h3>Talking points ${pts.edited ? '<span class="edited-badge">edited by the Treasurer</span>' : ''}</h3><ul>${pts.list.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`;
+    } else points = '';
+    return `<section class="slide" id="slide-${def.id}" data-slide="${def.id}"><header class="slide-head"><span class="slide-num">${num}</span><div><h2>${escapeHtml(def.title)}</h2><p class="q">${escapeHtml(def.q)}</p></div></header><div class="slide-body">${body}</div>${points}</section>`;
+  }
+
+  function renderAll(animate) {
+    const k = ui.kpi;
+    if (!k) return;
+    computeWidths();
+    ui.renderedVw = window.innerWidth; // resize re-renders only when the WIDTH changes (charts are drawn at pixel width)
+    ui.slides = slidesFor(k);
+    if (ui.slideIdx >= ui.slides.length) ui.slideIdx = ui.slides.length - 1;
+    const o = { static: false, w: ui.w, per100: ui.per100, editing: ui.editing };
+    $('dash').innerHTML = ui.slides.map((def, i) => slideHtml(def, i + 1, k, o)).join('');
+    $('period-label').textContent = k.period.label;
+    $('who-line').textContent = `Tagaytay United Methodist Church · ${k.period.label}`;
+    document.title = `Council Dashboard — ${k.period.label}`;
+    applyPresentationClasses();
+    if (animate && !ui.presenting) runCountUp();
+    renderPresDots();
+  }
+  function runCountUp() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const els = [...document.querySelectorAll('[data-count]')];
+    const t0 = performance.now(), dur = 900;
+    function step(t) {
+      const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      els.forEach(el => { const v = parseFloat(el.dataset.count); el.textContent = pesoW(v * e); });
+      if (p < 1) requestAnimationFrame(step);
+      else els.forEach(el => { el.textContent = pesoW(parseFloat(el.dataset.count)); });
+    }
+    requestAnimationFrame(step);
+  }
+
+  function recompute() {
+    ui.kpi = computeKpis(ui.raw, ui.period, nowDate());
+    ui.auto = autoTalkingPoints(ui.kpi);
+  }
+
+  // Change the selected year/months. Everything was read once at load, so this is a recompute from cache
+  // (only a not-yet-cached year's budget doc / report review is fetched, once).
+  let selectionToken = 0;
+  async function setSelection(year, months, opts) {
+    opts = opts || {};
+    if (!opts.remote) manualAction();
+    const token = ++selectionToken;
+    ui.period = makePeriod(year, months);
+    syncControlsUi();
+    if (!ui.period.count) {
+      $('dash').innerHTML = '<div class="status-msg">Select one or more months above to build the dashboard.</div>';
+      $('period-label').textContent = ui.period.label;
+      schedulePublish();
+      return;
+    }
+    await ensureBudgets([year, year - 1]);
+    if (CONTROLS_ROLES.includes(activeUserProfile.role)) {
+      const wf = ui.period.count === 12 ? `annual-${year}` : ui.period.count === 1 ? `monthly-${year}-${pad2(ui.period.first + 1)}` : '';
+      if (wf) await ensureReview(wf);
+    }
+    const notesId = 'councilNotes-' + ui.period.notesKey;
+    if (!ui.notesCache) ui.notesCache = {};
+    if (!(notesId in ui.notesCache)) ui.notesCache[notesId] = await getDocData('settings', notesId);
+    if (token !== selectionToken) return; // a newer click superseded this one
+    ui.notes = ui.notesCache[notesId];
+    ui.editing = false;
+    updateEditButtons();
+    recompute();
+    renderAll(true);
+    schedulePublish();
+  }
+  function syncControlsUi() {
+    const p = ui.period;
+    if ($('sel-year').value !== String(p.year)) $('sel-year').value = String(p.year);
+    document.querySelectorAll('#month-chips button').forEach(b => {
+      const on = p.months.includes(parseInt(b.dataset.m, 10));
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  function presetMonths(name, year) {
+    const now = nowDate(), curY = now.getFullYear(), curM = now.getMonth();
+    switch (name) {
+      case 'this': return { year: curY, months: [curM] };
+      case 'last': { const d = new Date(curY, curM - 1, 1); return { year: d.getFullYear(), months: [d.getMonth()] }; }
+      case 'q1': case 'q2': case 'q3': case 'q4': { const q = parseInt(name[1], 10) - 1; return { year, months: [q * 3, q * 3 + 1, q * 3 + 2] }; }
+      case 'ytd': { const lastM = year === curY ? curM : 11; return { year, months: Array.from({ length: lastM + 1 }, (_, i) => i) }; }
+      case 'year': return { year, months: Array.from({ length: 12 }, (_, i) => i) };
+      default: return { year, months: [] };
+    }
+  }
+  function setupControls(years) {
+    const sel = $('sel-year');
+    sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    $('month-chips').innerHTML = SHORT_MONTHS.map((m, i) => `<button type="button" data-m="${i}" aria-pressed="false">${m}</button>`).join('');
+    $('month-chips').addEventListener('click', e => {
+      const b = e.target.closest('button[data-m]'); if (!b) return;
+      const m = parseInt(b.dataset.m, 10), cur = new Set(ui.period.months);
+      if (cur.has(m)) cur.delete(m); else cur.add(m);
+      setSelection(ui.period.year, [...cur]);
+    });
+    sel.addEventListener('change', () => setSelection(parseInt(sel.value, 10), ui.period.months));
+    document.querySelectorAll('#presets button').forEach(b => b.addEventListener('click', () => {
+      const r = presetMonths(b.dataset.p, parseInt($('sel-year').value, 10));
+      if (!years.includes(r.year)) { alert(`No data for ${r.year} yet.`); return; }
+      setSelection(r.year, r.months);
+    }));
+  }
+
+  // ── Talking-point editing (Treasurer only; settings/councilNotes-<period>) ──
+  function updateEditButtons() {
+    const t = isTreasurer();
+    $('btn-edit').style.display = t && !ui.editing ? '' : 'none';
+    $('btn-save-points').style.display = t && ui.editing ? '' : 'none';
+    $('btn-reset-points').style.display = t && ui.editing ? '' : 'none';
+    $('btn-cancel-points').style.display = t && ui.editing ? '' : 'none';
+  }
+  function toggleEditPoints() { if (!isTreasurer()) return; ui.editing = true; updateEditButtons(); renderAll(false); }
+  function cancelEditPoints() { ui.editing = false; updateEditButtons(); renderAll(false); }
+  async function writeAuditLog(action, collection, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action, collection, docId, summary,
+      before: beforeData || null, after: afterData || null,
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '', actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+  async function saveTalkingPoints() {
+    if (!isTreasurer()) return;
+    const points = {};
+    document.querySelectorAll('textarea[data-points]').forEach(ta => {
+      const lines = ta.value.split('\n').map(x => x.trim()).filter(Boolean);
+      const auto = (ui.auto[ta.dataset.points] || []);
+      if (lines.length && JSON.stringify(lines) !== JSON.stringify(auto)) points[ta.dataset.points] = lines;
+    });
+    const id = 'councilNotes-' + ui.period.notesKey;
+    const before = ui.notes ? { points: ui.notes.points || {} } : null;
+    const doc = { points, periodLabel: ui.period.label, months: ui.period.keys, updatedAt: new Date().toISOString(), updatedBy: { uid: (firebase.auth().currentUser || {}).uid || '', name: activeUserProfile.name } };
+    try {
+      await db.collection('settings').doc(id).set(doc);
+      await writeAuditLog('council_talking_points_saved', 'settings', id, before, { points }, `Edited Council Dashboard talking points for ${ui.period.label}`);
+      ui.notes = doc; ui.notesCache[id] = doc; ui.editing = false;
+      updateEditButtons(); renderAll(false);
+    } catch (err) { console.error(err); alert('Could not save the talking points. Please try again.'); }
+  }
+  async function resetTalkingPoints() {
+    if (!isTreasurer() || !confirm('Discard your edits and use the automatic talking points for this period?')) return;
+    const id = 'councilNotes-' + ui.period.notesKey;
+    const before = ui.notes ? { points: ui.notes.points || {} } : null;
+    const doc = { points: {}, periodLabel: ui.period.label, months: ui.period.keys, updatedAt: new Date().toISOString(), updatedBy: { uid: (firebase.auth().currentUser || {}).uid || '', name: activeUserProfile.name } };
+    try {
+      await db.collection('settings').doc(id).set(doc);
+      await writeAuditLog('council_talking_points_reset', 'settings', id, before, { points: {} }, `Reset Council Dashboard talking points to automatic for ${ui.period.label}`);
+      ui.notes = doc; ui.notesCache[id] = doc; ui.editing = false;
+      updateEditButtons(); renderAll(false);
+    } catch (err) { console.error(err); alert('Could not reset the talking points.'); }
+  }
+  function setPer100(b) { ui.per100 = b; renderAll(false); }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 8. PRESENTATION MODE (full-screen, one section per slide; arrows / click / swipe / Esc)
+  // ───────────────────────────────────────────────────────────────────────
+  function applyPresentationClasses() {
+    document.body.classList.toggle('presenting', ui.presenting);
+    document.querySelectorAll('.slide').forEach((el, i) => el.classList.toggle('active', ui.presenting && i === ui.slideIdx));
+  }
+  function renderPresDots() {
+    $('pres-ctr').textContent = `${ui.slideIdx + 1} / ${ui.slides.length}`;
+    $('pres-dots').innerHTML = ui.slides.map((_, i) => `<i class="${i === ui.slideIdx ? 'on' : ''}"></i>`).join('');
+  }
+  function startPresentation(opts) {
+    opts = opts || {};
+    if (!ui.kpi) return;
+    if (!opts.remote) manualAction();
+    ui.presenting = true;
+    if (!opts.remote) { const cur = currentVisibleSlide(); if (cur >= 0) ui.slideIdx = cur; }
+    renderAll(false);
+    $('dash').scrollTop = 0;
+    try { if (!opts.remote && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* optional */ }
+    schedulePublish();
+  }
+  function stopPresentation(opts) {
+    opts = opts || {};
+    if (!ui.presenting) return;
+    if (!opts.remote) manualAction();
+    ui.presenting = false;
+    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {}); } catch (e) { /* optional */ }
+    renderAll(false);
+    const el = document.querySelectorAll('.slide')[ui.slideIdx];
+    if (el) el.scrollIntoView();
+    schedulePublish();
+  }
+  function goToSlide(i, opts) {
+    opts = opts || {};
+    if (!opts.remote) manualAction();
+    ui.slideIdx = Math.max(0, Math.min(ui.slides.length - 1, i));
+    if (ui.presenting) {
+      applyPresentationClasses(); renderPresDots();
+      const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) el.scrollTop = 0;
+    } else {
+      const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+    schedulePublish();
+  }
+  function presNav(d) { goToSlide(ui.slideIdx + d); }
+  document.addEventListener('keydown', e => {
+    if (!ui.presenting) return;
+    if (e.target && /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); presNav(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { e.preventDefault(); presNav(-1); }
+    else if (e.key === 'Home') goToSlide(0);
+    else if (e.key === 'End') goToSlide(ui.slides.length - 1);
+    else if (e.key === 'Escape') stopPresentation();
+  });
+  // Leaving browser full-screen with Esc also leaves presentation mode.
+  document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && ui.presenting && !ui.keepAfterFs) stopPresentation(); });
+  // click: right 3/4 = next, left 1/4 = previous (ignoring controls); swipe left/right
+  document.addEventListener('click', e => {
+    if (!ui.presenting || e.target.closest('button, a, summary, details, textarea, input, select, .pres-ui')) return;
+    presNav(e.clientX < window.innerWidth * 0.25 ? -1 : 1);
+  });
+  let touchX = null, touchY = null;
+  document.addEventListener('touchstart', e => { if (ui.presenting && e.touches.length === 1) { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; } }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!ui.presenting || touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY; touchX = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) presNav(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  window.addEventListener('resize', (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => { if (ui.kpi && ui.period && ui.period.count && !ui.editing && window.innerWidth !== ui.renderedVw) renderAll(false); }, 200); }; })());
+
+  // In dashboard mode, which section is currently at the top of the viewport (scroll-spy; feeds follower sync)
+  function currentVisibleSlide() {
+    if (ui.presenting) return ui.slideIdx;
+    const els = [...document.querySelectorAll('.slide')]; let best = -1;
+    els.forEach((el, i) => { const r = el.getBoundingClientRect(); if (r.top <= window.innerHeight * 0.35 && r.bottom > window.innerHeight * 0.2) best = i; });
+    return best;
+  }
+  let spyT = null;
+  window.addEventListener('scroll', () => {
+    if (ui.presenting) return;
+    clearTimeout(spyT);
+    spyT = setTimeout(() => { const i = currentVisibleSlide(); if (i >= 0 && i !== ui.slideIdx) { ui.slideIdx = i; schedulePublish(); } }, 150);
+  }, { passive: true });
+
+  // tooltips (delegated; elements carry data-tip)
+  (function () {
+    const tipEl = () => $('tip');
+    function show(e) {
+      const t = e.target.closest && e.target.closest('[data-tip]');
+      if (!t) { tipEl().style.display = 'none'; return; }
+      const el = tipEl(); el.textContent = t.getAttribute('data-tip'); el.style.display = 'block';
+      const x = Math.min(window.innerWidth - el.offsetWidth - 8, Math.max(8, e.clientX + 12)); el.style.left = x + 'px'; el.style.top = Math.max(8, e.clientY - el.offsetHeight - 12) + 'px';
+    }
+    document.addEventListener('mousemove', show);
+    document.addEventListener('click', show);
+    document.addEventListener('mouseleave', () => { tipEl().style.display = 'none'; });
+    document.addEventListener('scroll', () => { tipEl().style.display = 'none'; }, { passive: true });
+  })();
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 9. PRESENTER SYNC (settings/councilPresenter) - Treasurer publishes, other viewers may follow.
+  //    No rules change: settings is Treasurer-write and readable by every allowed role.
+  // ───────────────────────────────────────────────────────────────────────
+  const PRESENTER_DOC = 'councilPresenter';
+  const presenter = { active: false, timer: null };           // Treasurer side
+  const follow = { on: false, paused: false, unsub: null, last: null, applying: false, doc: null }; // viewer side
+
+  function schedulePublish() {
+    if (!isTreasurer() || !presenter.active) return;
+    clearTimeout(presenter.timer);
+    presenter.timer = setTimeout(publishView, 300); // ~300ms debounce
+  }
+  async function publishView() {
+    if (!isTreasurer() || !presenter.active || !ui.period) return;
+    const user = firebase.auth().currentUser;
+    const def = ui.slides[ui.slideIdx];
+    try {
+      await db.collection('settings').doc(PRESENTER_DOC).set({
+        active: true, year: ui.period.year, months: ui.period.keys, section: def ? def.id : 'hero', slideIndex: ui.slideIdx,
+        presentationMode: !!ui.presenting, periodLabel: ui.period.label,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(), by: { uid: user ? user.uid : '', name: activeUserProfile.name }
+      });
+    } catch (err) { console.warn('Presenter publish failed', err && err.message); }
+  }
+  function updateBroadcastButton() {
+    const b = $('btn-broadcast'); if (!b) return;
+    b.textContent = presenter.active ? '■ Stop presenting' : '📡 Start presenting';
+    b.classList.toggle('live', presenter.active);
+  }
+  async function toggleBroadcast() {
+    if (!isTreasurer()) return;
+    const user = firebase.auth().currentUser;
+    if (!presenter.active) {
+      presenter.active = true; updateBroadcastButton();
+      await publishView();
+      try { await writeAuditLog('council_presenting_started', 'settings', PRESENTER_DOC, null, { period: ui.period.label }, `Started presenting the Council Dashboard (${ui.period.label})`); } catch (e) { console.warn(e); }
+    } else {
+      clearTimeout(presenter.timer); presenter.active = false; updateBroadcastButton();
+      try {
+        await db.collection('settings').doc(PRESENTER_DOC).set({ active: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), by: { uid: user ? user.uid : '', name: activeUserProfile.name } });
+        await writeAuditLog('council_presenting_stopped', 'settings', PRESENTER_DOC, { period: ui.period && ui.period.label }, null, 'Stopped presenting the Council Dashboard');
+      } catch (e) { console.warn(e); }
+    }
+  }
+
+  // --- viewer side ---
+  function presenterWords(d) {
+    if (!d) return '';
+    const p = (d.months || []).map(s => parseInt(String(s).slice(5, 7), 10) - 1);
+    return d.periodLabel || makePeriod(d.year, p).label;
+  }
+  function manualAction() { if (follow.on && !follow.applying && !follow.paused) { follow.paused = true; updateFollowUi(); } }
+  function updateFollowUi() {
+    const bar = $('follow-bar'), btn = $('btn-follow');
+    document.body.classList.toggle('following', follow.on);
+    if (isTreasurer()) { bar.style.display = 'none'; btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    const act = follow.doc && follow.doc.active;
+    btn.classList.toggle('pulse', !!act && !follow.on);
+    btn.disabled = false;
+    btn.textContent = follow.on ? 'Stop following' : 'Follow Treasurer';
+    $('follow-hint').textContent = follow.on ? '' : (act ? `Treasurer is presenting ${presenterWords(follow.doc)}` : 'Treasurer is not presenting right now');
+    if (follow.on) {
+      bar.style.display = 'flex';
+      $('follow-text').textContent = follow.paused ? 'Following paused - you changed the view.' : `Following the Treasurer - showing ${presenterWords(follow.last) || ui.period.label}`;
+      $('btn-resume').style.display = follow.paused ? '' : 'none';
+    } else bar.style.display = 'none';
+  }
+  async function checkPresenterOnce() {
+    follow.doc = await getDocData('settings', PRESENTER_DOC);
+    if (isTreasurer()) { // restore the button after a reload
+      presenter.active = !!(follow.doc && follow.doc.active && follow.doc.by && activeUserProfile && follow.doc.by.uid === (firebase.auth().currentUser || {}).uid);
+      updateBroadcastButton();
+    }
+    updateFollowUi();
+  }
+  async function toggleFollow() {
+    if (isTreasurer()) return;
+    if (follow.on) { endFollow(); return; }
+    follow.doc = await getDocData('settings', PRESENTER_DOC);
+    if (!(follow.doc && follow.doc.active)) { updateFollowUi(); return; }
+    startFollow();
+  }
+  // DELIBERATE EXCEPTION to the one-time-read convention: while (and only while) a viewer follows the Treasurer,
+  // this attaches an onSnapshot listener to the single settings/councilPresenter doc. It is detached on
+  // unfollow, when the presenter stops, and on pagehide.
+  function startFollow() {
+    follow.on = true; follow.paused = false;
+    follow.unsub = db.collection('settings').doc(PRESENTER_DOC).onSnapshot(snap => {
+      const d = snap.exists ? snap.data() : null;
+      follow.last = d; follow.doc = d;
+      if (!d || !d.active) { endFollow('Presentation ended'); return; }
+      if (!follow.paused) applyRemote(d);
+      updateFollowUi();
+    }, err => { console.warn('Follow listener error', err && err.message); endFollow('Lost connection to the presenter'); });
+    updateFollowUi();
+  }
+  function endFollow(msg) {
+    if (follow.unsub) { try { follow.unsub(); } catch (e) { /* ignore */ } }
+    follow.unsub = null; follow.on = false; follow.paused = false; follow.last = null;
+    if (msg) { follow.doc = { active: false }; $('follow-hint').textContent = msg; }
+    updateFollowUi();
+    if (msg) $('follow-hint').textContent = msg;
+  }
+  function resumeFollow() { follow.paused = false; if (follow.last) applyRemote(follow.last); updateFollowUi(); }
+  async function applyRemote(d) {
+    if (follow.applying) { follow.pending = d; return; }
+    follow.applying = true;
+    try {
+      const months = (d.months || []).map(s => parseInt(String(s).slice(5, 7), 10) - 1);
+      const sameSel = ui.period && ui.period.year === d.year && JSON.stringify(ui.period.months) === JSON.stringify(makePeriod(d.year, months).months);
+      if (!sameSel) await setSelection(d.year, months, { remote: true });
+      if (d.presentationMode && !ui.presenting) startPresentation({ remote: true });
+      else if (!d.presentationMode && ui.presenting) stopPresentation({ remote: true });
+      let idx = ui.slides.findIndex(s => s.id === d.section);
+      if (idx < 0) idx = Math.min(d.slideIndex || 0, ui.slides.length - 1);
+      goToSlide(idx, { remote: true });
+    } finally {
+      follow.applying = false;
+      if (follow.pending) { const p = follow.pending; follow.pending = null; if (!follow.paused) applyRemote(p); }
+    }
+  }
+  window.addEventListener('pagehide', () => { if (follow.unsub) { try { follow.unsub(); } catch (e) { /* ignore */ } follow.unsub = null; } });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 10. GENERATE & SAVE VERSION (Treasurer only) -> reportArchive + Storage, like the other pages
+  // ───────────────────────────────────────────────────────────────────────
+  function buildSnapshotShell(title, periodLabel, bodyHtml) {
+    const generatedBy = activeUserProfile ? `${activeUserProfile.name} (${activeUserProfile.role})` : 'Unknown';
+    const generatedAt = new Date().toLocaleString('en-PH');
+    const css = $('dash-css').textContent;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(title)}</title>
+<style>${css}</style>
+<style>.snap-head{background:#8B0000;color:#fff;padding:16px 22px}.snap-head h1{font-size:22px}.snap-head div{font-size:12px;opacity:.9;margin-top:4px;line-height:1.5}</style>
+</head>
+<body>
+  <div class="snap-head"><h1>${escapeHtml(title)}</h1><div>${escapeHtml(periodLabel || '')}<br>Generated by ${escapeHtml(generatedBy)} on ${escapeHtml(generatedAt)}<br>GraceBooks - Tagaytay United Methodist Church · counts and percentages only, no giver names</div></div>
+  <div id="dash">${bodyHtml}</div>
+</body>
+</html>`;
+  }
+  async function saveReportVersion({ sourcePage, title, periodLabel, bodyHtml }) {
+    const html = buildSnapshotShell(title, periodLabel, bodyHtml);
+    const blob = new Blob([html], { type: 'text/html' });
+    const docRef = db.collection('reportArchive').doc();
+    const storagePath = `report-archive/${docRef.id}/snapshot.html`;
+    await storage.ref(storagePath).put(blob, { contentType: 'text/html' });
+    const user = firebase.auth().currentUser;
+    const createdAt = new Date().toISOString();
+    const meta = {
+      sourcePage, title, periodLabel: periodLabel || '', storagePath,
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '', actorRole: activeUserProfile ? activeUserProfile.role : '', createdAt
+    };
+    await docRef.set(meta);
+    await db.collection('auditLogs').add({
+      action: 'report_version_saved', collection: 'reportArchive', docId: docRef.id,
+      summary: `Saved report version: ${title}`, before: null, after: { sourcePage, title, periodLabel, storagePath },
+      actorUid: meta.actorUid, actorEmail: meta.actorEmail, actorName: meta.actorName, actorRole: meta.actorRole, createdAt
+    });
+  }
+  async function saveCouncilVersion() {
+    if (!isTreasurer() || !ui.kpi || !ui.period.count) return;
+    const btn = $('save-version-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+      const k = ui.kpi, o = { static: true, w: { full: 1000, half: 480 }, per100: ui.per100, editing: false };
+      const body = slidesFor(k).map((def, i) => slideHtml(def, i + 1, k, o)).join('');
+      await saveReportVersion({ sourcePage: 'council-dashboard', title: `Council Dashboard — ${k.period.label}`, periodLabel: k.period.label, bodyHtml: body });
+      alert('Version saved to Report Archive.');
+    } catch (err) { console.error(err); alert('Could not save version. Please try again.'); }
+    btn.disabled = false; btn.textContent = 'Generate & Save Version';
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 11. BOOT
+  // ───────────────────────────────────────────────────────────────────────
+  window.graceBooksAuthReady.then(async profile => {
+    activeUserProfile = profile;
+    if (!COUNCIL_ALLOWED_ROLES.includes(profile.role)) { window.location.href = 'index.html'; return; }
+    $('who-line').textContent = `${profile.name} · ${profile.role}`;
+    $('save-version-btn').style.display = isTreasurer() ? '' : 'none';
+    $('btn-broadcast').style.display = isTreasurer() ? '' : 'none';
+    $('btn-follow').style.display = isTreasurer() ? 'none' : '';
+    updateEditButtons();
+    try {
+      const raw = await loadRaw(profile);
+      if (!raw.income || !raw.expenses) throw new Error('Income or expenses could not be read.');
+      ui.raw = raw;
+      const now = nowDate();
+      const yrs = new Set([now.getFullYear()]);
+      if (raw.yearsCfg && Array.isArray(raw.yearsCfg.list)) raw.yearsCfg.list.forEach(y => yrs.add(parseInt(y, 10)));
+      raw.income.concat(raw.expenses).forEach(d => { const y = parseInt(String(d.date).slice(0, 4), 10); if (y > 2000) yrs.add(y); });
+      const years = [...yrs].filter(Number.isFinite).sort((a, b) => b - a);
+      setupControls(years);
+      const start = presetMonths('last', years[0]);
+      await setSelection(start.year, start.months, { remote: true });
+      checkPresenterOnce();
+    } catch (err) {
+      console.error(err);
+      $('dash').innerHTML = `<div class="status-msg err">Could not load the numbers: ${escapeHtml(err.message || err)}. Please reload the page.</div>`;
+    }
+  });
+</script>
+</body>
+</html>
