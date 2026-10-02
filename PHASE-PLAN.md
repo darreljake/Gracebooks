@@ -867,9 +867,8 @@ Status: Done (code side); deploy pending.
 - Owner confirmed: event costs are paid from the event's own collections (net is the right basis); construction projects stay project-ledger only (no change needed - they never post income).
 - Verified with a Playwright run against a stateful Firestore stub: post 30,000 → late receipt → post additional 5,000 → stale-total abort → late cost → over-posted 8,000 → correction −8,000 → undo → delete refused → legacy project additional posting + undo with month warning → construction project unaffected; no page errors.
 
-## Cash Vouchers: Purpose line + Abbreviations (2026-10-02)
+## Cash Vouchers: Purpose line (2026-10-02)
 
-Status: Done (code side); deploy hosting pending. No rules change (`settings` is already Treasurer-write / all-roles-read).
+Status: Done (code side); deploy hosting pending. No rules change.
 
-- Auditor found vouchers short on rationale and asked that abbreviations be spelled out. `cash-voucher.html` gains an optional **Purpose / Explanation** field (prefilled from the linked expense/liquidation `notes`, confirm prompt when left blank, shown in the register and searchable) printed under the Particulars table. A Treasurer-edited abbreviations list (`settings/abbreviations`) spells each abbreviation out in parentheses the first time it appears on a voucher.
-- `print-report.html` stays concise: no purpose text on report lines; one small "Abbreviations:" legend under the statement lists only the abbreviations actually used. Excel export unchanged.
+- Auditor found vouchers short on rationale. `cash-voucher.html` gains an optional **Purpose / Explanation** field (prefilled from the linked expense/liquidation `notes`, confirm prompt when left blank, shown in the register and searchable) printed under the Particulars table. `print-report.html` is unchanged (no purpose text on report lines).

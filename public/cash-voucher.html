@@ -251,14 +251,6 @@
       </div>
     </div>
 
-    <div class="form-row">
-      <div class="form-group">
-        <label>Abbreviations (spelled out on vouchers and the Print Report)</label>
-        <textarea id="abbreviations-input" rows="5" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:5px; font-family:'Poppins', sans-serif; font-size:13px;" placeholder="One per line, e.g.&#10;UMM = United Methodist Men&#10;UMYF = United Methodist Youth Fellowship&#10;DS = District Superintendent"></textarea>
-        <div class="muted" style="margin-top:6px;">One per line as <b>ABBR = Meaning</b>. On a voucher, the first time an abbreviation appears it prints as "UMM (United Methodist Men)". On the Print Report, only the abbreviations actually used are listed once in a short legend under the statement, so the report lines stay short. Matching is case-sensitive.</div>
-      </div>
-    </div>
-    <button class="btn-save secondary" onclick="saveAbbreviations()">Save Abbreviations</button>
   </div>
 
   <!-- ============ CARD 2: Create / Edit Cash Voucher ============ -->
@@ -306,7 +298,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Purpose / Explanation</label>
-        <textarea id="voucher-purpose" rows="2" maxlength="500" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:5px; font-family:'Poppins', sans-serif; font-size:13px;" placeholder="Why the cash was released, e.g. Meals for UMYF district camp, 12-14 Sep, 25 delegates" oninput="renderVoucherPreview()"></textarea>
+        <textarea id="voucher-purpose" rows="2" maxlength="500" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:5px; font-family:'Poppins', sans-serif; font-size:13px;" placeholder="Why the cash was released, e.g. Meals for youth district camp, 12-14 Sep, 25 delegates" oninput="renderVoucherPreview()"></textarea>
         <div class="muted" style="margin-top:4px;">One or two sentences for the auditor: what it was for, which event/ministry, and who approved if relevant. Printed on the voucher only, not on the financial report.</div>
       </div>
     </div>
@@ -465,7 +457,6 @@
   let canManageVouchersFlag = false;
   let signatureProfile = null;
   let voucherSettings = {};
-  let abbreviationList = [];
   let allVouchers = [];
 
   // The voucher's Firestore document id is generated client-side up front
@@ -1040,11 +1031,8 @@
   function voucherMarkup(v) {
     const rows = (v.particulars || []).filter(p => (p.description && String(p.description).trim()) || Number(p.amount));
     const minRows = 3;
-    // One `seen` set per voucher: each abbreviation is spelled out only the
-    // first time it appears (account, then particulars, then purpose).
-    const seenAbbr = new Set();
-    const accountHtml = expandAbbreviationsHtml(v.account || '', seenAbbr);
-    let rowsHtml = rows.map(p => `<tr><td>${expandAbbreviationsHtml(p.description, seenAbbr)}</td><td class="amt">${Number(p.amount) ? fmt(p.amount) : ''}</td></tr>`).join('');
+    const accountHtml = escapeHtml(v.account || '');
+    let rowsHtml = rows.map(p => `<tr><td>${escapeHtml(p.description)}</td><td class="amt">${Number(p.amount) ? fmt(p.amount) : ''}</td></tr>`).join('');
     for (let i = rows.length; i < minRows; i++) rowsHtml += `<tr><td>&nbsp;</td><td>&nbsp;</td></tr>`;
     const releasedBy = v.releasedBy || {};
     const receivedBy = v.receivedBy || {};
@@ -1061,7 +1049,7 @@
     const totalAmount = v.totalAmount != null ? v.totalAmount : rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     const purposeText = String(v.purpose || '').trim();
     const purposeHtml = purposeText
-      ? `<div class="voucher-purpose"><span class="label">Purpose:</span>${expandAbbreviationsHtml(purposeText, seenAbbr)}</div>`
+      ? `<div class="voucher-purpose"><span class="label">Purpose:</span>${escapeHtml(purposeText)}</div>`
       : '';
     return `
       <div class="voucher-block">
@@ -1492,82 +1480,6 @@
 
   /* ================= Init ================= */
 
-  // settings/abbreviations { items: [{abbr, meaning}] } - one church-wide
-  // list, also read by print-report.html for its abbreviations legend
-  // (settings is readable by every role that opens either page).
-  async function loadAbbreviations() {
-    try {
-      const doc = await db.collection('settings').doc('abbreviations').get();
-      abbreviationList = cleanAbbreviationItems(doc.exists ? doc.data().items : []);
-    } catch (error) {
-      abbreviationList = [];
-      console.warn('Abbreviations unavailable', error);
-    }
-  }
-
-  function cleanAbbreviationItems(items) {
-    const seen = new Set();
-    return (Array.isArray(items) ? items : [])
-      .map(it => ({ abbr: String((it && it.abbr) || '').trim(), meaning: String((it && it.meaning) || '').trim() }))
-      .filter(it => it.abbr && it.meaning && !seen.has(it.abbr) && seen.add(it.abbr));
-  }
-
-  function parseAbbreviationLines(text) {
-    return cleanAbbreviationItems(String(text || '').split('\n').map(line => {
-      const i = line.indexOf('=');
-      return i < 0 ? null : { abbr: line.slice(0, i), meaning: line.slice(i + 1) };
-    }));
-  }
-
-  function abbreviationRegex(abbr) {
-    const esc = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^A-Za-z0-9])(${esc})(?![A-Za-z0-9])`);
-  }
-
-  // Escapes `text` and appends " (Meaning)" after the first occurrence of each
-  // listed abbreviation not already in `seen`. Display only - the stored text
-  // is never changed. Skipped when the meaning is already written out.
-  function expandAbbreviationsHtml(text, seen) {
-    const raw = String(text == null ? '' : text);
-    const inserts = [];
-    abbreviationList.forEach(({ abbr, meaning }) => {
-      if (seen.has(abbr)) return;
-      const m = abbreviationRegex(abbr).exec(raw);
-      if (!m) return;
-      seen.add(abbr);
-      if (raw.toLowerCase().includes(meaning.toLowerCase())) return;
-      const end = m.index + m[1].length + m[2].length;
-      if (/^\s*\(/.test(raw.slice(end))) return;
-      inserts.push({ end, meaning });
-    });
-    inserts.sort((a, b) => a.end - b.end);
-    let out = '';
-    let pos = 0;
-    inserts.forEach(({ end, meaning }) => {
-      out += escapeHtml(raw.slice(pos, end)) + ` (${escapeHtml(meaning)})`;
-      pos = end;
-    });
-    return out + escapeHtml(raw.slice(pos));
-  }
-
-  async function saveAbbreviations() {
-    if (!canManageVouchersFlag) return alert('Only the Treasurer can edit abbreviations.');
-    const items = parseAbbreviationLines(document.getElementById('abbreviations-input').value);
-    const before = { items: abbreviationList };
-    try {
-      await db.collection('settings').doc('abbreviations').set({ items, updatedAt: new Date().toISOString() });
-      abbreviationList = items;
-      document.getElementById('abbreviations-input').value = items.map(it => `${it.abbr} = ${it.meaning}`).join('\n');
-      await writeAuditLog('abbreviations_updated', 'abbreviations', before, { items },
-        `Updated abbreviations list (${items.length} entr${items.length === 1 ? 'y' : 'ies'})`);
-      renderVoucherPreview();
-      alert(`Saved ${items.length} abbreviation${items.length === 1 ? '' : 's'}.`);
-    } catch (error) {
-      console.error(error);
-      alert(error.message || 'Unable to save abbreviations.');
-    }
-  }
-
   async function loadVoucherSettings() {
     try {
       const doc = await db.collection('settings').doc('voucherSettings').get();
@@ -1588,14 +1500,12 @@
     applyVoucherRoleAccess();
 
     await loadVoucherSettings();
-    await loadAbbreviations();
 
     if (canManageVouchersFlag) {
       initSignaturePad();
       await loadSignatureProfile();
       document.getElementById('treasurer-name-input').value = voucherSettings.treasurerName || activeProfile.name || '';
       document.getElementById('auto-embed-checkbox').checked = autoEmbedEnabled();
-      document.getElementById('abbreviations-input').value = abbreviationList.map(it => `${it.abbr} = ${it.meaning}`).join('\n');
       startNewVoucherDraft();
       loadAccountSuggestions();
     }
