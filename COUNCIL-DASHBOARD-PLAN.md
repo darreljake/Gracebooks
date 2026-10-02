@@ -1,6 +1,6 @@
 # Council Dashboard - Plan
 
-Status: Planned (2026-10-02). Owner: Treasurer. Audience: Church Council (Sunday presentation).
+Status: Done (2026-10-02). Owner: Treasurer. Audience: Church Council (Sunday presentation).
 
 ## Goal
 
@@ -159,3 +159,8 @@ and Ending Balance must equal `print-report.html`'s figures for that month to th
 - Assert dashboard totals == print-report totals for the same fixture/month.
 - Screenshots at desktop (1440) and phone (390) widths, light print preview, presentation mode.
 - Each role in the access list loads without console errors; a disallowed role redirects.
+
+## Additions (Treasurer requests, built with the page)
+
+1. **Month selector.** Instead of month/quarter/year, a year picker plus 12 toggle chips (non-contiguous allowed) with presets (This month, Last month, Q1-Q4, YTD, Full year, Clear). Receipts/disbursements/giving/attendance are summed (attendance averaged) over the selected months only; budget = sum of each selected month's own schedule-aware budget; comparison = the same months last year. Beginning Balance is through the day before the first selected month and Ending Balance through the end of the last; for a non-contiguous selection the waterfall adds an "Other months in between" bar and a note, so it still ties out. Titles, talking points, Save Version and the snapshot describe the selection in words ("June 2026", "Apr-Jun 2026", "Jan, Mar, Jun 2026"). All data is read once; chip clicks recompute from cache.
+2. **Follow / sync.** The Treasurer's "Start presenting" publishes the view (year, months, section, slide, presentation mode) to `settings/councilPresenter` with a ~300ms debounce (audit entries only on start/stop). Other roles get a "Follow Treasurer" button; following attaches an `onSnapshot` listener to that one doc only (the single deliberate exception to one-time reads), shows a banner, pauses on a manual change (Resume following), and unfollows when the presenter stops or the page hides. No rules change.
