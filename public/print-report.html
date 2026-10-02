@@ -845,7 +845,7 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
   let reviewGateChecked = false;
   let currentWorkflowStatus = '';
   // Pass-through ("in and out") collections: settings/passThroughItems = { items: [{ side: 'income'|'expense', key, label, ... }] },
-  // tagged by the Treasurer on council-dashboard.html. A tagged Miscellaneous (Unbudgeted) line is shown under its own heading
+  // tagged by the Treasurer in budget-vs-actual.html (Setup Budget); the Council Dashboard only reads them. A tagged Miscellaneous (Unbudgeted) line is shown under its own heading
   // instead (same amounts, only the heading changes). Keys use the same label logic as the Miscellaneous lines:
   // side + '|' + normalizeGroupKey(pickMiscLabel(...)). Read once; a failed read or no tags = nothing changes.
   const PT_INC_MAIN = 'Pass-through Collections (for remittance)';

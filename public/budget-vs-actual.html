@@ -449,6 +449,25 @@
       </div>
       <button class="btn-save-budget" onclick="saveBudget()">💾 Save Budget Amounts</button>
       <div class="save-success" id="save-success">✅ Budget amounts and sequence saved!</div>
+
+      <div id="pt-card" style="display:none; margin-top: 22px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <h4 style="color:#333; margin-bottom:4px;">Pass-through items (in and out)</h4>
+        <p style="font-size:11px; color:#777; margin-bottom:10px;">Offerings collected only to be remitted. A marked line leaves the Unbudgeted totals, budget percentages and the Council Dashboard's &#8369;100 mixes, and the Print Report shows it under its own heading. Total receipts, disbursements and the Ending Balance never change. Lines below are the selected year's Miscellaneous (Unbudgeted) entries.</p>
+        <div id="pt-body"><div class="pt-note">Open this tab to load the lines.</div></div>
+      </div>
+      <style>
+        #pt-card h5 { font-size: 13px; color: #1a5276; margin-bottom: 6px; }
+        .pt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+        .pt-col { min-width: 0; overflow-x: auto; }
+        table.pt-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table.pt-t th { text-align: left; font-size: 11px; text-transform: uppercase; color: #777; padding: 5px 6px; border-bottom: 2px solid #eee; white-space: nowrap; }
+        table.pt-t td { padding: 6px; border-bottom: 1px solid #f1f1f1; vertical-align: top; }
+        table.pt-t .n { text-align: right; white-space: nowrap; }
+        .pt-note { font-size: 12px; color: #777; }
+        .pt-chip { font-size: 10px; background: #eee; border-radius: 999px; padding: 1px 7px; color: #555; white-space: nowrap; }
+        .pt-btn { border: 1px solid #1a5276; background: #fff; color: #1a5276; border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .pt-btn:hover { background: #eaf2f8; }
+      </style>
     </div>
   </div>
 </div>
@@ -2442,6 +2461,360 @@
       window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
     }
   </script>
+<script>
+// ═══ Setup Budget > "Pass-through items (in and out)" (Treasurer only) ═══════════════════════════════════════════
+// Lists the selected year's Miscellaneous (Unbudgeted) lines (General Fund basis) so the Treasurer can mark the ones that are
+// collected only to be remitted. Everything below is self-contained (IIFE) so it cannot touch the page's own functions.
+(function () {
+  // ── copied from print-report.html - keep in step ──────────────────────────────────────────
+  // (basis helpers, Miscellaneous (Unbudgeted) classification and label logic; the same code the Council Dashboard copies)
+  const GENERAL_FUND_EXPENSE_ACCOUNTS = ['cash-hand', 'cash-bank', 'cash', 'cash on hand', 'cash in bank', 'bank transfer', 'bank'];
+  function isReportableSpecialProjectExpense(d) {
+    if (!d || !d.isSpecialProject) return true;
+    const account = (d.targetAccId || d.payment || 'cash-hand').toString().trim().toLowerCase();
+    return GENERAL_FUND_EXPENSE_ACCOUNTS.includes(account);
+  }
+  function formatCategoryName(str) {
+    if (!str) return '';
+    str = String(str).trim();
+    if (!str) return '';
+    return str.split(' ').map(word => {
+      if (!word) return word;
+      const letters = word.replace(/[^a-zA-Z]/g, '');
+      if (letters.length > 0 && letters === letters.toUpperCase()) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }).join(' ');
+  }
+  function getMemberId(d) {
+    return (d.memberId || d.memberID || d.memberCode || '').toString().trim();
+  }
+  const PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
+  const CASH_ADVANCE_RETURN_LABEL = 'cash advance return';
+  function isGeneralFundAccount(id) {
+    if (id === 'building') return false;
+    return generalFundAccounts[id] !== false;
+  }
+  function isBuildingFundEntry(d, isExpense) {
+    if (!d) return false;
+    if ((isExpense ? getExpenseAccountId(d) : getIncomeAccountId(d)) === 'building') return true;
+    return [d.budgetCategory, d.type, d.category].some(v => String(v || '').toLowerCase().includes('building fund'));
+  }
+  function isGeneralFundIncome(d) {
+    return !isBuildingFundEntry(d, false) && isGeneralFundAccount(getIncomeAccountId(d));
+  }
+  function isGeneralFundExpense(d) {
+    return !isBuildingFundEntry(d, true) && isGeneralFundAccount(getExpenseAccountId(d));
+  }
+  function getIncomeAccountId(d) {
+    if (d.type === 'Building Fund') return 'building';
+    if (d.type === 'Mission Fund') return 'mission';
+    if (d.type === 'Investment Income') return 'investment';
+    if (d.targetAccount) return d.targetAccount;
+    return d.payment === 'Bank Transfer' ? 'cash-bank' : 'cash-hand';
+  }
+  function getExpenseAccountId(d) {
+    return d.targetAccId || (d.payment === 'Bank Transfer' ? 'cash-bank' : d.payment === 'Petty Cash' ? 'petty-cash' : 'cash-hand');
+  }
+  function isCashAdvanceReturnDoc(d) {
+    return !!d && [d.category, d.budgetCategory, d.type].some(v => String(v || '').trim().toLowerCase() === CASH_ADVANCE_RETURN_LABEL);
+  }
+  function requestWasItemized(reqId) {
+    if (!reqId) return false;
+    if (liquidationItemizedById) return liquidationItemizedById.get(reqId) === true;
+    return allExpenseData.some(e => e.linkedLiquidationRequestId === reqId && e.category !== PLACEHOLDER_ADVANCE_CATEGORY);
+  }
+  function isDuplicateCashAdvanceReturn(d) {
+    return isCashAdvanceReturnDoc(d) && requestWasItemized(d.linkedLiquidationRequestId);
+  }
+  function buildBudgetStructure() {
+    const expOrderMain = [], expOrderSub = {}, catKeyToMain = {}, catKeyToSub = {};
+    const isBuildingFundKey = k => String(k || '').toLowerCase().includes('building fund');
+    const gfExpenseKeys = (accountOrder.expense || []).filter(k => !isBuildingFundKey(k));
+    const gfIncomeKeys = (accountOrder.income || []).filter(k => !isBuildingFundKey(k));
+    const expAllKeys = gfExpenseKeys;
+    function resolveMainGroup(k, allKeys) {
+      if (!k.includes(' - ')) return k;
+      const parts = k.split(' - ');
+      for (let i = parts.length - 1; i >= 1; i--) {
+        const prefix = parts.slice(0, i).join(' - ');
+        const prefixDash = prefix + ' - ';
+        if (allKeys.some(other => other !== k && other.startsWith(prefixDash))) return prefix;
+      }
+      return parts[0];
+    }
+    expAllKeys.forEach(k => {
+      let rawMain = resolveMainGroup(k, expAllKeys);
+      let rawSub  = k.startsWith(rawMain + ' - ') ? k.slice(rawMain.length + 3).trim() : (k.includes(' - ') ? k.split(' - ').slice(1).join(' - ').trim() : '');
+      let m = formatCategoryName(rawMain);
+      let s = rawSub || k;
+      if (!expOrderMain.includes(m)) expOrderMain.push(m);
+      if (!expOrderSub[m]) expOrderSub[m] = [];
+      if (!expOrderSub[m].includes(s)) expOrderSub[m].push(s);
+      catKeyToMain[k] = m;
+      catKeyToSub[k]  = s;
+    });
+    const incOrderMain = [], incOrderSub = {}, incKeyToMain = {}, incKeyToSub = {};
+    gfIncomeKeys.forEach(k => {
+      let parts = k.split(' - ');
+      let m = formatCategoryName(parts[0].trim());
+      let s = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : 'Others';
+      if (!incOrderMain.includes(m)) incOrderMain.push(m);
+      if (!incOrderSub[m]) incOrderSub[m] = [];
+      if (!incOrderSub[m].includes(s)) incOrderSub[m].push(s);
+      incKeyToMain[k] = m;
+      incKeyToSub[k] = s;
+    });
+    return { expOrderMain, expOrderSub, catKeyToMain, catKeyToSub, incOrderMain, incOrderSub, incKeyToMain, incKeyToSub, gfExpenseKeys, gfIncomeKeys };
+  }
+  const MISC_MAIN = 'Miscellaneous (Unbudgeted)';
+  function classifyExpense(d, S) {
+    const rawVal = (d.category || '').trim();
+    const rawLow = rawVal.toLowerCase();
+    let main, sub;
+    if (S.catKeyToMain[rawVal]) {
+      main = S.catKeyToMain[rawVal];
+      sub  = S.catKeyToSub[rawVal];
+    } else {
+      let parts = rawVal.includes(' - ') ? rawVal.split(' - ') : [rawVal];
+      main = parts[0].trim() ? formatCategoryName(parts[0].trim()) : MISC_MAIN;
+      sub  = parts.length > 1 ? formatCategoryName(parts.slice(1).join(' - ').trim()) : '';
+      const checkMain = main.toLowerCase();
+      if (rawLow.includes('not in') || checkMain === 'others' || checkMain === 'unbudgeted'
+          || checkMain === 'miscellaneous' || !S.expOrderMain.includes(main)) {
+        main = MISC_MAIN;
+      }
+    }
+    if (main === MISC_MAIN) sub = 'Unbudgeted';
+    else if (!sub || sub.toLowerCase() === 'n/a') sub = 'Others';
+    return { main, sub };
+  }
+  function classifyIncome(d, S) {
+    let mainType = (d.type || '').trim();
+    let budgetCat = (d.budgetCategory || d.category || '').trim();
+    let subLow = budgetCat.toLowerCase();
+    let mainLow = mainType.toLowerCase();
+    let checkMain = formatCategoryName(mainType);
+    let finalMain = '';
+    let sub = '';
+    let isKnown = false;
+    if (S.incOrderMain.length === 0) isKnown = true;
+    else if (S.incOrderMain.includes(checkMain)) isKnown = true;
+    if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school') || mainType === 'Occasional Offering') isKnown = true;
+    if (subLow.includes('not in') || mainLow.includes('not in') || !isKnown) {
+      finalMain = MISC_MAIN; sub = 'Unbudgeted';
+    } else if (mainType === 'Source of Funds' || subLow.includes('tithe') || subLow.includes('loose') || subLow.includes('sunday school')) {
+      finalMain = 'Source of Funds';
+      if (subLow.includes('tithe')) sub = 'Tithes';
+      else if (subLow.includes('loose') || subLow === 'offering') sub = 'Loose Offering';
+      else if (subLow.includes('sunday school')) sub = 'Sunday School';
+      else sub = formatCategoryName(budgetCat);
+    } else if (mainType === 'Occasional Offering') {
+      finalMain = 'Occasional Offering';
+      let cleanedSub = budgetCat;
+      if (cleanedSub.toLowerCase().startsWith('occasional offering')) cleanedSub = cleanedSub.replace(/occasional offering/i, '').replace(/^[\s\-]+/, '').trim();
+      if (!cleanedSub) cleanedSub = 'General';
+      sub = formatCategoryName(cleanedSub) || 'Others';
+    } else {
+      finalMain = checkMain;
+      sub = formatCategoryName(budgetCat) || 'Others';
+    }
+    if (finalMain !== MISC_MAIN && (finalMain.toLowerCase() === 'miscellaneous' || finalMain.toLowerCase() === 'others')) { finalMain = MISC_MAIN; sub = 'Unbudgeted'; }
+    return { main: finalMain, sub };
+  }
+  const MISC_GENERIC_PHRASES = new Set(['source of funds', 'occasional offering', 'special offering', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'n a', 'na', 'none', 'general', '']);
+  const MISC_GENERIC_WORDS = new Set(['source', 'of', 'funds', 'occasional', 'offering', 'special', 'miscellaneous', 'misc',
+    'others', 'other', 'unbudgeted', 'na', 'n', 'a', 'none', 'general']);
+  // Strips "not in (the) budget" and edge punctuation; returns '' when what is
+  // left is only generic words (case/punctuation-insensitive).
+  function cleanMiscLabel(text) {
+    const cleaned = String(text || '').replace(/not in( the)? budget/ig, ' ')
+      .replace(/^[\s\-\:\/\.,;]+|[\s\-\:\/\.,;]+$/g, '').replace(/\s+/g, ' ').trim();
+    const norm = cleaned.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (MISC_GENERIC_PHRASES.has(norm)) return '';
+    if (norm.split(' ').every(w => MISC_GENERIC_WORDS.has(w))) return '';
+    return cleaned;
+  }
+  // First candidate that survives cleanMiscLabel(); a candidate may be a
+  // plain string (formatted like every other category label) or
+  // {text, raw:true} for a person's name, which is shown exactly as stored.
+  function pickMiscLabel(candidates, fallback) {
+    for (const cand of candidates) {
+      const raw = cand && typeof cand === 'object';
+      const cleaned = cleanMiscLabel(raw ? cand.text : cand);
+      if (cleaned) return raw ? cleaned : formatCategoryName(cleaned);
+    }
+    return fallback;
+  }
+  const INCOME_NONPAYER_NAMES = new Set(['', 'anonymous', 'general collection', 'loose offering']);
+  function isRealPayerName(name) {
+    return !INCOME_NONPAYER_NAMES.has(String(name || '').trim().toLowerCase());
+  }
+  function normalizeGroupKey(s) {
+    return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+  function resolveMemberName(d) {
+    const memberId = getMemberId(d);
+    if (memberId && memberNameById[memberId]) return memberNameById[memberId];
+    const rawName = (d.member || d.name || d.Member || '').trim();
+    const legacyName = memberNameByLegacyKey[normalizeMemberLookupName(rawName)];
+    if (legacyName && legacyName !== '__AMBIGUOUS__') return legacyName;
+    return rawName || 'General Collection';
+  }
+  function formatMemberName(d) {
+    const last = d.last || d.lastName || '';
+    const first = d.first || d.firstName || '';
+    return `${last}, ${first}`.replace(/^,\s*|\s*,\s*$/g, '').trim();
+  }
+  function normalizeMemberLookupName(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  function addMemberNameAlias(rawName, currentName) {
+    const key = normalizeMemberLookupName(rawName);
+    if (!key || !currentName) return;
+    if (memberNameByLegacyKey[key] && memberNameByLegacyKey[key] !== currentName) {
+      memberNameByLegacyKey[key] = '__AMBIGUOUS__';
+      return;
+    }
+    memberNameByLegacyKey[key] = currentName;
+  }
+  function addMemberNameAliases(d, currentName) {
+    const last = (d.last || d.lastName || '').toString().trim();
+    const first = (d.first || d.firstName || '').toString().trim();
+    const firstToken = first.split(/\s+/).filter(Boolean)[0] || '';
+
+    addMemberNameAlias(currentName, currentName);
+    addMemberNameAlias(`${last}, ${first}`, currentName);
+    addMemberNameAlias(`${first} ${last}`, currentName);
+    addMemberNameAlias(`${last} ${first}`, currentName);
+    if (firstToken && firstToken !== first) {
+      addMemberNameAlias(`${firstToken} ${last}`, currentName);
+      addMemberNameAlias(`${last}, ${firstToken}`, currentName);
+      addMemberNameAlias(`${last} ${firstToken}`, currentName);
+    }
+  }
+
+  // ── state (names as in print-report.html so the copied helpers stay verbatim) ──
+  let accountOrder = { income: [], expense: [] };
+  let generalFundAccounts = {};
+  let liquidationItemizedById = null;
+  let allExpenseData = [], allIncomeData = [], incomeData = [], expenseData = [];
+  let memberNameById = {}, memberNameByLegacyKey = {};
+  let loaded = false, loading = false, raw = null;
+
+  const $ = id => document.getElementById(id);
+  const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const money = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const isTreasurer = () => typeof activeUserProfile !== 'undefined' && activeUserProfile && activeUserProfile.role === 'Treasurer';
+  const col = async name => { try { const s = await db.collection(name).get(); return s.docs.map(d => ({ id: d.id, ...d.data() })); } catch (e) { console.warn(name, e && e.message); return null; } };
+  const docData = async (c, id) => { try { const s = await db.collection(c).doc(id).get(); return s.exists ? s.data() : null; } catch (e) { console.warn(c, id, e && e.message); return null; } };
+
+  // Basis, as print-report.html builds it (undated = 2026-01-01; special-project income and duplicate cash advance returns out;
+  // transfers out; General Fund only). Then the Miscellaneous (Unbudgeted) entries of the selected YEAR, grouped by
+  // side + normalizeGroupKey(label) - exactly the keys print-report.html / council-dashboard.html compare with passThroughItems.
+  function compute(year) {
+    const S = buildBudgetStructure();
+    const dflt = d => d.date ? d : { ...d, date: '2026-01-01' };
+    const inYear = d => String(d.date).slice(0, 4) === String(year);
+    const lines = { income: {}, expense: {} };
+    const add = (side, label, d) => {
+      const key = side + '|' + normalizeGroupKey(label);
+      const x = lines[side][key] || (lines[side][key] = { side, key: normalizeGroupKey(label), label, amount: 0, entries: 0 });
+      x.amount += parseFloat(d.amount || 0); x.entries++;
+    };
+    incomeData.map(dflt).filter(inYear).filter(isGeneralFundIncome).forEach(d => {
+      if (classifyIncome(d, S).main !== MISC_MAIN) return;
+      const memberName = resolveMemberName(d);
+      let label = pickMiscLabel([(d.budgetCategory || d.category || '').trim(), d.budgetDetails, d.notes, { text: isRealPayerName(memberName) ? memberName : '' }, (d.type || '').trim()], '');
+      if (!label) label = 'Other Unbudgeted Income (no details recorded)';
+      add('income', label, d);
+    });
+    expenseData.map(dflt).filter(inYear).filter(isGeneralFundExpense).forEach(d => {
+      if (classifyExpense(d, S).main !== MISC_MAIN) return;
+      add('expense', pickMiscLabel([d.sub, d.notes, d.payee, (d.category || '').trim()], 'Other Unbudgeted'), d);
+    });
+    return { income: Object.values(lines.income).sort((a, b) => b.amount - a.amount), expense: Object.values(lines.expense).sort((a, b) => b.amount - a.amount) };
+  }
+
+  async function load() {
+    if (loaded || loading) return; loading = true;
+    $('pt-body').innerHTML = '<div class="pt-note">Loading…</div>';
+    const [income, expenses, beginning, structure, liq, members, pt] = await Promise.all([
+      col('income'), col('expenses'), docData('settings', 'beginningBalances'), docData('settings', 'accountStructure'),
+      col('liquidationRequests'), col('members'), docData('settings', 'passThroughItems')]);
+    if (!income || !expenses) { $('pt-body').innerHTML = '<div class="pt-note">Could not read income and expenses. Please reload.</div>'; loading = false; return; }
+    accountOrder = structure || { income: [], expense: [] };
+    generalFundAccounts = (beginning && beginning.generalFundAccounts) || {};
+    if (liq) { liquidationItemizedById = new Map(); liq.forEach(d => liquidationItemizedById.set(d.id, Array.isArray(d.liquidationItems) && d.liquidationItems.length > 0)); }
+    memberNameById = {}; memberNameByLegacyKey = {};
+    (members || []).forEach(d => { const memberId = (d.memberId || d.id || '').toString().trim(), currentName = formatMemberName(d); if (memberId) memberNameById[memberId] = currentName; addMemberNameAliases(d, currentName); });
+    const dflt = d => d.date ? d : { ...d, date: '2026-01-01' };
+    allExpenseData = expenses.map(dflt);
+    expenseData = allExpenseData.filter(d => d.type !== 'transfer' && d.type !== 'deduction-payment' && isReportableSpecialProjectExpense(d));
+    allIncomeData = income.map(dflt).filter(d => !d.isSpecialProject && !isDuplicateCashAdvanceReturn(d));
+    incomeData = allIncomeData.filter(d => d.type !== 'transfer' && !d.isSpecialProject);
+    raw = { items: pt && Array.isArray(pt.items) ? pt.items.slice() : [] };
+    loaded = true; loading = false; render();
+  }
+
+  const isTagged = (side, key) => raw.items.some(i => i.side === side && normalizeGroupKey(i.key || i.label) === key);
+  function render() {
+    const body = $('pt-body'); if (!body || !loaded) return;
+    const year = (typeof currentYear !== 'undefined') ? currentYear : new Date().getFullYear();
+    const res = compute(year);
+    const table = (title, side, rows) => `<div class="pt-col"><h5>${title}</h5>${rows.length ? `<table class="pt-t"><thead><tr><th>Line</th><th class="n">Total</th><th class="n">Entries</th><th></th></tr></thead><tbody>${rows.map(l => {
+      const tg = isTagged(side, l.key);
+      return `<tr><td>${escapeHtml(l.label)}${tg ? ' <span class="pt-chip">pass-through</span>' : ''}</td><td class="n">${money(l.amount)}</td><td class="n">${l.entries}</td><td class="n"><button type="button" class="pt-btn" data-pt="${tg ? 'untag' : 'tag'}" data-side="${side}" data-key="${escapeHtml(l.key)}" data-label="${escapeHtml(l.label)}">${tg ? 'Untag' : 'Mark as pass-through'}</button></td></tr>`;
+    }).join('')}</tbody></table>` : `<div class="pt-note">No Miscellaneous (Unbudgeted) ${side} lines in ${year}.</div>`}</div>`;
+    const tagged = raw.items.length ? `<table class="pt-t"><thead><tr><th>Tagged item</th><th>Side</th><th>Tagged</th><th></th></tr></thead><tbody>${raw.items.map(i => `<tr><td>${escapeHtml(i.label || i.key)}</td><td>${i.side === 'income' ? 'Income (collected)' : 'Expense (remitted)'}</td><td>${escapeHtml((i.taggedBy && i.taggedBy.name) || '')}${i.taggedAt ? ' · ' + escapeHtml(String(i.taggedAt).slice(0, 10)) : ''}</td><td class="n"><button type="button" class="pt-btn" data-pt="untag" data-side="${escapeHtml(i.side)}" data-key="${escapeHtml(normalizeGroupKey(i.key || i.label))}" data-label="${escapeHtml(i.label || i.key)}">Untag</button></td></tr>`).join('')}</tbody></table>` : '<div class="pt-note">Nothing is tagged yet.</div>';
+    body.innerHTML = `<div class="pt-grid">${table('Unbudgeted income', 'income', res.income)}${table('Unbudgeted spending', 'expense', res.expense)}</div><h5 style="margin-top:14px">Currently tagged</h5>${tagged}`;
+  }
+
+  async function writeAudit(action, before, after, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({ action, collection: 'settings', docId: 'passThroughItems', summary, before: { items: before }, after: { items: after },
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '', actorName: activeUserProfile.name, actorRole: activeUserProfile.role, createdAt: new Date().toISOString() });
+  }
+  // settings/passThroughItems = { items: [{ side, key, label, taggedAt, taggedBy }], updatedAt, updatedBy } - written in a transaction
+  // so two edits cannot overwrite each other. Read by print-report.html and council-dashboard.html.
+  async function change(mode, side, key, label) {
+    if (!isTreasurer() || !key) return;
+    if (mode === 'tag' && !confirm(`Mark "${label}" (${side}) as pass-through?\n\nIt leaves the Unbudgeted totals, budget percentages and the ₱100 mixes in every period, and shows under its own heading in the Print Report. Total receipts, disbursements and the Ending Balance do not change.`)) return;
+    if (mode === 'untag' && !confirm(`Remove the pass-through tag from "${label}"?`)) return;
+    const user = firebase.auth().currentUser, iso = new Date().toISOString(), who = { uid: user ? user.uid : '', name: activeUserProfile.name };
+    const ref = db.collection('settings').doc('passThroughItems');
+    let before = [], after = [];
+    try {
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const items = snap.exists && Array.isArray(snap.data().items) ? snap.data().items.slice() : [];
+        before = items.slice();
+        const idx = items.findIndex(i => i.side === side && normalizeGroupKey(i.key || i.label) === key);
+        if (mode === 'tag') { if (idx < 0) items.push({ side, key, label, taggedAt: iso, taggedBy: who }); }
+        else if (idx >= 0) items.splice(idx, 1);
+        after = items;
+        tx.set(ref, { items, updatedAt: iso, updatedBy: who });
+      });
+      await writeAudit(mode === 'tag' ? 'pass_through_tagged' : 'pass_through_untagged', before, after, `${mode === 'tag' ? 'Marked' : 'Unmarked'} ${side} line "${label}" ${mode === 'tag' ? 'as' : 'from'} pass-through`);
+      raw.items = after; render();
+    } catch (err) { console.error(err); alert('Could not update the pass-through list. Please try again.'); }
+  }
+
+  function boot() {
+    if (!isTreasurer()) return;                       // other roles never see the card and never trigger its reads
+    $('pt-card').style.display = '';
+    const tabBtn = document.querySelector('button.tab-btn[onclick*="tab-setup"]');
+    if (tabBtn) tabBtn.addEventListener('click', () => load());
+    const yr = $('sel-year'); if (yr) yr.addEventListener('change', () => setTimeout(render, 0));
+    $('pt-card').addEventListener('click', e => { const b = e.target.closest && e.target.closest('button[data-pt]'); if (b) change(b.dataset.pt, b.dataset.side, b.dataset.key, b.dataset.label); });
+  }
+  window.graceBooksAuthReady.then(boot);
+})();
+</script>
 </body>
 </html>
 

@@ -166,20 +166,24 @@
     .coin-wrap { max-width: 340px; margin: 4px auto 6px; }
     .coin-wrap svg { max-height: 62vh; }
     .coin { transform-box: fill-box; transform-origin: center; }
-    .bk-list { margin-top: 10px; display: grid; gap: 2px; }
-    details.bk { border-top: 1px solid #efeadf; }
-    details.bk summary { list-style: none; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; padding: 9px 4px; min-height: 44px; font-size: 17px; line-height: 1.3; border-radius: 8px; }
-    details.bk summary::-webkit-details-marker { display: none; }
-    details.bk summary:hover { background: #f6f1e4; }
-    details.bk summary:focus-visible { outline: 3px solid var(--navy-2); outline-offset: 1px; }
-    .bk-sw { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; margin-top: 3px; box-shadow: 0 0 0 2px #f4cf57 inset; }
-    .bk-txt { flex: 1 1 auto; min-width: 0; }
-    .bk-txt b { color: var(--navy); }
+    .bk-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: 13px; color: var(--ink-2); margin: 6px 0 8px; }
+    .bk-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; box-shadow: 0 0 0 2px #f4cf57 inset; }
+    .bk-legend b { color: var(--navy); }
+    ul.lns { list-style: none; display: grid; gap: 0; margin: 0; padding: 0; }
+    li.ln { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 7px 2px; border-top: 1px solid #efeadf; font-size: 17px; line-height: 1.3; }
+    .ln-txt { min-width: 0; overflow-wrap: anywhere; }
+    .ln-txt b { color: var(--navy); }
+    .ln-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--navy); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px 1px 6px; white-space: nowrap; margin-top: 2px; }
+    .ln-chip i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; }
+    details.ln-more { border-top: 1px solid #efeadf; }
+    details.ln-more > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 2px; min-height: 44px; font-size: 17px; border-radius: 8px; color: var(--navy-2); }
+    details.ln-more > summary::-webkit-details-marker { display: none; }
+    details.ln-more > summary:hover { background: #f6f1e4; }
+    details.ln-more > summary:focus-visible { outline: 3px solid var(--navy-2); outline-offset: 1px; }
     .bk-chev { flex: 0 0 auto; color: var(--muted); font-size: 16px; transition: transform .15s; margin-top: 1px; }
-    details.bk[open] .bk-chev { transform: rotate(90deg); }
-    .bk-lines { padding: 2px 4px 10px 26px; }
+    details.ln-more[open] > summary .bk-chev { transform: rotate(90deg); }
     .p100 h3 i { font-style: normal; color: var(--red); }
-    body.presenting .bk-txt { font-size: clamp(16px, 1.6vw, 24px); }
+    body.presenting li.ln, body.presenting details.ln-more > summary { font-size: clamp(16px, 1.6vw, 24px); }
     body.presenting .coin-wrap { max-width: min(340px, 56vh); }
     @media (prefers-reduced-motion: no-preference) {
       body.presenting .slide.active .coin { animation: coinDrop .34s ease-out both; animation-delay: var(--d, 0ms); }
@@ -187,11 +191,114 @@
     @keyframes coinDrop { from { opacity: 0; transform: translateY(-14px) scale(.6); } to { opacity: 1; transform: none; } }
     #rotate-hint { position: fixed; z-index: 60; left: 50%; transform: translateX(-50%); bottom: 58px; background: rgba(20,35,63,.95); color: #fff; border-radius: 999px; padding: 6px 8px 6px 14px; font-size: 13px; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); box-shadow: 0 4px 14px rgba(0,0,0,.3); }
     #rotate-hint button { border: 0; background: rgba(255,255,255,.2); color: #fff; width: 26px; height: 26px; border-radius: 50%; font-size: 16px; line-height: 1; cursor: pointer; }
+    #rotate-hint .hint-land { width: auto; height: 26px; border-radius: 999px; padding: 0 12px; font-size: 13px; font-weight: 700; background: var(--gold); color: var(--navy); }
     .sel-group { display: contents; }
     :root { --follow-h: 54px; }
-    .btn-pt { border: 1px solid var(--navy-2); background: #fff; color: var(--navy); border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-    .btn-pt:hover { background: var(--gold-l); }
-    body.presenting .pt-btn, body.presenting .bt-toggle, body.presenting .edit-only { display: none !important; }
+    body.presenting .bt-toggle, body.presenting .edit-only { display: none !important; }
+
+    /* ── Slide 10: "The bottom line" scorecard + three lists ── */
+    .scorecard { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .sc { --sc: #8a8f98; --st-bg: #eee; --st-ink: var(--ink-2); background: #fff; border: 1px solid var(--line); border-left: 6px solid var(--sc); border-radius: 12px; padding: 9px 12px 10px; min-width: 0; }
+    .sc-green { --sc: var(--good); --st-bg: var(--green-bg); --st-ink: var(--good); }
+    .sc-amber { --sc: #d99a00; --st-bg: var(--yellow-bg); --st-ink: var(--yellow); }
+    .sc-red { --sc: var(--bad); --st-bg: var(--red-bg); --st-ink: var(--bad); }
+    .sc-h { display: flex; align-items: center; justify-content: space-between; gap: 4px 8px; flex-wrap: wrap; }
+    .sc-t { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 700; }
+    .sc-st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 1px 9px 1px 6px; border-radius: 999px; background: var(--st-bg); color: var(--st-ink); white-space: nowrap; }
+    .sc-st i { width: 10px; height: 10px; border-radius: 50%; background: var(--sc); display: inline-block; }
+    .sc-fig { font-size: 22px; font-weight: 800; color: var(--navy); line-height: 1.15; margin-top: 4px; overflow-wrap: anywhere; }
+    .sc-unit { font-size: 12px; font-weight: 600; color: var(--muted); }
+    .sc-d { font-size: 13px; color: var(--ink-2); margin-top: 3px; line-height: 1.3; }
+    .sc-fine { font-size: 11px; color: var(--muted); }
+    .sc-nb { white-space: nowrap; display: inline-block; margin-right: 8px; }
+    .sc-d .chip { margin-top: 1px; }
+    ul.sc-top { list-style: none; display: grid; gap: 1px; font-size: 15px; font-weight: 600; color: var(--navy); }
+    ul.sc-top b { display: inline-block; min-width: 2.4em; }
+    .sc .lvl { font-size: 12px; padding: 1px 8px; }
+    .sum-lists { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .sl { border-top: 5px solid var(--sc, var(--line)); }
+    .sl-good { --sc: var(--good); } .sl-watch { --sc: #d99a00; } .sl-action { --sc: var(--bad); }
+    .sl h3 { font-size: 14px; }
+    ul.sum-list { list-style: none; display: grid; gap: 7px; }
+    ul.sum-list li { font-size: 15px; line-height: 1.32; color: var(--navy); padding-left: 18px; position: relative; overflow-wrap: anywhere; }
+    ul.sum-list li::before { content: ''; position: absolute; left: 2px; top: .5em; width: 9px; height: 9px; border-radius: 50%; background: var(--sc); }
+    ul.sum-list li.none { color: var(--muted); font-style: italic; } ul.sum-list li.none::before { background: #cfc9b8; }
+    .sl textarea { width: 100%; min-height: 120px; font-size: 14px; padding: 8px; border: 1px solid var(--gold); border-radius: 8px; font-family: inherit; color: var(--navy); }
+    body.presenting .sc-fig { font-size: clamp(20px, 2.2vw, 32px); }
+    body.presenting .sc-d, body.presenting .sc-t, body.presenting .sc-st { font-size: clamp(12px, 1.05vw, 17px); }
+    body.presenting ul.sc-top { font-size: clamp(14px, 1.3vw, 20px); }
+    body.presenting ul.sum-list li { font-size: clamp(15px, 1.4vw, 22px); }
+    @media (max-width: 899px) { .scorecard { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sum-lists { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) { .scorecard { grid-template-columns: 1fr; } }
+
+    /* ── Slide 5 "pitaka": ₱100 note + four views + specific-line rows ── */
+    .pk { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 22px; align-items: start; --note-a: var(--navy); --note-b: #2f4f86; }
+    .pk-left { position: sticky; top: 8px; min-width: 0; }
+    .pk-note-wrap { position: relative; aspect-ratio: 16 / 9.5; max-width: 100%; }
+    .pk-note { position: absolute; inset: 0; border-radius: 16px; overflow: hidden; color: #fff3d0;
+      background: repeating-radial-gradient(circle at 78% 50%, rgba(255,255,255,.07) 0 2px, transparent 2px 9px), repeating-linear-gradient(115deg, rgba(255,255,255,.05) 0 1px, transparent 1px 7px), linear-gradient(135deg, var(--note-a), var(--note-b));
+      box-shadow: 0 14px 30px -16px rgba(20,35,63,.6), inset 0 0 0 2px rgba(255,243,208,.28); transition: transform .5s cubic-bezier(.2,.8,.2,1), opacity .35s; }
+    .pk-note::before { content: ""; position: absolute; inset: 9px; border: 1.5px dashed rgba(255,243,208,.38); border-radius: 11px; pointer-events: none; }
+    .pk-corner { position: absolute; font-weight: 800; font-size: clamp(14px, 2vw, 21px); opacity: .9; }
+    .pk-corner.tl { top: 14px; left: 20px; } .pk-corner.br { bottom: 16px; right: 20px; }
+    .pk-big { position: absolute; left: 20px; bottom: 26px; font-weight: 800; font-size: clamp(44px, 7vw, 84px); line-height: 1; letter-spacing: -.02em; text-shadow: 0 2px 0 rgba(0,0,0,.18); }
+    .pk-who { position: absolute; top: 16px; right: 20px; text-align: right; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .88; line-height: 1.35; }
+    .pk-seal { position: absolute; right: 22px; top: 52%; transform: translateY(-50%); width: 28%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+      background: radial-gradient(circle, rgba(255,243,208,.18) 0 38%, transparent 39%), repeating-conic-gradient(rgba(255,243,208,.2) 0 6deg, transparent 6deg 12deg); }
+    .pk-seal svg { width: 40%; height: 40%; stroke: #fff3d0; opacity: .9; }
+    .pk-split { position: absolute; left: 0; right: 0; bottom: 0; height: 9px; display: flex; }
+    .pk-split i { display: block; height: 100%; min-width: 0; }
+    .pk-note-wrap.tearing .pk-note { transform: scale(.94) rotate(-1.5deg); opacity: .25; }
+    .pk-strips { position: absolute; inset: 0; pointer-events: none; }
+    .pk-strip { position: absolute; top: 0; bottom: 0; border-radius: 6px; opacity: 0; display: grid; place-items: center; font-weight: 800; font-size: 14px; overflow: hidden; }
+    .pk-cap { margin: 10px 2px 4px; font-size: 13px; color: var(--ink-2); }
+    .pk-coins .coin-wrap { max-width: 230px; margin: 6px auto 4px; }
+    .pk-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .vbtn { font: inherit; text-align: left; cursor: pointer; border: 1.5px solid var(--line); background: #fff; color: var(--ink); border-radius: 13px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; min-width: 0; transition: border-color .2s, transform .15s, box-shadow .2s; }
+    .vbtn:hover { border-color: var(--navy-2); transform: translateY(-1px); }
+    .vbtn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+    .vbtn[aria-pressed="true"] { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(201,168,76,.4); }
+    .vbtn .ic { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--gold-l); color: var(--navy); }
+    .vbtn[aria-pressed="true"] .ic { background: var(--navy); color: #fff; }
+    .vbtn .ic svg { width: 19px; height: 19px; }
+    .vbtn b { display: block; font-size: 15px; line-height: 1.2; color: var(--navy); }
+    .vbtn > span:last-child span { display: block; font-size: 12px; color: var(--muted); line-height: 1.3; }
+    .pk-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .pk-toolbar h3 { font-size: 20px; color: var(--navy); margin: 0; }
+    .pk-tone { display: inline-flex; border: 1.5px solid var(--line); border-radius: 999px; overflow: hidden; }
+    .pk-tone button { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; color: var(--ink-2); padding: 6px 12px; cursor: pointer; }
+    .pk-tone button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+    .pk-tone button:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; }
+    .pk-cmp-sel { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+    .pk-cmp-sel select { padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); font-size: 13px; background: #fff; color: var(--navy); }
+    .pk-rows, .pk-rows-in { display: grid; gap: 9px; }
+    .pk-row { background: #fff; border: 1px solid var(--line); border-radius: 13px; padding: 10px 13px; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 3px 12px; align-items: center; }
+    .pk-ri { grid-row: span 2; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; }
+    .pk-ri svg { width: 21px; height: 21px; }
+    .pk-rt { min-width: 0; font-weight: 700; line-height: 1.25; color: var(--navy); overflow-wrap: anywhere; }
+    .pk-rt small { font-weight: 700; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-2); margin-left: 6px; white-space: nowrap; background: #f3efe4; border-radius: 999px; padding: 1px 7px; }
+    .pk-rp { font-weight: 800; font-size: 26px; line-height: 1; text-align: right; color: var(--navy); font-variant-numeric: tabular-nums; }
+    .pk-bar { grid-column: 2 / 4; height: 8px; border-radius: 99px; background: #ece8dd; overflow: hidden; }
+    .pk-bar i { display: block; height: 100%; border-radius: 99px; width: 0; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+    .pk-rs { grid-column: 2 / 4; font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; }
+    .pk-rs .amt { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+    .pk-cmp { font-weight: 700; white-space: nowrap; } .pk-cmp.up { color: var(--good); } .pk-cmp.down { color: var(--bad); }
+    .pk-row.enter { animation: pkRowIn .5s cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes pkRowIn { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+    details.pk-more { background: #fcfaf5; border: 1px dashed var(--line); border-radius: 13px; padding: 2px 13px; }
+    details.pk-more > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; color: var(--navy-2); font-weight: 600; }
+    details.pk-more > summary::-webkit-details-marker { display: none; }
+    details.pk-more > summary:focus-visible { outline: 3px solid var(--navy-2); outline-offset: 1px; border-radius: 8px; }
+    .pk-more-p { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 20px; color: var(--navy); }
+    details.pk-more[open] .bk-chev { transform: rotate(90deg); }
+    details.pk-more .pk-rows-in { padding: 4px 0 10px; }
+    .pk-foot { margin-top: 10px; font-size: 13px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+    .pk-foot b { color: var(--navy); }
+    .pk-empty { background: #fff; border: 1px dashed var(--line); border-radius: 13px; padding: 22px 16px; text-align: center; color: var(--ink-2); font-size: 16px; }
+    @media (prefers-reduced-motion: reduce) { .pk-row.enter { animation: none; } .pk-bar i, .pk-note { transition: none; } }
+    body.presenting .pk-rt { font-size: clamp(15px, 1.4vw, 21px); } body.presenting .pk-rs { font-size: clamp(12px, 1.05vw, 16px); } body.presenting .pk-rp { font-size: clamp(22px, 2.2vw, 34px); }
+    @media (max-width: 899px) { .pk { grid-template-columns: 1fr; } .pk-left { display: contents; } .pk-note-wrap { order: 1; } .pk-cap { order: 2; } .pk-right { order: 3; } .pk-coins { order: 4; } .pk-coins .coin-wrap { max-width: 200px; } }
+    @media (max-width: 480px) { .vbtn { padding: 8px 9px; gap: 8px; } .vbtn .ic { width: 30px; height: 30px; } .vbtn b { font-size: 13px; } .vbtn > span:last-child span { font-size: 11px; } .pk-rp { font-size: 22px; } .pk-toolbar h3 { font-size: 17px; } }
 
     /* ── Responsive ────────────────────────────────────── */
     @media (max-width: 899px) {
@@ -295,7 +402,7 @@
       .points li { font-size: 14px; }
       .points ul { gap: 3px; }
       .sentences li, .coin-row { font-size: 14px; }
-      details.bk summary { font-size: 14px; min-height: 40px; padding: 6px 2px; }
+      li.ln, details.ln-more > summary { font-size: 14px; } details.ln-more > summary { min-height: 40px; padding: 6px 2px; } .ln-chip { font-size: 11px; } .bk-legend { font-size: 11px; }
       .coin-wrap { max-width: 250px; }
       .coin-wrap svg { max-height: 52vh; }
       table.t { font-size: 12px; }
@@ -317,7 +424,7 @@
       body.presenting .points li { font-size: clamp(13px, 4vh, 17px); }
       body.presenting .hero .big .num { font-size: clamp(18px, min(8.5vh, 3.5vw), 36px); white-space: nowrap; overflow-wrap: normal; }
       body.presenting .ring-box svg { width: min(104px, 24vh); height: min(104px, 24vh); }
-      body.presenting .bk-txt { font-size: clamp(13px, 3.8vh, 16px); }
+      body.presenting li.ln, body.presenting details.ln-more > summary { font-size: clamp(12px, 3.6vh, 15px); }
       body.presenting .coin-wrap { max-width: min(250px, 50vh); }
       body.presenting .pres-ui { padding: 3px 12px; gap: 8px; min-height: 40px; height: 40px; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
       body.presenting .pres-ui .btn { padding: 3px 10px; font-size: 13px; }
@@ -325,8 +432,29 @@
       body.presenting .pres-ui .ctr { font-size: 13px; }
       body.presenting .follow-bar { padding: 4px 12px; }
       #rotate-hint { display: none !important; }
+      .pk { grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: 12px; }
+      .pk-left { display: block; position: sticky; top: 4px; } .pk-note-wrap, .pk-cap, .pk-right, .pk-coins { order: 0; } .pk-coins .coin-wrap { max-width: 110px; margin: 2px auto; } .pk-coins .bk-legend { display: none; } .pk-cap { font-size: 11px; margin: 4px 0 0; }
+      .pk-corner { font-size: 12px; } .pk-who { font-size: 8px; top: 10px; right: 12px; } .pk-big { font-size: clamp(30px, 11vh, 52px); left: 14px; bottom: 16px; } .pk-corner.tl { top: 9px; left: 14px; } .pk-corner.br { bottom: 9px; right: 14px; } .pk-split { height: 6px; }
+      .pk-views { gap: 6px; margin-bottom: 8px; } .vbtn { padding: 5px 8px; gap: 6px; border-radius: 10px; } .vbtn .ic { width: 24px; height: 24px; border-radius: 7px; } .vbtn .ic svg { width: 14px; height: 14px; } .vbtn b { font-size: 12px; } .vbtn > span:last-child span { display: none; }
+      .pk-toolbar { margin-bottom: 4px; } .pk-toolbar h3 { font-size: 14px; } .pk-tone button { padding: 3px 9px; font-size: 11px; }
+      .pk-rows, .pk-rows-in { gap: 5px; } .pk-row { padding: 5px 9px; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 1px 8px; border-radius: 10px; } .pk-ri { width: 28px; height: 28px; border-radius: 8px; } .pk-ri svg { width: 15px; height: 15px; }
+      .pk-rt { font-size: 12.5px; } .pk-rt small { font-size: 8.5px; padding: 0 5px; } .pk-rp { font-size: 17px; } .pk-bar { height: 5px; } .pk-rs { font-size: 10.5px; line-height: 1.25; }
+      details.pk-more > summary { min-height: 34px; font-size: 12.5px; } .pk-more-p { font-size: 15px; } .pk-foot { font-size: 10.5px; margin-top: 4px; } .pk-empty { padding: 12px; font-size: 13px; } .pk-cmp-sel { font-size: 11px; margin-bottom: 4px; }
+      body.presenting .pk-rt { font-size: clamp(11.5px, 3.4vh, 14px); } body.presenting .pk-rs { font-size: clamp(9.5px, 2.8vh, 11.5px); } body.presenting .pk-rp { font-size: clamp(15px, 4.6vh, 20px); }
+      .scorecard { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .sc { padding: 5px 8px 6px; border-radius: 9px; border-left-width: 5px; }
+      .sc-t { font-size: 10px; } .sc-st { font-size: 10px; padding: 0 7px 0 5px; } .sc-st i { width: 8px; height: 8px; }
+      .sc-fig { font-size: 15px; margin-top: 2px; } .sc-unit { font-size: 10px; } .sc-d { font-size: 10.5px; margin-top: 1px; } .sc-fine { font-size: 9.5px; }
+      ul.sc-top { font-size: 11.5px; } .sc .lvl { font-size: 10px; padding: 0 6px; }
+      .sum-lists { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      .sl h3 { font-size: 12px; } ul.sum-list { gap: 3px; } ul.sum-list li { font-size: 12px; padding-left: 14px; } ul.sum-list li::before { width: 7px; height: 7px; }
+      body.presenting .sc-fig { font-size: clamp(14px, 4.4vh, 19px); }
+      body.presenting .sc-d, body.presenting .sc-t, body.presenting .sc-st { font-size: clamp(9.5px, 2.8vh, 12px); }
+      body.presenting ul.sc-top { font-size: clamp(11px, 3.3vh, 14px); }
+      body.presenting ul.sum-list li { font-size: clamp(11px, 3.4vh, 14px); }
     }
     @media (orientation: landscape) and (max-height: 500px) and (min-width: 800px) {
+      .scorecard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .grid2 .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -335,7 +463,7 @@
     @media print {
       @page { size: A4 landscape; margin: 10mm; }
       body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .pt-btn, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only { display: none !important; }
+      .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only { display: none !important; }
       #dash { max-width: none; padding: 0; }
       .slide { box-shadow: none; border-radius: 0; break-after: page; page-break-after: always; margin: 0; border-top: 6px solid var(--red); }
       .slide:last-child { break-after: auto; page-break-after: auto; }
@@ -343,6 +471,13 @@
       .points { background: var(--gold-l); }
       .hero { background: var(--navy) !important; }
       .coin { animation: none !important; opacity: 1 !important; }
+      .pk-row.enter { animation: none !important; } .pk-bar i { transition: none !important; } .pk-views, .pk-tone, .pk-cmp-sel { display: none !important; } .pk-row, .pk-note { break-inside: avoid; } .pk-left { position: static; }
+      #slide-summary .slide-head { padding: 8px 14px 2px; } #slide-summary .slide-body { padding: 4px 14px 8px; gap: 8px; }
+      #slide-summary .scorecard { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      #slide-summary .sc { padding: 5px 8px 6px; } #slide-summary .sc-fig { font-size: 16px; margin-top: 2px; } #slide-summary .sc-d { font-size: 10.5px; margin-top: 1px; }
+      #slide-summary .sc-t, #slide-summary .sc-st { font-size: 10px; } #slide-summary ul.sc-top { font-size: 11.5px; }
+      #slide-summary .sum-lists { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+      #slide-summary ul.sum-list { gap: 3px; } #slide-summary ul.sum-list li { font-size: 11.5px; } #slide-summary .panel { padding: 7px 10px; }
     }
   </style>
 </head>
@@ -366,8 +501,8 @@
     <span class="spacer"></span>
     <span class="period-label" id="follow-hint"></span>
     <button class="btn" id="btn-follow" style="display:none" onclick="toggleFollow()">Follow Treasurer</button>
-    <button class="btn" id="btn-edit" style="display:none" onclick="toggleEditPoints()">Edit talking points</button>
-    <button class="btn" id="btn-save-points" style="display:none" onclick="saveTalkingPoints()">Save talking points</button>
+    <button class="btn" id="btn-edit" style="display:none" onclick="toggleEditPoints()">Edit points &amp; summary</button>
+    <button class="btn" id="btn-save-points" style="display:none" onclick="saveTalkingPoints()">Save</button>
     <button class="btn" id="btn-reset-points" style="display:none" onclick="resetTalkingPoints()">Reset to auto</button>
     <button class="btn" id="btn-cancel-points" style="display:none" onclick="cancelEditPoints()">Cancel</button>
     <button class="btn gold" id="save-version-btn" style="display:none" onclick="saveCouncilVersion()">Generate &amp; Save Version</button>
@@ -380,7 +515,7 @@
     <button class="btn" onclick="toggleFollow()">Stop following</button>
   </div>
 
-  <div id="rotate-hint" role="status" style="display:none"><span>&#128241; Rotate your phone for a bigger view</span><button type="button" aria-label="Dismiss" onclick="dismissRotateHint()">&times;</button></div>
+  <div id="rotate-hint" role="status" style="display:none"><span>&#128241; Rotate your phone for a bigger view</span><button type="button" id="btn-landscape" class="hint-land" style="display:none" onclick="landscapeFromHint()">Landscape</button><button type="button" class="hint-x" aria-label="Dismiss" onclick="dismissRotateHint()">&times;</button></div>
   <div id="dash"><div class="status-msg" id="loading-msg">Loading the numbers&hellip;</div></div>
 
   <div class="pres-ui" id="pres-ui">
@@ -1200,40 +1335,40 @@
   // keyword to a regex, or reorder, to change where a budget line is counted - nothing else needs to change.
   // `color`/`ink` are the chart colours (validated categorical slots 1-5, neutral for "other"; ink = text on it).
   const PURPOSE_BUCKETS = [
-    { id: 'people', label: 'People & pastoral support', color: '#2a78d6', css: 'var(--s1)', ink: '#ffffff',
+    { id: 'people', label: 'People & pastoral support', short: 'People & pastoral', color: '#2a78d6', css: 'var(--s1)', ink: '#ffffff',
       plain: p => `₱${p} cared for our pastor and staff`, lineHint: 'pastor, staff, honoraria and benefits',
       test: (d, t) => !!d.isPayrollGenerated || /pastor|staff|salar|honorari|wage|payroll|bonus|13th|allowance|benefit|\bsss\b|philhealth|pag-?ibig|deaconess|love gift/.test(t) },
-    { id: 'ministry', label: 'Ministry & mission', color: '#eb6834', css: 'var(--s2)', ink: '#14233f',
+    { id: 'ministry', label: 'Ministry & mission', short: 'Ministry & mission', color: '#eb6834', css: 'var(--s2)', ink: '#14233f',
       plain: p => `₱${p} went into ministry and mission`, lineHint: 'Nurture, Outreach and Witness',
       test: (d, t) => isNowMinistryExpense(d) || /ministr|nurture|outreach|witness|mission|evangel|youth|children|sunday school|worship|choir|women|\bumw\b|\bumyf\b|feeding|\bvbs\b|fellowship|discipleship|christian education|retreat|seminar/.test(t) },
-    { id: 'connectional', label: 'Connectional giving', color: '#1baf7a', css: 'var(--s3)', ink: '#14233f',
+    { id: 'connectional', label: 'Connectional giving', short: 'Connectional', color: '#1baf7a', css: 'var(--s3)', ink: '#14233f',
       plain: p => `₱${p} supported the wider church`, lineHint: 'apportionments and district/conference remittances',
       test: (d, t) => /apportion|connectional|conference|district|remittance|obligation|pension|general church|episcopal|bishop|benevolence/.test(t) },
-    { id: 'building', label: 'Building & facilities', color: '#eda100', css: 'var(--s4)', ink: '#14233f',
+    { id: 'building', label: 'Building & facilities', short: 'Buildings', color: '#eda100', css: 'var(--s4)', ink: '#14233f',
       plain: p => `₱${p} kept our buildings and facilities running`, lineHint: 'repairs, maintenance, utilities, rent and equipment',
       test: (d, t) => /repair|maintenance|utilit|meralco|water|electric|\brent\b|equipment|furniture|facilit|building|renovat|construction|aircon|roof|plumb|janitor|cleaning|security|insurance/.test(t) },
-    { id: 'admin', label: 'Administration & operations', color: '#e87ba4', css: 'var(--s5)', ink: '#14233f',
+    { id: 'admin', label: 'Administration & operations', short: 'Administration', color: '#e87ba4', css: 'var(--s5)', ink: '#14233f',
       plain: p => `₱${p} ran the office and day-to-day operations`, lineHint: 'office, supplies, communication, bank charges and transport',
       test: (d, t) => /office|suppl|communicat|internet|telephone|\bload\b|bank|charge|transport|fare|fuel|gasoline|printing|stationery|admin|travel|postage|courier|subscription|software|accounting|audit|licen|permit|\btax/.test(t) },
-    { id: 'other', label: 'Unbudgeted / other', color: '#8a8f98', css: 'var(--s-other)', ink: '#14233f',
+    { id: 'other', label: 'Unbudgeted / other', short: 'Unbudgeted / other', color: '#8a8f98', css: 'var(--s-other)', ink: '#14233f',
       plain: p => `₱${p} went to unbudgeted or other costs`, lineHint: 'Miscellaneous (Unbudgeted) and anything not matched above',
       test: () => true }
   ];
   // Same idea for the RECEIVING side over General Fund income. `order` is the display order; matching priority is the
   // array order (a posted project/fund-raising proceed is typed like an occasional offering, so it must be tested first).
   const INCOME_BUCKETS = [
-    { id: 'project', order: 3, label: 'Fund-raising & project proceeds', color: '#eda100', css: 'var(--s4)', ink: '#14233f',
+    { id: 'project', order: 3, label: 'Fund-raising & project proceeds', short: 'Fund-raising', color: '#eda100', css: 'var(--s4)', ink: '#14233f',
       plain: p => `₱${p} came from fund-raising and project proceeds posted to the General Fund`, lineHint: 'special-project proceeds posted as General Fund income',
       test: d => !!d.specialProjectId || (d.proceedsPostingIndex !== undefined && d.proceedsPostingIndex !== null) },
-    { id: 'tithes', order: 0, label: 'Tithes', color: '#2a78d6', css: 'var(--s1)', ink: '#ffffff',
+    { id: 'tithes', order: 0, label: 'Tithes', short: 'Tithes', color: '#2a78d6', css: 'var(--s1)', ink: '#ffffff',
       plain: p => `₱${p} came from tithes`, lineHint: 'member tithes', test: d => isTitheRecord(d) },
-    { id: 'loose', order: 1, label: 'Loose & Sunday offerings', color: '#eb6834', css: 'var(--s2)', ink: '#14233f',
+    { id: 'loose', order: 1, label: 'Loose & Sunday offerings', short: 'Loose & Sunday', color: '#eb6834', css: 'var(--s2)', ink: '#14233f',
       plain: p => `₱${p} came from loose and Sunday offerings`, lineHint: 'loose offering and Sunday School',
       test: (d, t) => isLooseOfferingRecord(d) || /sunday school/.test(t) },
-    { id: 'special', order: 2, label: 'Special & occasional offerings', color: '#1baf7a', css: 'var(--s3)', ink: '#14233f',
+    { id: 'special', order: 2, label: 'Special & occasional offerings', short: 'Special offerings', color: '#1baf7a', css: 'var(--s3)', ink: '#14233f',
       plain: p => `₱${p} came from special and occasional offerings`, lineHint: 'occasional, special and seasonal offerings',
       test: (d, t) => /occasional|special|christmas|easter|thanksgiving|anniversary|harvest/.test(t) },
-    { id: 'other', order: 4, label: 'Other income', color: '#8a8f98', css: 'var(--s-other)', ink: '#14233f',
+    { id: 'other', order: 4, label: 'Other income', short: 'Other income', color: '#8a8f98', css: 'var(--s-other)', ink: '#14233f',
       plain: p => `₱${p} came from other income (interest and miscellaneous)`, lineHint: 'investment income, interest, miscellaneous',
       test: () => true }
   ];
@@ -1258,34 +1393,63 @@
     ids.forEach((id, i) => { out.raw[id] = raws[i]; out.pesos[id] = floors[i]; });
     return out;
   }
-  // Group a list of dated entries into buckets: { id: { amount, lines: { name: amount } } }
-  function bucketize(list, bucketOf, S) {
+  // Group a list of dated entries into buckets: { id: { amount, lines: { key: { label, main, amount } } } }.
+  // A "line" is the budget sub-category (or the main category when there is no sub); an unbudgeted entry is its own
+  // specific line, named by miscLabelOf() (e.g. "Typhoon Relief"), never the generic "Unbudgeted".
+  function lineOf(c, d, side) {
+    if (c.main === MISC_MAIN) { const label = miscLabelOf(d, side); return { key: `${MISC_MAIN}|${normalizeGroupKey(label)}`, label, main: MISC_MAIN }; }
+    const label = !c.sub || c.sub === c.main || c.sub === 'Others' ? c.main : c.sub;
+    return { key: `${normalizeGroupKey(c.main)}|${normalizeGroupKey(label)}`, label, main: c.main };
+  }
+  function addLine(b, ln, a) {
+    const x = b.lines[ln.key] || (b.lines[ln.key] = { label: ln.label, main: ln.main, amount: 0 });
+    x.amount += a; b.amount += a;
+  }
+  function bucketize(list, bucketOf, S, side) {
     const g = {};
     list.forEach(d => {
       const { def, c } = bucketOf(d, S), a = parseFloat(d.amount || 0);
-      const b = g[def.id] || (g[def.id] = { amount: 0, lines: {} });
-      const name = c.main === c.sub || !c.sub ? c.main : `${c.main} › ${c.sub}`;
-      b.amount += a; b.lines[name] = (b.lines[name] || 0) + a;
+      addLine(g[def.id] || (g[def.id] = { amount: 0, lines: {} }), lineOf(c, d, side), a);
     });
     return g;
   }
+  // Largest-remainder split of `total` whole pesos across amounts (negatives count as 0); sums to exactly `total`.
+  function splitPesos(total, amounts) {
+    const pos = amounts.map(v => Math.max(0, v)), sum = pos.reduce((s, v) => s + v, 0);
+    if (!(sum > 0) || !(total > 0)) return amounts.map(() => 0);
+    const raws = pos.map(v => v / sum * total), out = raws.map(Math.floor);
+    let left = total - out.reduce((s, v) => s + v, 0);
+    raws.map((v, i) => ({ i, f: v - Math.floor(v) })).sort((x, y) => y.f - x.f || x.i - y.i).forEach(o => { if (left > 0) { out[o.i]++; left--; } });
+    return out;
+  }
   // Rows for one side: display order, non-zero buckets only, each with peso-per-100 (rounded) and its underlying lines.
+  // `lines` is the flat list of specific lines across buckets (largest first). Line pesos are rounded INSIDE their
+  // bucket's pesos, so the lines of a bucket add up to the bucket's coins and all lines add up to exactly 100.
   function sideRows(defs, grouped) {
     const ordered = defs.slice().sort((a, b) => (a.order ?? defs.indexOf(a)) - (b.order ?? defs.indexOf(b)));
     const amounts = {}; ordered.forEach(b => { amounts[b.id] = (grouped[b.id] || { amount: 0 }).amount; });
     const sp = pesosOf100(amounts, ordered.map(b => b.id)), total = sumF(ordered, b => amounts[b.id]);
-    const rows = ordered.filter(b => Math.abs(amounts[b.id]) > 0.005).map(b => ({
-      id: b.id, label: b.label, color: b.color, css: b.css, ink: b.ink, plain: b.plain, hint: b.lineHint,
-      amount: amounts[b.id], share: sp.raw[b.id], pesos: sp.pesos[b.id],
-      lines: Object.keys(grouped[b.id].lines).map(n => ({ name: n, amount: grouped[b.id].lines[n], per100: total > 0 ? grouped[b.id].lines[n] / total * 100 : 0 }))
-        .filter(l => Math.abs(l.amount) > 0.005).sort((a, b2) => b2.amount - a.amount)
-    }));
-    return { total, rows, sp, ordered };
+    const rows = ordered.filter(b => Math.abs(amounts[b.id]) > 0.005).map(b => {
+      const ls = Object.keys(grouped[b.id].lines).map(k => ({ key: k, ...grouped[b.id].lines[k] })).filter(l => Math.abs(l.amount) > 0.005)
+        .sort((x, y) => y.amount - x.amount || x.label.localeCompare(y.label));
+      const lp = splitPesos(sp.pesos[b.id], ls.map(l => l.amount));
+      return {
+        id: b.id, label: b.label, short: b.short || b.label, color: b.color, css: b.css, ink: b.ink, plain: b.plain, hint: b.lineHint,
+        amount: amounts[b.id], share: sp.raw[b.id], pesos: sp.pesos[b.id],
+        lines: ls.map((l, i) => ({ name: l.label, label: l.label, main: l.main, key: l.key, amount: l.amount, pesos: lp[i], per100: total > 0 ? l.amount / total * 100 : 0 }))
+      };
+    });
+    const flat = [];
+    rows.forEach(r => r.lines.forEach(l => flat.push({ ...l, bucketId: r.id, bucket: r.short, css: r.css, color: r.color })));
+    flat.sort((x, y) => y.amount - x.amount || x.label.localeCompare(y.label));
+    // The line's own name leads; its main category (or "unbudgeted") rides along as a qualifier so "Salary" is never ambiguous.
+    flat.forEach(l => { l.qual = l.main === MISC_MAIN ? 'unbudgeted' : (normalizeGroupKey(l.main) === normalizeGroupKey(l.label) ? '' : l.main); l.display = l.qual ? `${l.label} (${l.qual})` : l.label; });
+    return { total, rows, sp, ordered, lines: flat };
   }
 
   // ── Pass-through ("in and out") collections ──────────────────────────────
   // Some unbudgeted special offerings are collected only to be remitted. The Treasurer tags a Miscellaneous (Unbudgeted)
-  // line as pass-through (settings/passThroughItems = { items: [{ side, key, label, taggedAt, taggedBy }] }); the tag
+  // line as pass-through in Budget vs Actual > Setup Budget (this page only READS it) (settings/passThroughItems = { items: [{ side, key, label, taggedAt, taggedBy }] }); the tag
   // applies to EVERY entry of that line in any period. The label logic below is COPIED from print-report.html
   // (cleanMiscLabel / pickMiscLabel / normalizeGroupKey, and the Miscellaneous label source order in buildIncGroups() /
   // buildExpGroups()) - keep in step. One difference: the payer name is the income doc's own `member` text (the Print
@@ -1586,6 +1750,7 @@
       tithersChange: pctChange(tithersSel.size, tithersPrior.size),
       avgTithe: tithersSel.size ? tithesSel / tithersSel.size : 0,
       participation: attendanceAvg > 0 ? tithersSel.size / attendanceAvg * 100 : null,
+      participationPrior: attPrior.avg > 0 ? tithersPrior.size / attPrior.avg * 100 : null,
       newTithers, lapsedTithers, concentration, weeks, titherSeries: series.tithers, tithesSeries: series.tithes
     };
 
@@ -1596,16 +1761,22 @@
       return a + (test(ex, key) ? v : 0);
     }, 0);
     function per100For(fExp, fInc, ms, totalOut) {
-      const spend = sideRows(PURPOSE_BUCKETS, bucketize(fExp, expenseBucketOf, S));
-      const recv = sideRows(INCOME_BUCKETS, bucketize(fInc, incomeBucketOf, S));
+      const spend = sideRows(PURPOSE_BUCKETS, bucketize(fExp, expenseBucketOf, S, 'expense'));
+      const recv = sideRows(INCOME_BUCKETS, bucketize(fInc, incomeBucketOf, S, 'income'));
       // comparison: same months last year, and the budget plan (each selected month's own budget mapped to the same buckets)
-      const prior = sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(year - 1, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S));
+      const prior = sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(year - 1, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S, 'expense'));
+      // every earlier year's split for the same months (the "last year" view's compare-year select lists those with data)
+      const firstYear = expenseData.reduce((mn, d) => { const y = parseInt(String(d.date).slice(0, 4), 10); return y > 2000 && y < mn ? y : mn; }, year);
+      const priorBy = { [year - 1]: prior }, priorYears = prior.total > 0.005 ? [year - 1] : [];
+      for (let y = year - 2; y >= firstYear; y--) {
+        const g = sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(y, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S, 'expense'));
+        priorBy[y] = g; if (g.total > 0.005) priorYears.push(y);
+      }
       const budGrouped = {};
       S.gfExpenseKeys.forEach(key => {
         const v = sumBudget(expenseBudgetForMonth, key, ms); if (!v) return;
         const ex = { category: key }, { def, c } = expenseBucketOf(ex, S);
-        const b = budGrouped[def.id] || (budGrouped[def.id] = { amount: 0, lines: {} }), name = c.main === c.sub || !c.sub ? c.main : `${c.main} › ${c.sub}`;
-        b.amount += v; b.lines[name] = (b.lines[name] || 0) + v;
+        addLine(budGrouped[def.id] || (budGrouped[def.id] = { amount: 0, lines: {} }), lineOf(c, ex, 'expense'), v);
       });
       const plan = sideRows(PURPOSE_BUCKETS, budGrouped);
       const planOf = id => { const r = plan.rows.find(x => x.id === id); return r ? r : null; };
@@ -1613,7 +1784,7 @@
       const staffBud = budTotal > 0 ? (planOf('people') ? planOf('people').amount : 0) / budTotal * 100 : null;
       const minBud = budTotal > 0 ? sumBudgetKeys(ms, ex => isNowMinistryExpense(ex)) / budTotal * 100 : null;
       return {
-        total: spend.total, rows: spend.rows, recv, spend, prior, plan,
+        total: spend.total, rows: spend.rows, recv, spend, prior, plan, priorBy, priorYears,
         trio: [
           { label: 'This period', total: spend.total, rows: spend.rows },
           { label: 'Same months last year', total: prior.total, rows: prior.rows },
@@ -2153,33 +2324,30 @@
     return partial + heads + bullets + lists + unbudgetedPanel(k, o) + passThroughPanel(k, o);
   }
 
-  // Miscellaneous (Unbudgeted) lines, each taggable as pass-through by the Treasurer (never in the saved snapshot).
-  function ptButton(mode, side, key, label, o) {
-    if (o.static || !isTreasurer()) return '';
-    return `<button type="button" class="btn-pt pt-btn" data-pt="${mode}" data-side="${escapeAttr(side)}" data-key="${escapeAttr(key)}" data-label="${escapeAttr(label)}">${mode === 'tag' ? 'Mark as pass-through' : 'Untag'}</button>`;
-  }
+  // Miscellaneous (Unbudgeted) lines. READ-ONLY here: pass-through items are managed in Budget vs Actual > Setup Budget.
+  const ptManageNote = o => (o.static || !isTreasurer()) ? '' : '<div class="note edit-only">Manage pass-through items in <a href="budget-vs-actual.html">Budget vs Actual &rarr; Setup Budget</a>.</div>';
   function unbudgetedPanel(k, o) {
     const P = k.passThrough, col = (title, side, lines) => {
-      const rows = lines.map(l => `<tr><td>${escapeHtml(l.label)}${l.tagged ? ' <span class="chip flat">pass-through</span>' : ''}<div class="note">${l.entries} entr${l.entries === 1 ? 'y' : 'ies'}</div></td><td class="n">${peso(l.amount)}</td><td class="n">${ptButton(l.tagged ? 'untag' : 'tag', side, l.key, l.label, o)}</td></tr>`).join('');
-      return `<div class="panel"><h3>${title} <span class="hint">Miscellaneous (Unbudgeted), selected months</span></h3>${lines.length ? `<div class="tbl-scroll"><table class="t"><thead><tr><th>Line</th><th class="n">Amount</th><th class="n"></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="note">No unbudgeted lines in these months.</div>'}</div>`;
+      const rows = lines.map(l => `<tr><td>${escapeHtml(l.label)}${l.tagged ? ' <span class="chip flat">pass-through</span>' : ''}<div class="note">${l.entries} entr${l.entries === 1 ? 'y' : 'ies'}</div></td><td class="n">${peso(l.amount)}</td></tr>`).join('');
+      return `<div class="panel"><h3>${title} <span class="hint">Miscellaneous (Unbudgeted), selected months</span></h3>${lines.length ? `<div class="tbl-scroll"><table class="t"><thead><tr><th>Line</th><th class="n">Amount</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="note">No unbudgeted lines in these months.</div>'}</div>`;
     };
     if (!P.lines.income.length && !P.lines.expense.length) return '';
     return `<div class="grid2">${col('Unbudgeted income', 'income', P.lines.income)}${col('Unbudgeted spending', 'expense', P.lines.expense)}</div>`
-      + (o.static || !isTreasurer() ? '' : '<div class="note edit-only">Collected only to be remitted (in and out)? Mark that line as pass-through: it then leaves the Unbudgeted totals, budget percentages and the ₱100 mixes. Cash totals are not changed.</div>');
+      + ptManageNote(o);
   }
   function passThroughPanel(k, o) {
     const P = k.passThrough;
     if (!P.hasItems && (o.static || !isTreasurer())) return '';
-    if (!P.hasItems) return `<div class="panel"><h3>Pass-through collections</h3><div class="note">No lines are marked as pass-through. Use "Mark as pass-through" above for offerings collected only to be remitted.</div></div>`;
-    const row = r => `<tr><td>${escapeHtml(r.label)}<div class="note">${r.side === 'income' ? 'collected' : 'remitted'}</div></td><td class="n">${peso(r.sel)}</td><td class="n">${peso(r.ytd)}</td><td class="n">${ptButton('untag', r.side, normalizeGroupKey(r.label), r.label, o)}</td></tr>`;
+    if (!P.hasItems) return `<div class="panel"><h3>Pass-through collections</h3><div class="note">No lines are marked as pass-through.</div>${ptManageNote(o)}</div>`;
+    const row = r => `<tr><td>${escapeHtml(r.label)}<div class="note">${r.side === 'income' ? 'collected' : 'remitted'}</div></td><td class="n">${peso(r.sel)}</td><td class="n">${peso(r.ytd)}</td></tr>`;
     return `<div class="panel"><h3>Pass-through collections <span class="hint">in and out · left out of Unbudgeted, budget % and the ₱100 mixes</span></h3>
       <div class="tiles">
         ${tile('Collected', pesoW(P.collectedSel), `selected months · year to date ${peso(P.collectedYtd)}`)}
         ${tile('Remitted', pesoW(P.remittedSel), `selected months · year to date ${peso(P.remittedYtd)}`)}
         ${tile('Still to remit', `<span class="${P.toRemitYtd > 0.005 ? 'neg' : 'pos'}">${pesoW(P.toRemitSel)}</span>`, `selected months · year to date <b>${peso(P.toRemitYtd)}</b>${P.toRemitYtd > 0.005 ? ' (earmarked cash)' : ''}`)}
       </div>
-      <div class="tbl-scroll" style="margin-top:8px"><table class="t"><thead><tr><th>Item</th><th class="n">Selected months</th><th class="n">Year to date</th><th class="n"></th></tr></thead><tbody>${P.rows.map(row).join('')}</tbody></table></div>
-      <div class="note" style="margin-top:6px">Total Cash Receipts, Total Disbursements and the Ending Balance still include this money, because the cash really moved. The Print Report lists them under its own pass-through headings.</div></div>`;
+      <div class="tbl-scroll" style="margin-top:8px"><table class="t"><thead><tr><th>Item</th><th class="n">Selected months</th><th class="n">Year to date</th></tr></thead><tbody>${P.rows.map(row).join('')}</tbody></table></div>
+      <div class="note" style="margin-top:6px">Total Cash Receipts, Total Disbursements and the Ending Balance still include this money, because the cash really moved. The Print Report lists them under its own pass-through headings.</div>${ptManageNote(o)}</div>`;
   }
 
   function slideGiving(k, o) {
@@ -2201,33 +2369,230 @@
     return tiles + heat + `<div class="note">Privacy: this page shows counts and percentages only - never a giver's name or amount.</div>`;
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Slide 5 "pitaka" (wallet): a stylised ₱100 note + four views (spent / received / budget plan / a previous year), each a
+  // list of SPECIFIC budget lines with a bucket tag, a big ₱ share, an animated bar and a caption. Pure function of kpi.per100.
+  // ───────────────────────────────────────────────────────────────────────
+  const PK_ICONS = {
+    pastor: '<path d="M12 3v5M9.5 5.5h5"/><circle cx="12" cy="12" r="3"/><path d="M6 21a6 6 0 0 1 12 0"/>',
+    staff: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14.5 20a4.5 4.5 0 0 1 7-3.7"/>',
+    worship: '<path d="M4 5a2 2 0 0 1 2-2h5v17H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-5v17h5a2 2 0 0 1 2 2z"/>',
+    outreach: '<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/>',
+    power: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>',
+    office: '<path d="M8 3h6l4 4v14H8z"/><path d="M14 3v4h4M10.5 12h5M10.5 16h5"/>',
+    other: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>',
+    tithe: '<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/><path d="M12 9v5M9.5 11.5h5"/>',
+    coins: '<ellipse cx="9" cy="7" rx="5" ry="2.5"/><path d="M4 7v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7"/><path d="M10 15.5c.6 1.2 2.5 2 4.5 2 2.8 0 5-1.1 5-2.5v-4c0-1.4-2.2-2.5-5-2.5"/>',
+    kids: '<circle cx="12" cy="6" r="2.5"/><path d="M8 21v-5l-2-3 4-3h4l4 3-2 3v5"/>',
+    gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v9h14v-9"/><path d="M12 8c-2-3-6-3-6-.5S12 8 12 8s6-3 6-.5-4 3.5-6 .5"/>',
+    bank: '<path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18"/>'
+  };
+  // CAPTIONS - EASY TO EDIT. Each specific line gets a one-sentence caption in two tones: "fun" (light, respectful Taglish; the
+  // default) and "plain" (serious). The FIRST keyword rule whose `re` matches "<line label> <main category> <unbudgeted?>" (lower
+  // case) and whose `side` matches wins; otherwise the bucket fallback below applies (key = side:bucketId). `icon` is a PK_ICONS key.
+  const PITAKA_CAPTIONS = {
+    keywords: [
+      { side: 'expense', re: /unbudgeted|non-budgeted|miscellaneous/, icon: 'other',
+        fun: 'Mga sorpresa ng buhay. Kaya may budget review tayo.', plain: 'Mga gastos na wala sa budget.' },
+      { side: 'expense', re: /pastor/, icon: 'pastor',
+        fun: 'Para sa ating pastor na walang sawang nagpapastol, kahit Lunes pa lang may tawag na.', plain: 'Sahod at benepisyo ng pastor.' },
+      { side: 'expense', re: /staff|deaconess|secretar|assistant/, icon: 'staff',
+        fun: 'Ang mga bayaning nagbubukas ng simbahan nang maaga at huling umuuwi.', plain: 'Sahod ng office staff at deaconess.' },
+      { side: 'expense', re: /worship|hymn|choir|communion|music/, icon: 'worship',
+        fun: 'Hymnals, kandila at communion: kumpleto ang pagsamba tuwing Linggo.', plain: 'Mga gamit para sa Sunday worship at sacraments.' },
+      { side: 'expense', re: /outreach|mission|vcs|vacation|feeding|evangel/, icon: 'outreach',
+        fun: 'Dito talaga ang puso ng misyon. Sana lumaki pa ito sa susunod na taon.', plain: 'Outreach programs, misyon at Vacation Church School.' },
+      { side: 'expense', re: /utilit|meralco|electric|water/, icon: 'power',
+        fun: 'Para hindi tayo mag-worship sa dilim at init. Salamat, electric fan.', plain: 'Kuryente at tubig ng simbahan.' },
+      { side: 'expense', re: /repair|maint|renovat|plumb|aircon/, icon: 'wrench',
+        fun: 'Bubong na hindi tumutulo at upuang hindi umuuga.', plain: 'Pagkumpuni at maintenance ng gusali.' },
+      { side: 'expense', re: /office|suppl|stationery|printing/, icon: 'office',
+        fun: 'Para sa papel, tinta at kape ng mga bayani sa opisina.', plain: 'Papel, tinta at iba pang gamit sa opisina.' },
+      { side: 'expense', re: /apportion|conference|district|connectional/, icon: 'bank',
+        fun: 'Ambag natin sa mas malaking pamilya ng United Methodist.', plain: 'Apportionment at ambag sa District at Conference.' },
+      { side: 'income', re: /tithe/, icon: 'tithe',
+        fun: 'Salamat sa tapat na nagbibigay ng ikapu. Kayo ang gulugod ng church.', plain: 'Ikapu ng mga miyembro.' },
+      { side: 'income', re: /loose/, icon: 'coins',
+        fun: 'Bawat barya sa offering bag ay may kuwento.', plain: 'Offering tuwing Sunday service.' },
+      { side: 'income', re: /sunday school/, icon: 'kids',
+        fun: 'Kahit maliliit na kamay, marunong magbigay.', plain: 'Handog ng Sunday School.' },
+      { side: 'income', re: /easter|christmas|simbang gabi|thanksgiving|anniversary|harvest|mother|father/, icon: 'gift',
+        fun: 'Kapag may espesyal na okasyon, mas maluwag ang puso (at ang bulsa).', plain: 'Special offering para sa okasyon.' },
+      { side: 'income', re: /interest|investment|bank/, icon: 'bank',
+        fun: 'Kumikita rin kahit natutulog ang pera sa bangko.', plain: 'Interes sa bangko at iba pang kita.' }
+    ],
+    bucket: {
+      'expense:people':       { icon: 'staff',   fun: 'Para sa mga taong nagsisilbi sa atin araw-araw.', plain: 'Sahod at benepisyo ng mga naglilingkod.' },
+      'expense:ministry':     { icon: 'outreach', fun: 'Pondo para sa mga programa at ministeryo ng church.', plain: 'Gastos ng mga ministeryo at programa.' },
+      'expense:connectional': { icon: 'bank',    fun: 'Ambag natin sa mas malaking pamilya ng simbahan.', plain: 'Ambag sa District, Conference at wider church.' },
+      'expense:building':     { icon: 'wrench',  fun: 'Para sa bahay-sambahan na tahanan nating lahat.', plain: 'Gastos sa gusali at pasilidad.' },
+      'expense:admin':        { icon: 'office',  fun: 'Maliliit na gastos na nagpapatakbo sa araw-araw.', plain: 'Gastos sa opisina at operasyon.' },
+      'expense:other':        { icon: 'other',   fun: 'Mga sorpresa ng buhay. Kaya may budget review tayo.', plain: 'Mga gastos na wala sa budget.' },
+      'income:tithes':        { icon: 'tithe',   fun: 'Salamat sa tapat na pagbibigay.', plain: 'Ikapu ng mga miyembro.' },
+      'income:loose':         { icon: 'coins',   fun: 'Bawat barya ay may kuwento.', plain: 'Offering tuwing Sunday service.' },
+      'income:special':       { icon: 'gift',    fun: 'Handog para sa espesyal na okasyon.', plain: 'Special at occasional offering.' },
+      'income:project':       { icon: 'gift',    fun: 'Bunga ng sama-samang pagsisikap ng fund-raising.', plain: 'Proceeds ng fund-raising at proyekto.' },
+      'income:other':         { icon: 'bank',    fun: 'Kita mula sa interes at iba pa.', plain: 'Interes at iba pang kita.' }
+    },
+    generic: { icon: 'other', fun: 'Bahagi ng ating pinagsamang handog at gastos.', plain: 'Linya ng budget.' }
+  };
+  function pkCaptionFor(l, side) {
+    const text = `${l.label} ${l.main || ''} ${l.qual || ''}`.toLowerCase();
+    const kw = PITAKA_CAPTIONS.keywords.find(r => r.side === side && r.re.test(text));
+    return kw || PITAKA_CAPTIONS.bucket[`${side}:${l.bucketId}`] || PITAKA_CAPTIONS.generic;
+  }
+  const PK_VIEWS = [
+    { id: 'spent', t: 'Saan napunta', s: 'Gastos ng church', svg: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>' },
+    { id: 'received', t: 'Saan galing', s: 'Kita at handog', svg: '<path d="M17 7 7 17"/><path d="M16 17H7V8"/>' },
+    { id: 'plan', t: 'Ayon sa budget', s: 'Ang plano para sa gastos', svg: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>' },
+    { id: 'lastyear', t: 'Noong nakaraang taon', s: 'Parehong buwan', svg: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>' }
+  ];
+  const PK_LINES_SHOWN = 8;
+  const pkMonthsOnly = k => k.period.label.replace(/\s*\d{4}$/, '');
+  // Compare years offered on the "last year" view: the previous year first (always), then every earlier year with spending data.
+  function pkCompareYears(d, year) { return [year - 1].concat((d.priorYears || []).filter(y => y !== year - 1)); }
+  function pkCompareYear(d, year) { const ys = pkCompareYears(d, year); return ys.includes(ui.compareYear) ? ui.compareYear : ys[0]; }
+  // The model of one view: lines (with pesos summing to 100), bucket rows for the coins, title/caption.
+  function pkModel(k, basis, view, cmpYear) {
+    const d = k.per100[basis], year = k.period.year, lab = basis === 'ytd' ? `Jan-${SHORT_MONTHS[k.period.last]} ${year}` : k.period.label;
+    const spendByKey = {}; d.spend.lines.forEach(l => { spendByKey[l.key] = l; });
+    let grp, side = 'expense', title, cap, empty = '';
+    if (view === 'received') { grp = d.recv; side = 'income'; title = 'Bawat ₱100 na natanggap'; cap = `Kabuuang kita: ${peso(grp.total)} · ${lab}`; }
+    else if (view === 'plan') { grp = d.plan; title = 'Bawat ₱100 ayon sa budget'; cap = grp.total > 0 ? `Kung paano hinati ng budget ang gastos · ${lab} · budget ${peso(grp.total)}` : 'Walang budget para sa mga buwang ito'; if (!(grp.total > 0)) empty = `Wala pang budget na nakalagay para sa ${lab}.`; }
+    else if (view === 'lastyear') {
+      grp = (d.priorBy && d.priorBy[cmpYear]) || { total: 0, rows: [], lines: [] };
+      const mo = basis === 'ytd' ? `Jan-${SHORT_MONTHS[k.period.last]}` : pkMonthsOnly(k);
+      title = `Bawat ₱100 noong ${cmpYear}`; cap = grp.total > 0 ? `Parehong buwan noong ${cmpYear}: ${peso(grp.total)}` : `Walang datos para sa ${mo} ${cmpYear}`;
+      if (!(grp.total > 0)) empty = `Wala pang datos para sa ${mo} ${cmpYear}. Lalabas ito kapag na-upload na ang lumang records.`;
+    } else { grp = d.spend; title = 'Bawat ₱100 na ginastos'; cap = `Kabuuang gastos: ${peso(grp.total)} · ${lab}`; if (!(grp.total > 0)) empty = `Walang gastos na naitala para sa ${lab}.`; }
+    if (view === 'received' && !(grp.total > 0)) empty = `Walang kita na naitala para sa ${lab}.`;
+    let lines = grp.lines.map(l => ({ ...l }));
+    if (view === 'plan' || view === 'lastyear') {
+      lines.forEach(l => { const a = spendByKey[l.key]; l.cmpTo = a ? a.pesos : 0; });
+      if (grp.total > 0) { const have = new Set(lines.map(l => l.key)); d.spend.lines.filter(l => !have.has(l.key)).forEach(l => lines.push({ ...l, pesos: 0, amount: null, cmpTo: l.pesos, onlyNow: true, view, cmpYear })); }
+    }
+    return { view, side, title, cap, empty, total: grp.total, lines, rows: grp.rows, d, cmpYear };
+  }
+  function pkRowHtml(l, side, o, i, tone, max, animate) {
+    const c = pkCaptionFor(l, side), icon = PK_ICONS[c.icon] || PK_ICONS.other, p = l.pesos;
+    let cmp = '';
+    if (l.cmpTo !== undefined) {
+      const dlt = l.cmpTo - p;
+      cmp = dlt === 0 ? `<span class="pk-cmp">Aktwal ngayon: ₱${l.cmpTo} (pareho)</span>` : `<span class="pk-cmp ${dlt > 0 ? 'up' : 'down'}">Aktwal ngayon: ₱${l.cmpTo} (${dlt > 0 ? '+' : '−'}₱${Math.abs(dlt)})</span>`;
+    }
+    const width = max > 0 ? p / max * 100 : 0;
+    return `<div class="pk-row${animate ? ' enter' : ''}" style="animation-delay:${animate ? 250 + i * 70 : 0}ms">
+      <div class="pk-ri" style="background:${l.css};color:${l.ink || '#fff'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></div>
+      <div class="pk-rt">${escapeHtml(l.label)}<small>${escapeHtml(l.bucket)}</small>${l.qual ? `<span class="note"> (${escapeHtml(l.qual)})</span>` : ''}${l.onlyNow ? `<span class="note"> · ${side === 'expense' && l.view === 'lastyear' ? 'wala noong ' + l.cmpYear : 'walang nakalaan sa budget'}</span>` : ''}</div>
+      <div class="pk-rp">${p > 0 ? '₱' + p : '&lt;₱1'}</div>
+      <div class="pk-bar"><i ${o.static ? `style="width:${width.toFixed(1)}%;background:${l.css}"` : `data-w="${width.toFixed(1)}" style="background:${l.css}"`}></i></div>
+      <div class="pk-rs"><span>${escapeHtml(tone === 'plain' ? c.plain : c.fun)}</span>${l.amount !== null && l.amount !== undefined ? `<span class="amt">${peso(l.amount)}</span>` : ''}${cmp}</div></div>`;
+  }
+  function pkRowsHtml(m, o, tone, animate) {
+    if (m.empty) return `<div class="pk-empty">${escapeHtml(m.empty)}</div>`;
+    const max = Math.max(1, ...m.lines.map(l => l.pesos)), main = m.lines.length > PK_LINES_SHOWN + 1 ? m.lines.slice(0, PK_LINES_SHOWN) : m.lines, rest = m.lines.slice(main.length);
+    let out = main.map((l, i) => pkRowHtml(l, m.side, o, i, tone, max, animate)).join('');
+    if (rest.length) out += `<details class="pk-more"${o.static ? ' open' : ''}><summary><span><b>${rest.length}</b> pang ibang linya</span><span class="pk-more-p">${sumF(rest, l => l.pesos) > 0 ? '₱' + sumF(rest, l => l.pesos) : '&lt;₱1'}<span class="bk-chev" aria-hidden="true">▸</span></span></summary><div class="pk-rows-in">${rest.map((l, i) => pkRowHtml(l, m.side, o, i, tone, max, false)).join('')}</div></details>`;
+    return out;
+  }
+  function pkSplitHtml(m) { return m.lines.filter(l => l.pesos > 0).map(l => `<i style="flex-basis:${l.pesos}%;background:${l.css}"></i>`).join(''); }
+  function pkCoinHtml(m, o) {
+    if (!(m.total > 0)) return '';
+    const w = Math.min(o.w.half, 260);
+    return `<div class="svgwrap coin-wrap">${coinGridSvg(m.rows, w, 'Every one hundred pesos, by purpose')}</div>
+      <div class="bk-legend">${m.rows.map(r => `<span><i style="background:${r.css}"></i>${escapeHtml(r.short)} <b>₱${r.pesos}</b></span>`).join('')}</div>`;
+  }
+  function pkFootHtml(m) { return m.total > 0 ? `<span>Kabuuan: <b>₱${sumF(m.lines, l => l.pesos)}</b> sa bawat ₱100</span><span>Specific na linya, naka-grupo ayon sa kulay</span><span class="coin-note">1 barya = ₱1 ng bawat ₱100</span>` : ''; }
+  const PK_NOTE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v7"/><path d="M9 5h6"/><path d="M6 21V12l6-4 6 4v9"/><path d="M10 21v-4a2 2 0 0 1 4 0v4"/></svg>';
+  function pkCompareHtml(k, m) {
+    if (m.view !== 'lastyear') return '';
+    const d = k.per100[ui.per100 === 'ytd' ? 'ytd' : 'period'], ys = pkCompareYears(d, k.period.year);
+    if (ys.length < 2) return '';
+    return `<label class="pk-cmp-sel">Ihambing sa: <select id="pk-cmp" onchange="setCompareYear(this.value)" aria-label="Taon na ihahambing">${ys.map(y => `<option value="${y}"${y === m.cmpYear ? ' selected' : ''}>${y}${(d.priorBy[y] && d.priorBy[y].total > 0) ? '' : ' (walang datos)'}</option>`).join('')}</select></label>`;
+  }
+  const pkToneBtns = tone => `<button type="button" id="pk-tone-fun" onclick="setPitakaTone('fun')" aria-pressed="${tone === 'fun'}">May konting biro</button><button type="button" id="pk-tone-plain" onclick="setPitakaTone('plain')" aria-pressed="${tone === 'plain'}">Seryoso</button>`;
+  const pkViewBtns = (view, cmpYear) => PK_VIEWS.map(v => `<button type="button" class="vbtn" data-pkview="${v.id}" aria-pressed="${v.id === view}"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${v.svg}</svg></span><span><b>${v.t}</b><span>${v.id === 'lastyear' ? `Parehong buwan, ${cmpYear}` : v.s}</span></span></button>`).join('');
+
+  // Re-draw only the pitaka parts (so the note-tear and row animations are not killed by a full re-render).
+  function pkRefresh(animate) {
+    const k = ui.kpi, host = $('pk'); if (!k || !host) return;
+    const basis = ui.per100 === 'ytd' ? 'ytd' : 'period', d = k.per100[basis], o = { static: false, w: ui.w };
+    const cmpYear = pkCompareYear(d, k.period.year), m = pkModel(k, basis, ui.per100View, cmpYear), reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const go = animate && !reduce;
+    host.dataset.view = m.view;
+    host.querySelectorAll('.vbtn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pkview === m.view)));
+    const lyBtn = host.querySelector('.vbtn[data-pkview="lastyear"] span span:last-child'); if (lyBtn) lyBtn.textContent = `Parehong buwan, ${cmpYear}`;
+    $('pk-title').textContent = m.title; $('pk-cap').textContent = m.cap; $('pk-split').innerHTML = pkSplitHtml(m);
+    $('pk-tone').innerHTML = pkToneBtns(ui.pitakaTone); $('pk-cmpwrap').innerHTML = pkCompareHtml(k, m);
+    $('pk-coins').innerHTML = pkCoinHtml(m, o); $('pk-foot').innerHTML = pkFootHtml(m);
+    $('pk-rows').innerHTML = pkRowsHtml(m, o, ui.pitakaTone, go);
+    requestAnimationFrame(() => requestAnimationFrame(() => host.querySelectorAll('.pk-bar i[data-w]').forEach(el => { el.style.width = el.dataset.w + '%'; })));
+    if (go) pkTear(m);
+  }
+  // The ₱100 note tears into coloured strips (width = peso share) that fly toward the list.
+  function pkTear(m) {
+    const wrap = $('pk-note-wrap'), strips = $('pk-strips'); if (!wrap || !strips || !wrap.animate) return;
+    const lines = m.lines.filter(l => l.pesos > 0); if (!lines.length) return;
+    strips.innerHTML = ''; let left = 0;
+    const els = lines.map(l => { const s = document.createElement('div'); s.className = 'pk-strip'; s.style.cssText = `left:${left}%;width:${l.pesos}%;background:${l.css};color:${l.ink || '#fff'}`; s.textContent = l.pesos >= 7 ? '₱' + l.pesos : ''; left += l.pesos; strips.appendChild(s); return s; });
+    wrap.classList.add('tearing');
+    els.forEach((s, i) => s.animate([
+      { opacity: 1, transform: 'translate(0,0) rotate(0)' },
+      { opacity: 1, transform: `translate(0,${i % 2 ? 8 : -8}px) rotate(${i % 2 ? 3 : -3}deg)`, offset: .35 },
+      { opacity: 0, transform: `translate(${140 + i * 14}px,${-20 + i * 18}px) rotate(${i % 2 ? 14 : -10}deg)` }
+    ], { duration: 900, delay: i * 55, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }));
+    clearTimeout(pkTear.t); pkTear.t = setTimeout(() => { wrap.classList.remove('tearing'); strips.innerHTML = ''; }, 900 + lines.length * 55 + 100);
+  }
+  function setPer100View(v, opts) {
+    opts = opts || {};
+    if (!PK_VIEWS.some(x => x.id === v)) return;
+    if (!opts.remote) manualAction();
+    const changed = ui.per100View !== v; ui.per100View = v;
+    if (changed || opts.force) pkRefresh(true);
+    if (!opts.remote) schedulePublish();
+  }
+  function setPitakaTone(t, opts) {
+    opts = opts || {};
+    if (t !== 'fun' && t !== 'plain') return;
+    if (!opts.remote) { manualAction(); try { localStorage.setItem('councilPitakaTone', t); } catch (e) { /* storage may be blocked */ } }
+    ui.pitakaTone = t; pkRefresh(false);
+    if (!opts.remote) schedulePublish();
+  }
+  function setCompareYear(y) { ui.compareYear = parseInt(y, 10); pkRefresh(true); }
+
   function slidePer100(k, o) {
     const basis = o.per100 === 'ytd' ? 'ytd' : 'period', d = k.per100[basis];
     const toggle = o.static ? '' : `<div class="seg per100-toggle" style="border-color:var(--line);margin-bottom:2px"><button onclick="setPer100('period')" class="${basis === 'period' ? 'on' : ''}" style="color:var(--navy)">Selected months</button><button onclick="setPer100('ytd')" class="${basis === 'ytd' ? 'on' : ''}" style="color:var(--navy)">Year to date</button></div>`;
     const basisTxt = basis === 'ytd' ? `Year to date, ${SHORT_MONTHS[0]}-${SHORT_MONTHS[k.period.last]} ${k.period.year}` : k.period.label;
     if (!d.total && !d.recv.total) return `<div class="panel"><div class="note" style="font-size:16px">No General Fund receipts or disbursements recorded for these months.</div></div>`;
-    // One side: coin grid + a tappable, keyboard-accessible bucket list (native <details>; open in the saved snapshot).
-    const plainSentence = r => { const t = r.plain(r.pesos), n = ('₱' + r.pesos).length; return `<b>${escapeHtml(t.slice(0, n))}</b>${escapeHtml(t.slice(n))}`; };
-    const side = (title, grp, noun, totalLabel) => {
-      if (!(grp.total > 0)) return `<div class="panel"><h3>${title}</h3><div class="note" style="font-size:16px">None recorded for these months.</div></div>`;
-      const list = grp.rows.map(r => `<details class="bk"${o.static ? ' open' : ''}><summary><i class="bk-sw" style="background:${r.css}"></i><span class="bk-txt">${plainSentence(r)} <span class="note">(${peso(r.amount)})</span></span><span class="bk-chev" aria-hidden="true">▸</span></summary>
-        <div class="bk-lines"><div class="note">${escapeHtml(r.hint)}</div><div class="tbl-scroll"><table class="t"><thead><tr><th>Budget line</th><th class="n">Amount</th><th class="n">Per ₱100</th></tr></thead><tbody>${
-          r.lines.map(l => `<tr><td>${escapeHtml(l.name)}</td><td class="n">${peso(l.amount)}</td><td class="n">₱${l.per100.toFixed(1)}</td></tr>`).join('')}</tbody></table></div></div></details>`).join('');
-      return `<div class="panel p100"><h3>${title}</h3>
-        <div class="svgwrap coin-wrap">${coinGridSvg(grp.rows, o.w.half, `Every one hundred pesos ${noun}, by purpose`)}</div>
-        <div class="note" style="text-align:center">${totalLabel} ${peso(grp.total)} · each coin = ₱1 of every ₱100</div>
-        <div class="bk-list">${list}</div></div>`;
-    };
-    const recvPanel = side('Every ₱100 we <i>received</i> came from…', d.recv, 'received', 'Total cash receipts');
-    const spendPanel = side('Every ₱100 we <i>spent</i> went to…', d.spend, 'spent', 'Total disbursements');
+    const cmpYear = pkCompareYear(d, k.period.year), view = o.static ? 'spent' : ui.per100View, m = pkModel(k, basis, view, cmpYear);
+    const tone = ui.pitakaTone, animate = false;
+    const ptx = d.passExcluded && (Math.abs(d.passExcluded.receipts) > 0.005 || Math.abs(d.passExcluded.disbursements) > 0.005)
+      ? `<div class="note" style="margin-bottom:6px">Pass-through collections are left out: ${peso(d.passExcluded.receipts)} received and ${peso(d.passExcluded.disbursements)} remitted (see the Budget slide). Together with the figures here they equal Total Cash Receipts / Total Disbursements.</div>` : '';
+    const note = `<div class="pk-note-wrap" id="pk-note-wrap"><div class="pk-note" aria-hidden="true"><span class="pk-corner tl">₱100</span><div class="pk-who">Tagaytay United<br>Methodist Church</div><div class="pk-seal">${PK_NOTE_SVG}</div><div class="pk-big">₱100</div><span class="pk-corner br">₱100</span><div class="pk-split" id="pk-split">${pkSplitHtml(m)}</div></div><div class="pk-strips" id="pk-strips"></div></div>`;
+    const buttons = o.static ? '' : `<div class="pk-views" role="group" aria-label="Pumili ng view">${pkViewBtns(view, cmpYear)}</div>`;
+    const tools = o.static ? '' : `<div class="pk-tone" id="pk-tone" role="group" aria-label="Tono ng caption">${pkToneBtns(tone)}</div>`;
+    const pitaka = `<div class="pk" id="pk" data-view="${view}"><div class="pk-left">${note}<p class="pk-cap" id="pk-cap">${escapeHtml(m.cap)}</p><div id="pk-coins" class="pk-coins">${pkCoinHtml(m, o)}</div></div>
+      <div class="pk-right">${buttons}<div class="pk-toolbar"><h3 id="pk-title">${escapeHtml(m.title)}</h3>${tools}</div><div id="pk-cmpwrap">${o.static ? '' : pkCompareHtml(k, m)}</div>
+        <div class="pk-rows" id="pk-rows" aria-live="polite">${pkRowsHtml(m, o, tone, animate)}</div><div class="pk-foot" id="pk-foot">${pkFootHtml(m)}</div></div></div>`;
+    // Snapshot: the other three views as compact static tables (the live buttons do not work in a saved file).
+    let others = '';
+    if (o.static) {
+      const tbl = v => {
+        const mm = pkModel(k, basis, v, cmpYear);
+        const head = v === 'plan' || v === 'lastyear' ? ['Budget line', 'Per ₱100', 'Actual now'] : ['Budget line', 'Per ₱100'];
+        const body = mm.empty ? `<tr><td colspan="${head.length}" class="note">${escapeHtml(mm.empty)}</td></tr>` : mm.lines.map(l => `<tr><td>${escapeHtml(l.display)}</td><td class="n">${l.pesos > 0 ? '₱' + l.pesos : '&lt;₱1'}</td>${head.length > 2 ? `<td class="n">₱${l.cmpTo}</td>` : ''}</tr>`).join('');
+        return `<div class="panel"><h3>${escapeHtml(mm.title)}</h3><div class="tbl-scroll"><table class="t"><thead><tr>${head.map((h, i) => `<th${i ? ' class="n"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></div>`;
+      };
+      others = `<div class="grid3">${['received', 'plan', 'lastyear'].map(tbl).join('')}</div>`;
+    }
     // Mix comparison
     const ids = PURPOSE_BUCKETS.map(b => b.id);
     const mixRows = PURPOSE_BUCKETS.map(b => {
       const cell = t => { if (!(t.total > 0)) return '—'; const amounts = {}; t.rows.forEach(r => { amounts[r.id] = r.amount; }); return '₱' + pesosOf100(amounts, ids).pesos[b.id]; };
       return [b.label].concat(d.trio.map(cell));
     });
-    const ptx = d.passExcluded && (d.passExcluded.receipts > 0.005 || d.passExcluded.disbursements > 0.005 || d.passExcluded.receipts < -0.005 || d.passExcluded.disbursements < -0.005)
-      ? `<div class="note" style="margin-bottom:6px">Pass-through collections are left out: ${peso(d.passExcluded.receipts)} received and ${peso(d.passExcluded.disbursements)} remitted (see the Budget slide). Together with the figures here they equal Total Cash Receipts / Total Disbursements.</div>` : '';
     const mix = `<div class="panel"><h3>Does our spending match the plan? <span class="hint">share of every ₱100 · ${escapeHtml(basisTxt)}</span></h3>
       <div class="svgwrap">${mixTrioSvg(d.trio, o.w.full)}</div>
       <div class="legend">${PURPOSE_BUCKETS.filter(b => d.trio.some(t => t.rows.some(r => r.id === b.id))).map(b => `<span><i style="background:${b.css}"></i>${escapeHtml(b.label)}</span>`).join('')}</div>
@@ -2242,7 +2607,7 @@
     const ratios = `<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       ${tile('Staff cost ratio', pctTxt(d.staffRatio, 0), vsPlan(d.staffRatio, d.staffPlan, 'payroll (gross) ÷ total disbursements'))}
       ${tile('Ministry spending ratio', pctTxt(d.ministryRatio, 0), vsPlan(d.ministryRatio, d.ministryPlan, 'Nurture, Outreach, Witness ÷ total'))}</div>`;
-    return `${toggle ? `<div>${toggle}</div>` : ''}${ptx}<div class="grid2">${recvPanel}${spendPanel}</div>${mix}${ratios}`;
+    return `${toggle ? `<div>${toggle}</div>` : ''}${ptx}${pitaka}${others}${mix}${ratios}`;
   }
 
   function slideObligations(k, o) {
@@ -2331,6 +2696,168 @@
     </div>`;
   }
 
+  // ───────────────────────────────────────────────────────────────────────
+  // Slide 10 / "The bottom line": a one-screen scorecard + three auto-generated lists, built ONLY from the kpi object.
+  // ───────────────────────────────────────────────────────────────────────
+  // SUMMARY RULES - the one table that decides the three lists. EASY TO EDIT, nothing else needs to change.
+  // A rule fires when its test returns a sentence (otherwise null). Within a list, rules are tried in table order
+  // (= priority) and the first 3 that fire are shown. Thresholds are plain differences/percentages - no outside benchmark.
+  //   list   id           fires when
+  //   good   cash-green   cash level today is GREEN (>= 3 months of Essential Monthly Operating Expense)
+  //   good   surplus      net surplus for the selected months (net > 0)
+  //   good   income-pace  income achieved is at or above 100% of the budget counted so far
+  //   good   spend-ok     spending used <= 100% of the budget counted so far and no expense line is over budget
+  //   good   tithes-up    tithes are up on the same months last year
+  //   good   obl-clear    church obligations exist, none overdue, and at least 50% paid
+  //   good   attend-up    average Sunday attendance is up on the same months last year
+  //   good   controls-ok  (Treasurer/Auditor) the Ending Balance check balances and >= 90% of expenses have a receipt
+  //   watch  cash-yellow  cash level is YELLOW (1 to < 3 months of cover)
+  //   watch  deficit      net deficit for the selected months (net < 0)
+  //   watch  income-behind income achieved is more than 10 points below 100% of the budget counted so far
+  //   watch  spend-ahead  year-to-date spending is above 110% of the budget due so far, or any expense line is over budget
+  //   watch  tithes-down  tithes are down more than 5% on the same months last year
+  //   watch  particip-drop tither participation fell more than 5 points on the same months last year
+  //   watch  attend-drop  average Sunday attendance is down more than 5% on the same months last year
+  //   watch  cash-slips   the trend projection slips a cash level (but not yet to Red/Black)
+  //   action cash-bad     cash level is RED or BLACK (< 1 month of cover)  ->  agree a plan to rebuild cash
+  //   action cash-proj    the trend projection reaches RED or BLACK within 6 months  ->  plan ahead
+  //   action overdue      one or more church obligations are past their due date  ->  settle them
+  //   action remit        pass-through collections are still to be remitted (> 0)  ->  remit them
+  //   action no-sheets    (Treasurer/Auditor) Sundays with income but no count sheet  ->  attach the sheets
+  //   action advances     (Treasurer/Auditor) cash advances not yet liquidated  ->  liquidate them
+  //   action reconcile    (Treasurer/Auditor) the Ending Balance check is off  ->  investigate
+  //   action receipts     (Treasurer/Auditor) < 90% of expenses have a receipt on file  ->  collect the missing receipts
+  // Scorecard status dots (always shown with a text label): green "On track" / amber "Watch" / red "Needs attention" / grey "No data".
+  //   Results: green net >= 0; amber deficit up to 5% of receipts; red worse.   Cash: level Green / Yellow / Red+Black
+  //   (amber if a Red/Black month is projected); Budget: red if spending > 110% or income < 80% of budget, amber if
+  //   spending > 100% or income < 90%; Giving: red tithes down > 10%, amber tithes down > 5% or participation down > 5 pts;
+  //   ₱100: amber if the staff-cost ratio is > 10 points above the budget plan; Obligations: red if any overdue;
+  //   Projects: red if Building Fund balance < 0, amber if a project's costs exceed what it raised; Attendance: amber down > 5%,
+  //   red down > 15%; Pass-through: amber while anything is still to remit; Controls: red if the check is off, amber if any gap.
+  const SUMMARY_RULES = [
+    { list: 'good', id: 'cash-green', test: k => k.liquidity.level.color === 'green' && Number.isFinite(k.liquidity.months) ? `Cash is GREEN: ${k.liquidity.months.toFixed(1)} months of essential expenses in hand.` : null },
+    { list: 'good', id: 'surplus', test: k => k.stmt.net > 0.005 ? `A surplus of ${pesoW(k.stmt.net)} for ${k.period.label} (receipts ${pesoW(k.stmt.receipts)}, disbursements ${pesoW(k.stmt.disbursements)}).` : null },
+    { list: 'good', id: 'income-pace', test: k => k.budget.hasBudget && k.budget.incomePct !== null && k.budget.incomePct >= 100 ? `Income is at ${pctTxt(k.budget.incomePct)} of budget.` : null },
+    { list: 'good', id: 'spend-ok', test: k => k.budget.hasBudget && k.budget.expensePct !== null && k.budget.expensePct <= 100 && !k.budget.topOver.length ? `Spending used ${pctTxt(k.budget.expensePct)} of budget with no line over its budget.` : null },
+    { list: 'good', id: 'tithes-up', test: k => k.giving.tithesChange !== null && k.giving.tithesChange > 0.5 ? `Tithes are up ${k.giving.tithesChange.toFixed(0)}% on the same months last year (${pesoW(k.giving.tithes)}).` : null },
+    { list: 'good', id: 'obl-clear', test: k => k.obligations.rows.length && !k.obligations.overdue && k.obligations.year.pct !== null && k.obligations.year.pct >= 50 ? `Church obligations are ${pctTxt(k.obligations.year.pct)} paid and none is overdue.` : null },
+    { list: 'good', id: 'attend-up', test: k => k.people.attendanceChange !== null && k.people.attendanceChange > 0.5 && k.people.attendanceAvg > 0 ? `Average Sunday attendance is up ${k.people.attendanceChange.toFixed(0)}% (${num0(k.people.attendanceAvg)} per Sunday).` : null },
+    { list: 'good', id: 'controls-ok', test: k => k.controls && k.controls.reconcileClean && k.controls.receiptPct !== null && k.controls.receiptPct >= 90 ? `The Ending Balance check balances and ${k.controls.receiptPct.toFixed(0)}% of expenses have a receipt.` : null },
+
+    { list: 'watch', id: 'cash-yellow', test: k => k.liquidity.level.color === 'yellow' ? `Cash is YELLOW: ${Number.isFinite(k.liquidity.months) ? k.liquidity.months.toFixed(1) + ' months' : 'limited cover'} of essential expenses.` : null },
+    { list: 'watch', id: 'deficit', test: k => k.stmt.net < -0.005 ? `We spent ${pesoW(-k.stmt.net)} more than we received in ${k.period.label}.` : null },
+    { list: 'watch', id: 'income-behind', test: k => k.budget.hasBudget && k.budget.incomePct !== null && k.budget.incomePct < 90 ? `Income is ${(100 - k.budget.incomePct).toFixed(0)} points behind the budget counted so far (${pctTxt(k.budget.incomePct)}).` : null },
+    { list: 'watch', id: 'spend-ahead', test: k => {
+        const b = k.budget; if (!b.hasBudget) return null;
+        const ahead = b.ytdExpensePct !== null && b.ytdExpensePct > 110;   // year-to-date spending vs the budget due so far (100% = on pace)
+        if (b.topOver.length) return `${b.topOver.length === 5 ? '5 or more' : b.topOver.length} expense line${b.topOver.length === 1 ? ' is' : 's are'} over budget; the largest is ${b.topOver[0].name} (${pesoW(b.topOver[0].actual - b.topOver[0].budget)} over).`;
+        return ahead ? `Year-to-date spending is ${pctTxt(b.ytdExpensePct)} of the budget due so far.` : null; } },
+    { list: 'watch', id: 'tithes-down', test: k => k.giving.tithesChange !== null && k.giving.tithesChange < -5 ? `Tithes are down ${Math.abs(k.giving.tithesChange).toFixed(0)}% on the same months last year.` : null },
+    { list: 'watch', id: 'particip-drop', test: k => k.giving.participation !== null && k.giving.participationPrior !== null && k.giving.participationPrior - k.giving.participation > 5 ? `Tither participation fell from ${k.giving.participationPrior.toFixed(1)}% to ${k.giving.participation.toFixed(1)}%.` : null },
+    { list: 'watch', id: 'attend-drop', test: k => k.people.attendanceChange !== null && k.people.attendanceChange < -5 && k.people.attendanceAvg > 0 ? `Average Sunday attendance is down ${Math.abs(k.people.attendanceChange).toFixed(0)}% (${num0(k.people.attendanceAvg)} per Sunday).` : null },
+    { list: 'watch', id: 'cash-slips', test: k => k.liquidity.firstDrop && !k.liquidity.firstBad ? `At the conservative trend, cash slips to ${k.liquidity.firstDrop.level.color.toUpperCase()} by ${k.liquidity.firstDrop.label}.` : null },
+
+    { list: 'action', id: 'cash-bad', test: k => (k.liquidity.level.color === 'red' || k.liquidity.level.color === 'black') ? `Cash is ${k.liquidity.level.color.toUpperCase()}: agree a plan to rebuild it (${Number.isFinite(k.liquidity.months) ? k.liquidity.months.toFixed(1) + ' months' : 'under 1 month'} of cover).` : null },
+    { list: 'action', id: 'cash-proj', test: k => k.liquidity.firstBad && k.liquidity.level.color !== 'red' && k.liquidity.level.color !== 'black' ? `Plan ahead: at the conservative trend cash reaches ${k.liquidity.firstBad.level.color.toUpperCase()} by ${k.liquidity.firstBad.label}.` : null },
+    { list: 'action', id: 'overdue', test: k => k.obligations.overdue ? `Settle ${k.obligations.overdue} overdue church obligation${k.obligations.overdue === 1 ? '' : 's'} (${pesoW(k.obligations.overdueAmount)}).` : null },
+    { list: 'action', id: 'remit', test: k => k.passThrough.hasItems && k.passThrough.toRemitYtd > 0.005 ? `Remit the ${pesoW(k.passThrough.toRemitYtd)} of pass-through collections still held.` : null },
+    { list: 'action', id: 'no-sheets', test: k => k.controls && k.controls.sundays > k.controls.sundaysWithSheet ? `Attach count sheets for ${k.controls.sundays - k.controls.sundaysWithSheet} Sunday${k.controls.sundays - k.controls.sundaysWithSheet === 1 ? '' : 's'} that have none.` : null },
+    { list: 'action', id: 'advances', test: k => k.controls && k.controls.advancesOpen ? `Liquidate ${k.controls.advancesOpen} cash advance${k.controls.advancesOpen === 1 ? '' : 's'} (${pesoW(k.controls.advancesAmount)}), the oldest ${k.controls.advancesOldestDays} days old.` : null },
+    { list: 'action', id: 'reconcile', test: k => k.controls && !k.controls.reconcileClean ? `Investigate the ${pesoW(k.controls.reconcileDiff)} difference in the Ending Balance check.` : null },
+    { list: 'action', id: 'receipts', test: k => k.controls && k.controls.receiptPct !== null && k.controls.receiptPct < 90 ? `Collect the ${k.controls.missingReceipt} missing expense receipt${k.controls.missingReceipt === 1 ? '' : 's'} (${k.controls.receiptPct.toFixed(0)}% on file).` : null }
+  ];
+  const SUMMARY_LIST_META = [
+    { key: 'good', title: 'Going well', cls: 'good', empty: 'Nothing stands out as a strength under the summary rules.' },
+    { key: 'watch', title: 'Watch closely', cls: 'watch', empty: 'Nothing to watch under the summary rules.' },
+    { key: 'action', title: "For the Council's attention", sub: 'suggested actions', cls: 'action', empty: 'No action items under the summary rules.' }
+  ];
+  const SUMMARY_STATUS = { green: 'On track', amber: 'Watch', red: 'Needs attention', na: 'No data' };
+
+  function buildSummary(k) {
+    const s = k.stmt, L = k.liquidity, b = k.budget, g = k.giving, pe = k.people, ob = k.obligations, pj = k.projects, P = k.per100.period, ptk = k.passThrough, c = k.controls;
+    const rows = [];
+    const row = (id, title, status, figure, lines, wide) => rows.push({ id, title, status, label: SUMMARY_STATUS[status], figure, lines: lines.filter(Boolean), wide: !!wide });
+    // 1. Results
+    row('results', 'Results', s.net >= 0 ? 'green' : (s.receipts > 0 && -s.net <= s.receipts * 0.05 ? 'amber' : 'red'),
+      `<span class="${signClass(s.net)}">${s.net >= 0 ? 'Surplus' : 'Deficit'} ${pesoW(Math.abs(s.net))}</span>`,
+      [`Receipts ${pesoW(s.receipts)} ${chip(k.change.receipts, true)}`, `Disbursements ${pesoW(s.disbursements)} ${chip(k.change.disbursements, false)}`]);
+    // 2. Cash
+    const lc = L.level.color, lvlSt = !Number.isFinite(L.months) ? 'na' : lc === 'green' ? 'green' : lc === 'yellow' ? 'amber' : 'red';
+    row('cash', 'Cash', lvlSt === 'green' && L.firstBad ? 'amber' : lvlSt,
+      `<span class="sc-nb">${pesoW(s.endBal)}</span> <span class="sc-unit">ending balance</span>`,
+      [`${Number.isFinite(L.months) ? L.months.toFixed(1) + ' months of cover' : 'months of cover not set'} · ${lvlBadge(L.level)}`,
+       L.projection.noTrend ? 'Projection needs 3 completed months of history' : (L.firstBad ? `Projected ${L.firstBad.level.color.toUpperCase()} by ${escapeHtml(L.firstBad.label)}` : 'No Red or Black month projected (6 months)')]);
+    // 3. Budget
+    const bst = !b.hasBudget || (b.incomePct === null && b.expensePct === null) ? 'na'
+      : ((b.expensePct !== null && b.expensePct > 110) || (b.incomePct !== null && b.incomePct < 80)) ? 'red'
+      : ((b.expensePct !== null && b.expensePct > 100) || (b.incomePct !== null && b.incomePct < 90)) ? 'amber' : 'green';
+    const pm = b.partialMonth;
+    row('budget', 'Budget', bst, b.hasBudget ? `<span class="sc-nb">Income ${pctTxt(b.incomePct)}</span> <span class="sc-nb">Spending ${pctTxt(b.expensePct)}</span>` : 'No budget set',
+      b.hasBudget ? [`of the budget due for the selected months (100% = on pace)`, pm ? `${escapeHtml(pm.label)}: ${pm.prorated ? `budget counted through today (${pm.elapsed} of ${pm.days} days)` : 'full month budget'}` : `Year to date: income ${pctTxt(b.ytdIncomePct)}, spending ${pctTxt(b.ytdExpensePct)}`] : []);
+    // 4. Giving
+    const gst = g.tithesChange !== null && g.tithesChange < -10 ? 'red'
+      : (g.tithesChange !== null && g.tithesChange < -5) || (g.participation !== null && g.participationPrior !== null && g.participationPrior - g.participation > 5) ? 'amber' : (g.tithes > 0 ? 'green' : 'na');
+    row('giving', 'Giving', gst, `Tithes ${pesoW(g.tithes)}`,
+      [chip(g.tithesChange, true), `${num0(g.tithers)} unique tithers · participation ${g.participation === null ? '—' : pctTxt(g.participation, 1)}`, g.participation !== null ? `<span class="sc-fine">${num0(g.tithers)} tithers ÷ ${num0(pe.attendanceAvg)} avg Sunday attendance</span>` : '']);
+    // 5. Where the P100 went
+    const top3 = P.spend.lines.filter(l => l.pesos > 0).slice(0, 3);
+    const staffOver = P.staffRatio !== null && P.staffPlan !== null && P.staffRatio - P.staffPlan > 10;
+    row('per100', 'Where the ₱100 went', P.spend.total > 0 ? (staffOver ? 'amber' : 'green') : 'na',
+      top3.length ? `<ul class="sc-top">${top3.map(l => `<li><b>₱${l.pesos}</b> ${escapeHtml(l.display)}</li>`).join('')}</ul>` : 'No spending recorded',
+      [P.spend.total > 0 ? `Staff cost ${pctTxt(P.staffRatio, 0)}${P.staffPlan !== null ? ` (plan ${pctTxt(P.staffPlan, 0)})` : ''} · Ministry ${pctTxt(P.ministryRatio, 0)}${P.ministryPlan !== null ? ` (plan ${pctTxt(P.ministryPlan, 0)})` : ''}` : '']);
+    // 6. Connectional obligations
+    row('obligations', 'Connectional obligations', !ob.rows.length ? 'na' : ob.overdue ? 'red' : 'green',
+      ob.rows.length ? `${pctTxt(ob.year.pct)} paid <span class="sc-unit">${k.period.year}</span>` : 'None recorded',
+      ob.rows.length ? [`${pesoW(ob.year.paid)} of ${pesoW(ob.year.due)}`, ob.overdue ? `<span class="neg">${ob.overdue} overdue (${pesoW(ob.overdueAmount)})</span>` : 'Nothing overdue'] : []);
+    // 7. Special projects and Building Fund
+    const projBad = pj.list.some(p => p.costs > p.raised + p.churchFund + 0.005 && p.costs > 0);
+    row('projects', 'Projects & Building Fund', pj.building.total < -0.005 ? 'red' : projBad ? 'amber' : 'green',
+      `Building Fund ${pesoW(pj.building.total)}`,
+      [`${pj.list.length} active special project${pj.list.length === 1 ? '' : 's'}${pj.list.length ? ` · ${pesoW(sumF(pj.list, p => p.raised))} raised, ${pesoW(sumF(pj.list, p => p.costs))} spent` : ''}`]);
+    // 8. Attendance
+    row('attendance', 'Attendance', !(pe.attendanceAvg > 0) ? 'na' : pe.attendanceChange !== null && pe.attendanceChange < -15 ? 'red' : pe.attendanceChange !== null && pe.attendanceChange < -5 ? 'amber' : 'green',
+      pe.attendanceAvg > 0 ? `${num0(pe.attendanceAvg)} <span class="sc-unit">avg per Sunday</span>` : 'Not recorded',
+      pe.attendanceAvg > 0 ? [chip(pe.attendanceChange, true), `${num0(pe.sel.sundays)} Sunday${pe.sel.sundays === 1 ? '' : 's'} recorded`] : []);
+    // 9. Pass-through still to remit (only when something is held)
+    if (ptk.hasItems && (Math.abs(ptk.toRemitYtd) > 0.005 || Math.abs(ptk.toRemitSel) > 0.005))
+      row('passthrough', 'Pass-through to remit', ptk.toRemitYtd > 0.005 ? 'amber' : 'green', `${pesoW(ptk.toRemitYtd)} <span class="sc-unit">still to remit</span>`,
+        [`${pesoW(ptk.collectedYtd)} collected · ${pesoW(ptk.remittedYtd)} remitted (year to date)`]);
+    // 10. Controls (Treasurer + Auditor only)
+    if (c) {
+      const gaps = (c.receiptPct !== null && c.receiptPct < 90) + (c.sundays > c.sundaysWithSheet) + (c.advancesOpen > 0) + (c.receiptPct !== null && c.voucherPct < 90);
+      row('controls', 'Controls', !c.reconcileClean ? 'red' : gaps ? 'amber' : 'green',
+        c.reconcileClean ? '✓ Balanced' : `✗ Off by ${pesoW(c.reconcileDiff)}`,
+        [`Receipts ${c.receiptPct === null ? '—' : c.receiptPct.toFixed(0) + '%'} · vouchers ${c.voucherPct === null ? '—' : c.voucherPct.toFixed(0) + '%'}`,
+         `Count sheets ${c.sundays ? c.sundaysWithSheet + ' of ' + c.sundays + ' Sundays' : '—'} · open advances ${c.advancesOpen}`]);
+    }
+    // the three lists (first 3 rules that fire, in table order)
+    const lists = {}, fired = {};
+    SUMMARY_LIST_META.forEach(m => {
+      const out = [], ids = [];
+      SUMMARY_RULES.filter(r => r.list === m.key).forEach(r => { let t = null; try { t = r.test(k); } catch (e) { console.warn('summary rule', r.id, e); } if (t) { out.push(t); ids.push(r.id); } });
+      lists[m.key] = out.slice(0, 3); fired[m.key] = ids;
+    });
+    return { rows, lists, fired };
+  }
+  // The Treasurer's edits (settings/councilNotes-*.summary = { good: [...], watch: [...], action: [...] }) replace a list wholesale.
+  function effectiveSummaryList(key, k) {
+    const ov = ui.notes && ui.notes.summary && ui.notes.summary[key];
+    if (Array.isArray(ov) && ov.length) return { list: ov, edited: true };
+    return { list: (k.summary && k.summary.lists[key]) || [], edited: false };
+  }
+  function slideSummary(k, o) {
+    const sm = k.summary;
+    const tiles = sm.rows.map(r => `<div class="sc sc-${r.status}${r.wide ? ' sc-wide' : ''}" id="sc-${r.id}"><div class="sc-h"><span class="sc-t">${escapeHtml(r.title)}</span><span class="sc-st"><i aria-hidden="true"></i>${escapeHtml(r.label)}</span></div>
+      <div class="sc-fig">${r.figure}</div>${r.lines.map(l => `<div class="sc-d">${l}</div>`).join('')}</div>`).join('');
+    const lists = SUMMARY_LIST_META.map(m => {
+      const e = effectiveSummaryList(m.key, k);
+      const head = `<h3>${escapeHtml(m.title)}${m.sub ? ` <span class="hint">${escapeHtml(m.sub)}</span>` : ''}${e.edited && !(o.editing && !o.static) ? ' <span class="edited-badge">edited by the Treasurer</span>' : ''}</h3>`;
+      if (o.editing && !o.static) return `<div class="panel sl sl-${m.cls}">${head}<textarea data-summary="${m.key}" aria-label="${escapeAttr(m.title)} (one per line)">${escapeHtml(e.list.join('\n'))}</textarea><div class="note">one per line · save to keep, or clear it to go back to automatic</div></div>`;
+      return `<div class="panel sl sl-${m.cls}" id="sl-${m.key}">${head}<ul class="sum-list">${e.list.length ? e.list.map(t => `<li>${escapeHtml(t)}</li>`).join('') : `<li class="none">${escapeHtml(m.empty)}</li>`}</ul></div>`;
+    }).join('');
+    return `<div class="scorecard">${tiles}</div><div class="sum-lists">${lists}</div>`;
+  }
+
   const SLIDES = [
     { id: 'hero', title: 'Where we stand', q: 'How did the church do, and how healthy is our cash?', fn: slideHero },
     { id: 'liquidity', title: 'Can we pay our bills?', q: 'Liquidity, runway and what cash is really free', fn: slideLiquidity },
@@ -2340,13 +2867,21 @@
     { id: 'obligations', title: 'Faithful to the wider church?', q: 'Apportionments and other obligations', fn: slideObligations },
     { id: 'projects', title: 'Our building and mission work', q: 'Special projects and the Building Fund', fn: slideProjects },
     { id: 'people', title: 'Who we serve', q: 'Attendance and the membership roll', fn: slidePeople },
-    { id: 'controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES }
+    { id: 'controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES },
+    { id: 'summary', title: 'The bottom line', q: k => `Our finances at a glance for ${k.period.label}`, fn: slideSummary, noPoints: true }
   ];
   function slidesFor(k) { return SLIDES.filter(s => !s.only || (s.id === 'controls' ? !!k.controls : true)); }
 
   // ───────────────────────────────────────────────────────────────────────
   // 6. TALKING POINTS: auto sentences from the kpi object; the Treasurer may edit them per slide
   // ───────────────────────────────────────────────────────────────────────
+  // "₱43 went to Administrative Pastor, ₱31 to Repairs And Maintenance and ₱9 to Utilities" - specific lines, biggest first.
+  function topLinesText(lines, verb, prep, n) {
+    const top = lines.filter(l => l.pesos > 0).slice(0, n);
+    if (!top.length) return 'no single line reached ₱1';
+    const parts = top.map((l, i) => `₱${l.pesos} ${i === 0 ? verb : prep} ${l.display}`);
+    return parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0];
+  }
   function autoTalkingPoints(k) {
     const s = k.stmt, L = k.liquidity, b = k.budget, g = k.giving, P = k.per100, ob = k.obligations, pj = k.projects, pe = k.people, lab = k.period.label;
     const T = {};
@@ -2380,13 +2915,9 @@
     ];
     const pp = P.period, pesosIn = (grp, id) => { const r = grp.rows.find(x => x.id === id); return r ? r.pesos : 0; };
     T.per100 = [];
-    if (pp.recv.total > 0) {
-      const top = pp.recv.rows.slice().sort((a, b) => b.pesos - a.pesos);
-      T.per100.push(`Of every ₱100 received in ${lab}, ₱${pesosIn(pp.recv, 'tithes')} came from tithes${top[0] && top[0].id !== 'tithes' ? ` (the largest share, ₱${top[0].pesos}, came from ${top[0].label.toLowerCase()})` : ''}${pesosIn(pp.recv, 'loose') ? ` and ₱${pesosIn(pp.recv, 'loose')} from loose and Sunday offerings` : ''}.`);
-    }
+    if (pp.recv.total > 0) T.per100.push(`Of every ₱100 received in ${lab}, ${topLinesText(pp.recv.lines, 'came from', 'from', 3)}.`);
     if (pp.spend.total > 0) {
-      const top = pp.spend.rows.slice().sort((a, b) => b.pesos - a.pesos);
-      T.per100.push(`Of every ₱100 spent, ₱${top[0].pesos} went to ${top[0].label.toLowerCase()}${top[1] ? ` and ₱${top[1].pesos} to ${top[1].label.toLowerCase()}` : ''}.`);
+      T.per100.push(`Of every ₱100 spent, ${topLinesText(pp.spend.lines, 'went to', 'to', 3)}.`);
       const mPlan = pp.plan.rows.find(x => x.id === 'ministry');
       T.per100.push(pp.plan.total > 0
         ? `Ministry & mission got ₱${pesosIn(pp.spend, 'ministry')} of every ₱100, vs ₱${mPlan ? mPlan.pesos : 0} planned in the budget.`
@@ -2427,8 +2958,9 @@
   // ───────────────────────────────────────────────────────────────────────
   // 7. PAGE STATE + ORCHESTRATION
   // ───────────────────────────────────────────────────────────────────────
-  const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', budgetThroughToday: true, presenting: false, editing: false, slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
+  const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', per100View: 'spent', pitakaTone: 'fun', compareYear: null, budgetThroughToday: true, presenting: false, editing: false, slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
   const $ = id => document.getElementById(id);
+  try { const t = localStorage.getItem('councilPitakaTone'); if (t === 'fun' || t === 'plain') ui.pitakaTone = t; } catch (e) { /* storage may be blocked */ }
   const nowDate = () => new Date();
   const isTreasurer = () => !!activeUserProfile && activeUserProfile.role === 'Treasurer';
 
@@ -2437,9 +2969,34 @@
   const isPortraitPhone = () => !!(window.matchMedia && window.matchMedia('(orientation: portrait)').matches) && window.innerWidth < 600;
   let rotateHintDismissed = false;
   try { rotateHintDismissed = sessionStorage.getItem('councilRotateHintDismissed') === '1'; } catch (e) { /* storage may be blocked */ }
+  // Orientation: the PWA manifest says "any", so the phone's own auto-rotate setting decides. As a belt-and-braces for Slide
+  // show on a phone we also try fullscreen + screen.orientation.lock('landscape') - every call is feature-checked and in try/catch
+  // (lock() is unsupported on iOS Safari and desktop, and rejects outside fullscreen / an installed app on some browsers).
+  const canLockOrientation = () => { try { return !!(window.screen && screen.orientation && typeof screen.orientation.lock === 'function'); } catch (e) { return false; } };
+  const isPhoneScreen = () => { try { return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) && Math.min(screen.width, screen.height) < 700; } catch (e) { return false; } };
+  let orientationLocked = false;
+  async function lockLandscape() {
+    if (!canLockOrientation()) return false;
+    try { await screen.orientation.lock('landscape'); orientationLocked = true; return true; } catch (e) { return false; }
+  }
+  function releaseOrientation() {
+    if (!orientationLocked) return;
+    orientationLocked = false;
+    try { if (screen.orientation && typeof screen.orientation.unlock === 'function') screen.orientation.unlock(); } catch (e) { /* optional */ }
+  }
+  // Fullscreen first (needs the user's tap, so the caller invokes this synchronously), then the landscape lock.
+  function requestFullscreenThenLock(wantFullscreen) {
+    let p = Promise.resolve();
+    try { const el = document.documentElement; if (wantFullscreen && el.requestFullscreen && !document.fullscreenElement) p = Promise.resolve(el.requestFullscreen()); } catch (e) { /* optional */ }
+    p = p.catch(() => {});
+    if (isPhoneScreen()) p.then(() => ui.presenting && lockLandscape());
+    return p;
+  }
+  function landscapeFromHint() { requestFullscreenThenLock(true).then(() => lockLandscape()).then(updateRotateHint); }
   function updateRotateHint() {
     const el = $('rotate-hint'); if (!el) return;
     el.style.display = ui.presenting && isPortraitPhone() && !rotateHintDismissed ? 'flex' : 'none';
+    const b = $('btn-landscape'); if (b) b.style.display = canLockOrientation() ? '' : 'none';
   }
   function dismissRotateHint() {
     rotateHintDismissed = true;
@@ -2464,16 +3021,17 @@
   }
 
   function slideHtml(def, num, k, o) {
-    const pts = effectivePoints(def.id, k);
+    const pts = def.noPoints ? { list: [], edited: false } : effectivePoints(def.id, k);
     let body;
     try { body = def.fn(k, o); } catch (e) { console.error('Slide failed', def.id, e); body = `<div class="panel"><div class="note">This section could not be drawn.</div></div>`; }
     let points;
-    if (o.editing && !o.static) {
+    if (def.noPoints) points = '';
+    else if (o.editing && !o.static) {
       points = `<div class="points"><h3>Talking points <span class="hint note" style="text-transform:none;letter-spacing:0">one per line</span></h3><textarea data-points="${def.id}" aria-label="Talking points for ${escapeAttr(def.title)}">${escapeHtml(pts.list.join('\n'))}</textarea></div>`;
     } else if (pts.list.length) {
       points = `<div class="points"><h3>Talking points ${pts.edited ? '<span class="edited-badge">edited by the Treasurer</span>' : ''}</h3><ul>${pts.list.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`;
     } else points = '';
-    return `<section class="slide" id="slide-${def.id}" data-slide="${def.id}"><header class="slide-head"><span class="slide-num">${num}</span><div><h2>${escapeHtml(def.title)}</h2><p class="q">${escapeHtml(def.q)}</p></div></header><div class="slide-body">${body}</div>${points}</section>`;
+    return `<section class="slide" id="slide-${def.id}" data-slide="${def.id}"><header class="slide-head"><span class="slide-num">${num}</span><div><h2>${escapeHtml(def.title)}</h2><p class="q">${escapeHtml(typeof def.q === 'function' ? def.q(k) : def.q)}</p></div></header><div class="slide-body">${body}</div>${points}</section>`;
   }
 
   function renderAll(animate) {
@@ -2508,6 +3066,7 @@
 
   function recompute() {
     ui.kpi = computeKpis(ui.raw, ui.period, nowDate(), { proRate: ui.budgetThroughToday });
+    ui.kpi.summary = buildSummary(ui.kpi);
     ui.auto = autoTalkingPoints(ui.kpi);
   }
 
@@ -2599,32 +3158,43 @@
       createdAt: new Date().toISOString()
     });
   }
+  // One notes doc per period holds both the talking points and the summary slide's three lists:
+  // settings/councilNotes-<key> = { points: { slideId: [...] }, summary: { good: [...], watch: [...], action: [...] }, ... }
+  const notesDocBase = () => ({ periodLabel: ui.period.label, months: ui.period.keys, updatedAt: new Date().toISOString(), updatedBy: { uid: (firebase.auth().currentUser || {}).uid || '', name: activeUserProfile.name } });
   async function saveTalkingPoints() {
     if (!isTreasurer()) return;
-    const points = {};
+    const points = {}, summary = {};
     document.querySelectorAll('textarea[data-points]').forEach(ta => {
       const lines = ta.value.split('\n').map(x => x.trim()).filter(Boolean);
       const auto = (ui.auto[ta.dataset.points] || []);
       if (lines.length && JSON.stringify(lines) !== JSON.stringify(auto)) points[ta.dataset.points] = lines;
     });
+    document.querySelectorAll('textarea[data-summary]').forEach(ta => {
+      const lines = ta.value.split('\n').map(x => x.trim()).filter(Boolean);
+      const auto = (ui.kpi.summary.lists[ta.dataset.summary] || []);
+      if (lines.length && JSON.stringify(lines) !== JSON.stringify(auto)) summary[ta.dataset.summary] = lines;
+    });
     const id = 'councilNotes-' + ui.period.notesKey;
-    const before = ui.notes ? { points: ui.notes.points || {} } : null;
-    const doc = { points, periodLabel: ui.period.label, months: ui.period.keys, updatedAt: new Date().toISOString(), updatedBy: { uid: (firebase.auth().currentUser || {}).uid || '', name: activeUserProfile.name } };
+    const before = ui.notes ? { points: ui.notes.points || {}, summary: ui.notes.summary || {} } : null;
+    const doc = { points, summary, ...notesDocBase() };
+    const pointsChanged = JSON.stringify(before ? before.points : {}) !== JSON.stringify(points), summaryChanged = JSON.stringify(before ? before.summary : {}) !== JSON.stringify(summary);
     try {
       await db.collection('settings').doc(id).set(doc);
-      await writeAuditLog('council_talking_points_saved', 'settings', id, before, { points }, `Edited Council Dashboard talking points for ${ui.period.label}`);
+      if (pointsChanged || !summaryChanged) await writeAuditLog('council_talking_points_saved', 'settings', id, before && { points: before.points }, { points }, `Edited Council Dashboard talking points for ${ui.period.label}`);
+      if (summaryChanged) await writeAuditLog('council_summary_saved', 'settings', id, before && { summary: before.summary }, { summary }, `Edited the Council Dashboard summary lists for ${ui.period.label}`);
       ui.notes = doc; ui.notesCache[id] = doc; ui.editing = false;
       updateEditButtons(); renderAll(false);
     } catch (err) { console.error(err); alert('Could not save the talking points. Please try again.'); }
   }
   async function resetTalkingPoints() {
-    if (!isTreasurer() || !confirm('Discard your edits and use the automatic talking points for this period?')) return;
+    if (!isTreasurer() || !confirm('Discard your edits and use the automatic talking points and summary lists for this period?')) return;
     const id = 'councilNotes-' + ui.period.notesKey;
-    const before = ui.notes ? { points: ui.notes.points || {} } : null;
-    const doc = { points: {}, periodLabel: ui.period.label, months: ui.period.keys, updatedAt: new Date().toISOString(), updatedBy: { uid: (firebase.auth().currentUser || {}).uid || '', name: activeUserProfile.name } };
+    const before = ui.notes ? { points: ui.notes.points || {}, summary: ui.notes.summary || {} } : null;
+    const doc = { points: {}, summary: {}, ...notesDocBase() };
     try {
       await db.collection('settings').doc(id).set(doc);
-      await writeAuditLog('council_talking_points_reset', 'settings', id, before, { points: {} }, `Reset Council Dashboard talking points to automatic for ${ui.period.label}`);
+      await writeAuditLog('council_talking_points_reset', 'settings', id, before && { points: before.points }, { points: {} }, `Reset Council Dashboard talking points to automatic for ${ui.period.label}`);
+      if (before && Object.keys(before.summary).length) await writeAuditLog('council_summary_reset', 'settings', id, { summary: before.summary }, { summary: {} }, `Reset the Council Dashboard summary lists to automatic for ${ui.period.label}`);
       ui.notes = doc; ui.notesCache[id] = doc; ui.editing = false;
       updateEditButtons(); renderAll(false);
     } catch (err) { console.error(err); alert('Could not reset the talking points.'); }
@@ -2632,36 +3202,9 @@
   function setPer100(b) { ui.per100 = b; renderAll(false); }
   function setBudgetThroughToday(on) { ui.budgetThroughToday = !!on; recompute(); renderAll(false); }
   document.addEventListener('click', e => {
-    const b = e.target.closest && e.target.closest('button[data-pt]');
-    if (b) changePassThrough(b.dataset.pt, b.dataset.side, b.dataset.key, b.dataset.label);
+    const b = e.target.closest && e.target.closest('button[data-pkview]');
+    if (b) setPer100View(b.dataset.pkview);
   });
-  // Treasurer only: tag / untag a Miscellaneous line as pass-through (settings/passThroughItems, in a transaction so two
-  // edits cannot overwrite each other). Audit pass_through_tagged / pass_through_untagged.
-  async function changePassThrough(mode, side, key, label) {
-    if (!isTreasurer() || !key) return;
-    if (mode === 'tag' && !confirm(`Mark "${label}" (${side}) as pass-through?\n\nIt will leave the Unbudgeted totals, budget percentages and the ₱100 mixes in every period. Total receipts, disbursements and the Ending Balance do not change.`)) return;
-    if (mode === 'untag' && !confirm(`Remove the pass-through tag from "${label}"?`)) return;
-    const user = firebase.auth().currentUser, iso = new Date().toISOString(), who = { uid: user ? user.uid : '', name: activeUserProfile.name };
-    const ref = db.collection('settings').doc('passThroughItems');
-    let before = [], after = [];
-    try {
-      await db.runTransaction(async tx => {
-        const snap = await tx.get(ref);
-        const items = snap.exists && Array.isArray(snap.data().items) ? snap.data().items.slice() : [];
-        before = items.slice();
-        const idx = items.findIndex(i => i.side === side && i.key === key);
-        if (mode === 'tag') { if (idx < 0) items.push({ side, key, label, taggedAt: iso, taggedBy: who }); }
-        else if (idx >= 0) items.splice(idx, 1);
-        after = items;
-        tx.set(ref, { items, updatedAt: iso, updatedBy: who });
-      });
-      await writeAuditLog(mode === 'tag' ? 'pass_through_tagged' : 'pass_through_untagged', 'settings', 'passThroughItems', { items: before }, { items: after },
-        `${mode === 'tag' ? 'Marked' : 'Unmarked'} ${side} line "${label}" ${mode === 'tag' ? 'as' : 'from'} pass-through`);
-      ui.raw.passThrough = { items: after, updatedAt: iso, updatedBy: who };
-      recompute(); renderAll(false);
-    } catch (err) { console.error(err); alert('Could not update the pass-through list. Please try again.'); }
-  }
-
 
   // ───────────────────────────────────────────────────────────────────────
   // 8. PRESENTATION MODE (full-screen, one section per slide; arrows / click / swipe / Esc)
@@ -2683,7 +3226,7 @@
     if (!opts.remote) { const cur = currentVisibleSlide(); if (cur >= 0) ui.slideIdx = cur; }
     renderAll(false);
     $('dash').scrollTop = 0; window.scrollTo(0, 0);
-    try { if (!opts.remote && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); } catch (e) { /* optional */ }
+    requestFullscreenThenLock(!opts.remote);
     schedulePublish();
   }
   function stopPresentation(opts) {
@@ -2691,7 +3234,8 @@
     if (!ui.presenting) return;
     if (!opts.remote) manualAction();
     ui.presenting = false;
-    try { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {}); } catch (e) { /* optional */ }
+    releaseOrientation();
+    try { if (document.fullscreenElement && document.exitFullscreen) Promise.resolve(document.exitFullscreen()).catch(() => {}); } catch (e) { /* optional */ }
     renderAll(false);
     const el = document.querySelectorAll('.slide')[ui.slideIdx];
     if (el) el.scrollIntoView();
@@ -2797,7 +3341,7 @@
     try {
       await db.collection('settings').doc(PRESENTER_DOC).set({
         active: true, year: ui.period.year, months: ui.period.keys, section: def ? def.id : 'hero', slideIndex: ui.slideIdx,
-        presentationMode: !!ui.presenting, periodLabel: ui.period.label,
+        presentationMode: !!ui.presenting, per100View: ui.per100View, pitakaTone: ui.pitakaTone, periodLabel: ui.period.label,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(), by: { uid: user ? user.uid : '', name: activeUserProfile.name }
       });
     } catch (err) { console.warn('Presenter publish failed', err && err.message); }
@@ -2896,6 +3440,8 @@
       let idx = ui.slides.findIndex(s => s.id === d.section);
       if (idx < 0) idx = Math.min(d.slideIndex || 0, ui.slides.length - 1);
       goToSlide(idx, { remote: true });
+      if (d.pitakaTone && d.pitakaTone !== ui.pitakaTone) setPitakaTone(d.pitakaTone, { remote: true });
+      if (d.per100View && d.per100View !== ui.per100View) setPer100View(d.per100View, { remote: true });
     } finally {
       follow.applying = false;
       if (follow.pending) { const p = follow.pending; follow.pending = null; if (!follow.paused) applyRemote(p); }
