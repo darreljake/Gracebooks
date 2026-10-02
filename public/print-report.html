@@ -314,6 +314,8 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     .reconcile-bad { color: var(--red-mid); font-weight: 700; }
 
     /* ── SIGNATURES ──────────────────────────────────────────── */
+    .abbr-legend { margin-top: 10px; font-size: 10px; color: #444; line-height: 1.5; }
+    .abbr-legend b { font-weight: 700; }
     .sig-section { margin-top: 60px; display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
     .sig-box { text-align: center; flex: 1 1 145px; max-width: 180px; }
     .workflow-sig-space { height: 48px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 3px; }
@@ -1494,7 +1496,50 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
     else if (reportType === 'special-project') renderSpecialProject();
     applyReviewModeUI();
     if (reviewMode) ensureReviewMonthlyLine();
+    await renderAbbreviationLegend();
     fitReportToScreen();
+  }
+
+  // Abbreviations legend: the Treasurer's list in settings/abbreviations
+  // (edited on cash-voucher.html). Report lines keep their short labels; a
+  // single compact line under the statement spells out only the
+  // abbreviations that actually appear in it. Outside #export-table, so the
+  // Excel export and every amount are untouched. Case-sensitive, whole-word.
+  let abbreviationListCache = null;
+  async function loadAbbreviationList() {
+    if (abbreviationListCache) return abbreviationListCache;
+    try {
+      const doc = await db.collection('settings').doc('abbreviations').get();
+      const items = doc.exists && Array.isArray(doc.data().items) ? doc.data().items : [];
+      abbreviationListCache = items
+        .map(it => ({ abbr: String((it && it.abbr) || '').trim(), meaning: String((it && it.meaning) || '').trim() }))
+        .filter(it => it.abbr && it.meaning);
+    } catch (error) {
+      console.warn('Abbreviations unavailable', error);
+      return [];
+    }
+    return abbreviationListCache;
+  }
+
+  async function renderAbbreviationLegend() {
+    const table = document.getElementById('export-table');
+    if (!table) return;
+    const list = await loadAbbreviationList();
+    const current = document.getElementById('export-table');
+    if (!list.length || !current || current !== table) return;
+    const clone = table.cloneNode(true);
+    clone.querySelectorAll('.review-only, .review-panel-row, [data-export-skip]').forEach(el => el.remove());
+    const text = clone.textContent || '';
+    const used = list.filter(({ abbr }) => {
+      const esc = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^A-Za-z0-9])${esc}(?![A-Za-z0-9])`).test(text);
+    }).sort((a, b) => a.abbr.localeCompare(b.abbr));
+    if (!used.length) return;
+    const legend = document.createElement('div');
+    legend.className = 'abbr-legend';
+    legend.id = 'abbr-legend';
+    legend.innerHTML = '<b>Abbreviations:</b> ' + used.map(it => `${escapeHtml(it.abbr)} – ${escapeHtml(it.meaning)}`).join('; ');
+    table.insertAdjacentElement('afterend', legend);
   }
 
   // Review mode is enabled only when ALL hold: ?review=1 is present; the

@@ -866,3 +866,10 @@ Status: Done (code side); deploy pending.
 - Owner wanted to post an ongoing project's proceeds without risking duplicate income when late receipts arrive. `special-projects.html` now posts net proceeds in stages: each posting adds only current net minus total already posted (centavo math, transaction with a stale-total guard), shows "₱X not yet posted" / "Over-posted by ₱X" / "Fully posted" badges and a posting history, records over-posting as a negative correction posting, and replaces Un-post with Undo Last Posting (earlier-month warning). Deleting a project with postings is refused; closed-project entries ask first. Legacy single-posting projects keep working (legacy fields kept in sync). `print-report.html` lists each posting.
 - Owner confirmed: event costs are paid from the event's own collections (net is the right basis); construction projects stay project-ledger only (no change needed - they never post income).
 - Verified with a Playwright run against a stateful Firestore stub: post 30,000 → late receipt → post additional 5,000 → stale-total abort → late cost → over-posted 8,000 → correction −8,000 → undo → delete refused → legacy project additional posting + undo with month warning → construction project unaffected; no page errors.
+
+## Cash Vouchers: Purpose line + Abbreviations (2026-10-02)
+
+Status: Done (code side); deploy hosting pending. No rules change (`settings` is already Treasurer-write / all-roles-read).
+
+- Auditor found vouchers short on rationale and asked that abbreviations be spelled out. `cash-voucher.html` gains an optional **Purpose / Explanation** field (prefilled from the linked expense/liquidation `notes`, confirm prompt when left blank, shown in the register and searchable) printed under the Particulars table. A Treasurer-edited abbreviations list (`settings/abbreviations`) spells each abbreviation out in parentheses the first time it appears on a voucher.
+- `print-report.html` stays concise: no purpose text on report lines; one small "Abbreviations:" legend under the statement lists only the abbreviations actually used. Excel export unchanged.
