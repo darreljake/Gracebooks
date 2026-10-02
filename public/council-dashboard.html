@@ -2718,6 +2718,9 @@
   //   watch  tithes-down  tithes are down more than 5% on the same months last year
   //   watch  particip-drop tither participation fell more than 5 points on the same months last year
   //   watch  attend-drop  average Sunday attendance is down more than 5% on the same months last year
+  //   watch  spend-up     disbursements are up more than 20% on the same months last year
+  //   watch  staff-over   the staff-cost ratio is more than 10 points above the budget plan (matches the ₱100 tile's amber)
+  //   watch  vouchers     (Treasurer/Auditor) fewer than 90% of expenses have a cash voucher
   //   watch  cash-slips   the trend projection slips a cash level (but not yet to Red/Black)
   //   action cash-bad     cash level is RED or BLACK (< 1 month of cover)  ->  agree a plan to rebuild cash
   //   action cash-proj    the trend projection reaches RED or BLACK within 6 months  ->  plan ahead
@@ -2755,6 +2758,9 @@
     { list: 'watch', id: 'tithes-down', test: k => k.giving.tithesChange !== null && k.giving.tithesChange < -5 ? `Tithes are down ${Math.abs(k.giving.tithesChange).toFixed(0)}% on the same months last year.` : null },
     { list: 'watch', id: 'particip-drop', test: k => k.giving.participation !== null && k.giving.participationPrior !== null && k.giving.participationPrior - k.giving.participation > 5 ? `Tither participation fell from ${k.giving.participationPrior.toFixed(1)}% to ${k.giving.participation.toFixed(1)}%.` : null },
     { list: 'watch', id: 'attend-drop', test: k => k.people.attendanceChange !== null && k.people.attendanceChange < -5 && k.people.attendanceAvg > 0 ? `Average Sunday attendance is down ${Math.abs(k.people.attendanceChange).toFixed(0)}% (${num0(k.people.attendanceAvg)} per Sunday).` : null },
+    { list: 'watch', id: 'spend-up', test: k => k.change.disbursements !== null && k.change.disbursements > 20 ? `Disbursements are up ${k.change.disbursements.toFixed(0)}% on the same months last year (${pesoW(k.stmt.disbursements)} vs ${pesoW(k.prior.disbursements)}).` : null },
+    { list: 'watch', id: 'staff-over', test: k => { const P = k.per100.period; return P.staffRatio !== null && P.staffPlan !== null && P.staffRatio - P.staffPlan > 10 ? `Staff costs are ${pctTxt(P.staffRatio, 0)} of spending, ${(P.staffRatio - P.staffPlan).toFixed(0)} points above the ${pctTxt(P.staffPlan, 0)} in the budget plan.` : null; } },
+    { list: 'watch', id: 'vouchers', test: k => k.controls && k.controls.voucherPct !== null && k.controls.voucherPct < 90 ? `Only ${k.controls.voucherPct.toFixed(0)}% of expenses have a cash voucher (${k.controls.missingVoucher} missing).` : null },
     { list: 'watch', id: 'cash-slips', test: k => k.liquidity.firstDrop && !k.liquidity.firstBad ? `At the conservative trend, cash slips to ${k.liquidity.firstDrop.level.color.toUpperCase()} by ${k.liquidity.firstDrop.label}.` : null },
 
     { list: 'action', id: 'cash-bad', test: k => (k.liquidity.level.color === 'red' || k.liquidity.level.color === 'black') ? `Cash is ${k.liquidity.level.color.toUpperCase()}: agree a plan to rebuild it (${Number.isFinite(k.liquidity.months) ? k.liquidity.months.toFixed(1) + ' months' : 'under 1 month'} of cover).` : null },
