@@ -203,7 +203,8 @@
       highlightsVisible: true,
       imageLoaded: false,
       saving: false,
-      // View-only: never persisted, never written into annotations.
+      // Never written into annotations. Rotation may be remembered per image
+      // by the optional receipt-rotation.js provider; zoom is never saved.
       rotation: 0,   // 0 / 90 / 180 / 270, clockwise
       zoom: 1,       // multiplier over the fit-to-area size
       drawMode: true // editable only; off = pan/scroll instead of drawing
@@ -293,8 +294,33 @@
       return b;
     }
     var ZOOM_STEPS = [1, 1.25, 1.5, 2, 3, 4, 6];
-    viewBtn('\u21B6', 'Rotate left', function () { state.rotation = (state.rotation + 270) % 360; layout(); });
-    viewBtn('\u21B7', 'Rotate right', function () { state.rotation = (state.rotation + 90) % 360; layout(); });
+    // Saved rotation goes through the optional window.GraceBooksReceiptRotation
+    // provider (receipt-rotation.js) so this file stays Firebase-free.
+    var rotStore = window.GraceBooksReceiptRotation || null;
+    var userRotated = false;
+    var rotSaveTimer = null;
+    var rotNote = null;
+    function setRotNote(text) { if (rotNote) rotNote.textContent = text; }
+    function rotate(delta) {
+      userRotated = true;
+      state.rotation = (state.rotation + delta) % 360;
+      layout();
+      if (!rotStore || !state.imageUrl) return;
+      if (!rotStore.canSave()) { setRotNote('Rotation not saved (view only)'); return; }
+      setRotNote('Saving rotation\u2026');
+      clearTimeout(rotSaveTimer);
+      var url = state.imageUrl, deg = state.rotation;
+      rotSaveTimer = setTimeout(function () {
+        rotStore.save(url, deg).then(function () {
+          if (state.rotation === deg) setRotNote(deg ? 'Rotation saved for everyone' : 'Rotation reset');
+        }).catch(function (err) {
+          console.warn('Unable to save receipt rotation', err);
+          setRotNote('Rotation not saved');
+        });
+      }, 700);
+    }
+    viewBtn('\u21B6', 'Rotate left', function () { rotate(270); });
+    viewBtn('\u21B7', 'Rotate right', function () { rotate(90); });
     var viewSep = document.createElement('span');
     viewSep.className = 'gb-annot-view-sep';
     viewbar.appendChild(viewSep);
@@ -305,6 +331,18 @@
     viewbar.appendChild(zoomLabel);
     viewBtn('+', 'Zoom in', function () { stepZoom(1); });
     viewBtn('Fit', 'Fit to screen', function () { state.zoom = 1; layout(); });
+    rotNote = document.createElement('span');
+    rotNote.className = 'gb-annot-zoom-label';
+    rotNote.style.minWidth = '0';
+    viewbar.appendChild(rotNote);
+    if (rotStore && state.imageUrl) {
+      rotStore.load(state.imageUrl).then(function (deg) {
+        if (userRotated || !deg) return;
+        state.rotation = deg;
+        layout();
+        setRotNote('Saved rotation');
+      });
+    }
     var moveBtn = null;
     if (state.editable) {
       moveBtn = viewBtn('\u270B Pan', 'Switch between drawing highlights and panning/scrolling (useful on phones when zoomed)', function () {

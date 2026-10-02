@@ -180,6 +180,18 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
+    match /receiptRotations/{docId} {
+      // Saved viewing angle of a receipt/count-sheet photo (receipt-rotation.js),
+      // keyed by a hash of its storage path. Display setting only - the image
+      // and its highlights are untouched. Everyone who can open a receipt reads
+      // it; only the Treasurer saves it.
+      allow read: if notMembershipSecretary();
+      allow create, update: if hasRole(['Treasurer'])
+        && request.resource.data.rotation in [0, 90, 180, 270]
+        && request.resource.data.path is string;
+      allow delete: if hasRole(['Treasurer']);
+    }
+
     match /cashVouchers/{docId} {
       // Digital cash vouchers (cash-voucher.html) - the electronic counterpart of
       // the church's paper cash voucher form. Only the Treasurer releases funds, so
