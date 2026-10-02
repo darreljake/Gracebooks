@@ -31,21 +31,44 @@
       // this ships inside an Android Capacitor WebView (see android/,
       // capacitor.config.json) which can be older than Chrome 87.
       '.gb-annot-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.65); z-index: 5000;',
-      '  display: flex; align-items: center; justify-content: center; padding: 16px; font-family: Arial, sans-serif; }',
-      '.gb-annot-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 780px; max-height: 94vh;',
+      '  display: flex; align-items: center; justify-content: center; padding: 2vh 2.5vw; font-family: Arial, sans-serif; }',
+      '.gb-annot-modal { background: #fff; border-radius: 10px; width: 100%; max-width: 1800px; height: 100%; max-height: 96vh;',
       '  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.35); }',
       '.gb-annot-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;',
-      '  padding: 16px 18px; border-bottom: 1px solid #eee; }',
+      '  padding: 10px 16px; border-bottom: 1px solid #eee; flex-shrink: 0; }',
       '.gb-annot-title { margin: 0; font-size: 16px; color: #8B0000; font-weight: bold; }',
       '.gb-annot-subtitle { margin-top: 4px; font-size: 12px; color: #667; }',
       '.gb-annot-close { background: none; border: none; font-size: 22px; line-height: 1; cursor: pointer; color: #777; padding: 2px 4px; }',
-      '.gb-annot-body { padding: 14px 18px; overflow-y: auto; flex: 1; }',
+      // Phone / narrow: one scrolling column (receipt first, tools and legend below).
+      '.gb-annot-body { padding: 10px 12px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; }',
+      '.gb-annot-main { display: flex; flex-direction: column; min-width: 0; flex-shrink: 0; }',
+      '.gb-annot-side { min-width: 0; }',
+      '.gb-annot-viewbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }',
+      '.gb-annot-view-btn { background: #eaf2f8; color: #1a5276; border: none; border-radius: 6px; padding: 7px 11px;',
+      '  font-size: 13px; font-weight: bold; cursor: pointer; min-width: 36px; }',
+      '.gb-annot-view-btn.gb-annot-view-on { background: #1a5276; color: #fff; }',
+      '.gb-annot-zoom-label { font-size: 12px; color: #556; min-width: 44px; text-align: center; }',
+      '.gb-annot-view-sep { width: 1px; height: 22px; background: #d5dde3; margin: 0 2px; }',
       '.gb-annot-stage-wrap { position: relative; background: #f4f6f7; border: 1px solid #eee; border-radius: 8px;',
-      '  min-height: 200px; display: flex; align-items: center; justify-content: center; }',
-      '.gb-annot-loading { padding: 40px 10px; color: #8a99a5; font-size: 13px; }',
-      '.gb-annot-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; touch-action: none; }',
+      '  height: 62vh; min-height: 220px; overflow: auto; display: flex; padding: 8px; box-sizing: border-box; }',
+      '.gb-annot-loading { padding: 40px 10px; color: #8a99a5; font-size: 13px; margin: auto; }',
+      // The holder reserves the (rotated) bounding box; the stage inside is
+      // sized to the unrotated image and rotated about its centre.
+      '.gb-annot-holder { position: relative; flex: 0 0 auto; margin: auto; }',
+      '.gb-annot-stage { position: absolute; top: 50%; left: 50%; line-height: 0; touch-action: none; transform-origin: 50% 50%; }',
+      '.gb-annot-stage.gb-annot-nodraw { touch-action: auto; cursor: grab; }',
       '.gb-annot-stage.gb-annot-editable { cursor: crosshair; }',
-      '.gb-annot-img { display: block; max-width: 100%; max-height: 65vh; width: auto; height: auto; user-select: none; -webkit-user-drag: none; }',
+      '.gb-annot-img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }',
+      '@media (min-width: 900px) {',
+      '  .gb-annot-body { flex-direction: row; gap: 16px; overflow: hidden; }',
+      '  .gb-annot-main { flex: 1 1 auto; min-height: 0; flex-shrink: 1; }',
+      '  .gb-annot-stage-wrap { height: auto; flex: 1; min-height: 0; }',
+      '  .gb-annot-side { flex: 0 0 300px; overflow-y: auto; }',
+      '}',
+      '@media (max-width: 600px) {',
+      '  .gb-annot-overlay { padding: 6px 4px; }',
+      '  .gb-annot-stage-wrap { height: 60vh; }',
+      '}',
       '.gb-annot-boxes { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }',
       '.gb-annot-boxes.gb-annot-hidden-boxes { display: none; }',
       '.gb-annot-box { position: absolute; border: 2px solid; box-sizing: border-box; pointer-events: none; }',
@@ -179,7 +202,11 @@
       activeColor: COLORS[0],
       highlightsVisible: true,
       imageLoaded: false,
-      saving: false
+      saving: false,
+      // View-only: never persisted, never written into annotations.
+      rotation: 0,   // 0 / 90 / 180 / 270, clockwise
+      zoom: 1,       // multiplier over the fit-to-area size
+      drawMode: true // editable only; off = pan/scroll instead of drawing
     };
 
     var overlay = document.createElement('div');
@@ -207,19 +234,34 @@
     body.className = 'gb-annot-body';
     modal.appendChild(body);
 
+    var mainCol = document.createElement('div');
+    mainCol.className = 'gb-annot-main';
+    body.appendChild(mainCol);
+    var sideCol = document.createElement('div');
+    sideCol.className = 'gb-annot-side';
+    body.appendChild(sideCol);
+
+    var viewbar = document.createElement('div');
+    viewbar.className = 'gb-annot-viewbar';
+    mainCol.appendChild(viewbar);
+
     var stageWrap = document.createElement('div');
     stageWrap.className = 'gb-annot-stage-wrap';
-    body.appendChild(stageWrap);
+    mainCol.appendChild(stageWrap);
 
     var loadingEl = document.createElement('div');
     loadingEl.className = 'gb-annot-loading';
     loadingEl.textContent = 'Loading receipt…';
     stageWrap.appendChild(loadingEl);
 
+    var holder = document.createElement('div');
+    holder.className = 'gb-annot-holder';
+    holder.style.display = 'none';
+    stageWrap.appendChild(holder);
+
     var stage = document.createElement('div');
     stage.className = 'gb-annot-stage' + (state.editable ? ' gb-annot-editable' : '');
-    stage.style.display = 'none';
-    stageWrap.appendChild(stage);
+    holder.appendChild(stage);
 
     var img = document.createElement('img');
     img.className = 'gb-annot-img';
@@ -236,7 +278,78 @@
 
     var toolbar = document.createElement('div');
     toolbar.className = 'gb-annot-toolbar';
-    body.appendChild(toolbar);
+    sideCol.appendChild(toolbar);
+
+    // ---- View controls: rotate + zoom (view-only) ----
+    function viewBtn(text, title, handler) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'gb-annot-view-btn';
+      b.textContent = text;
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.addEventListener('click', handler);
+      viewbar.appendChild(b);
+      return b;
+    }
+    var ZOOM_STEPS = [1, 1.25, 1.5, 2, 3, 4, 6];
+    viewBtn('\u21B6', 'Rotate left', function () { state.rotation = (state.rotation + 270) % 360; layout(); });
+    viewBtn('\u21B7', 'Rotate right', function () { state.rotation = (state.rotation + 90) % 360; layout(); });
+    var viewSep = document.createElement('span');
+    viewSep.className = 'gb-annot-view-sep';
+    viewbar.appendChild(viewSep);
+    viewBtn('\u2212', 'Zoom out', function () { stepZoom(-1); });
+    var zoomLabel = document.createElement('span');
+    zoomLabel.className = 'gb-annot-zoom-label';
+    zoomLabel.textContent = '100%';
+    viewbar.appendChild(zoomLabel);
+    viewBtn('+', 'Zoom in', function () { stepZoom(1); });
+    viewBtn('Fit', 'Fit to screen', function () { state.zoom = 1; layout(); });
+    var moveBtn = null;
+    if (state.editable) {
+      moveBtn = viewBtn('\u270B Pan', 'Switch between drawing highlights and panning/scrolling (useful on phones when zoomed)', function () {
+        state.drawMode = !state.drawMode;
+        applyDrawMode();
+      });
+    }
+    function stepZoom(dir) {
+      var i = 0;
+      for (var k = 0; k < ZOOM_STEPS.length; k++) { if (ZOOM_STEPS[k] <= state.zoom + 0.001) i = k; }
+      i = Math.max(0, Math.min(ZOOM_STEPS.length - 1, i + dir));
+      state.zoom = ZOOM_STEPS[i];
+      layout();
+    }
+    function applyDrawMode() {
+      stage.classList.toggle('gb-annot-nodraw', state.editable && !state.drawMode);
+      stage.classList.toggle('gb-annot-editable', state.editable && state.drawMode);
+      if (moveBtn) {
+        moveBtn.classList.toggle('gb-annot-view-on', !state.drawMode);
+        moveBtn.textContent = state.drawMode ? '\u270B Pan' : '\u270E Draw';
+      }
+    }
+
+    // Sizes the (unrotated) stage to fit the available area at the current
+    // zoom, rotates it about its centre, and makes the holder reserve the
+    // rotated bounding box so nothing overflows or overlaps. Annotation
+    // fractions are of the UNROTATED image and are never touched here.
+    function layout() {
+      if (!state.imageLoaded) return;
+      var nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+      var odd = state.rotation % 180 !== 0;
+      var bw = odd ? nh : nw, bh = odd ? nw : nh;
+      var availW = Math.max(60, stageWrap.clientWidth - 18);
+      var availH = Math.max(60, stageWrap.clientHeight - 18);
+      var fit = Math.min(availW / bw, availH / bh, 3);
+      var scale = fit * state.zoom;
+      var iw = Math.round(nw * scale), ih = Math.round(nh * scale);
+      stage.style.width = iw + 'px';
+      stage.style.height = ih + 'px';
+      stage.style.transform = 'translate(-50%, -50%) rotate(' + state.rotation + 'deg)';
+      holder.style.width = (odd ? ih : iw) + 'px';
+      holder.style.height = (odd ? iw : ih) + 'px';
+      zoomLabel.textContent = Math.round(state.zoom * 100) + '%';
+    }
+    window.addEventListener('resize', layout);
 
     if (state.editable) {
       var swatches = document.createElement('div');
@@ -281,8 +394,8 @@
     if (state.editable) {
       var hint = document.createElement('div');
       hint.className = 'gb-annot-hint';
-      hint.textContent = 'Drag on the receipt to draw a highlight box, then label it below.';
-      body.appendChild(hint);
+      hint.textContent = 'Drag on the receipt to draw a highlight box, then label it. Rotate and zoom only change your view, not the saved highlights. When zoomed on a phone, tap Pan to scroll.';
+      sideCol.appendChild(hint);
     }
 
     if (state.locked) {
@@ -291,12 +404,12 @@
       lockedNote.textContent = state.canEdit
         ? 'These highlights are locked. Unlock below to change them.'
         : 'These highlights are locked and final.';
-      body.appendChild(lockedNote);
+      sideCol.appendChild(lockedNote);
     }
 
     var legendWrap = document.createElement('div');
     legendWrap.className = 'gb-annot-legend';
-    body.appendChild(legendWrap);
+    sideCol.appendChild(legendWrap);
 
     // ---- Footer ----
     var footer = document.createElement('div');
@@ -458,11 +571,21 @@
     var dragStart = null;
 
     function fractionFromPoint(clientX, clientY) {
+      // The stage may be rotated, so map the pointer back into the
+      // unrotated image: take the vector from the stage centre (the centre
+      // of its rotated bounding rect), undo the rotation, and divide by the
+      // unrotated size. Stored fractions are always of the unrotated image.
       var rect = stage.getBoundingClientRect();
-      if (!rect.width || !rect.height) return { x: 0, y: 0 };
+      var iw = stage.offsetWidth, ih = stage.offsetHeight;
+      if (!rect.width || !rect.height || !iw || !ih) return { x: 0, y: 0 };
+      var dx = clientX - (rect.left + rect.width / 2);
+      var dy = clientY - (rect.top + rect.height / 2);
+      var th = state.rotation * Math.PI / 180;
+      var ux = dx * Math.cos(th) + dy * Math.sin(th);
+      var uy = -dx * Math.sin(th) + dy * Math.cos(th);
       return {
-        x: clampFraction((clientX - rect.left) / rect.width),
-        y: clampFraction((clientY - rect.top) / rect.height)
+        x: clampFraction((ux + iw / 2) / iw),
+        y: clampFraction((uy + ih / 2) / ih)
       };
     }
 
@@ -496,7 +619,7 @@
     }
 
     function onMouseDown(e) {
-      if (!state.editable || !state.imageLoaded) return;
+      if (!state.editable || !state.drawMode || !state.imageLoaded) return;
       if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
       dragStart = fractionFromPoint(e.clientX, e.clientY);
@@ -516,7 +639,7 @@
     }
 
     function onTouchStart(e) {
-      if (!state.editable || !state.imageLoaded) return;
+      if (!state.editable || !state.drawMode || !state.imageLoaded) return;
       if (!e.touches || !e.touches.length) return;
       e.preventDefault();
       var t = e.touches[0];
@@ -653,6 +776,7 @@
 
     function close() {
       document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', layout);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       overlay.remove();
@@ -665,7 +789,9 @@
     img.addEventListener('load', function () {
       state.imageLoaded = true;
       loadingEl.style.display = 'none';
-      stage.style.display = 'inline-block';
+      holder.style.display = 'block';
+      applyDrawMode();
+      layout();
       renderBoxes();
       renderLegend();
     });

@@ -872,3 +872,10 @@ Status: Done (code side); deploy pending.
 Status: Done (code side); deploy hosting pending. No rules change.
 
 - Auditor found vouchers short on rationale. `cash-voucher.html` gains an optional **Purpose / Explanation** field (prefilled from the linked expense/liquidation `notes`, confirm prompt when left blank, shown in the register and searchable) printed under the Particulars table. `print-report.html` is unchanged (no purpose text on report lines).
+
+## Receipt viewer: larger preview + rotate (2026-10-02)
+
+Status: Done (code side); deploy hosting pending. No data model or rules change.
+
+- `public/receipt-annotator.js` (shared by expenses, liquidation-reimbursements, report-workflow, print-report receipts and count-sheet photos): modal now ~95vw x 96vh with the receipt filling the available area (desktop side-by-side with the legend; stacked on phones), zoom -/+/Fit with scrolling, and Rotate left/right for sideways photos. Rotation/zoom are view-only; highlights stay on the right spot and new boxes drawn while rotated are mapped back to unrotated fractions. Pan/Draw toggle for touch use when zoomed.
+- Verified with Playwright (default, 90/180, zoomed, phone 390x844, drawing at 90 deg saved fractions matching the unrotated image).
