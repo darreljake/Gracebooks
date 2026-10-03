@@ -190,3 +190,16 @@ Verification harness (not committed): fixture with 2025 data, pass-through tags,
 4. **Not a bug.** The special-project exclusion is a documented design rule copied from print-report.html (project costs paid from Petty Cash/other funds are "accounted for in the project ledger"), but the balances still deduct them, so such a cost always shows here; fixing that is a design decision for the Treasurer, not changed.
 
 Harness (not committed): t30 (12 fixtures: baseline, over-remittance, one-sided transfers, special project from Petty Cash / GCash / cash-hand, unknown-account income / expense / transfer, payroll net > gross, combined - dashboard diff = print-report diff, one document named, effects sum to the diff) and t31 (six roles x phone/landscape/desktop, no horizontal scroll, navigation, keyboard, persistence, presenter follow, print emulation, snapshot, Slide show).
+
+## Fourth follow-up build (presenter follow: scroll, highlight, pen)
+
+Approved by the Treasurer: while "Start presenting" is active, followers also follow the Treasurer's scrolling, a spotlight highlight and pen annotations. Design and field list are in CLAUDE.md (Presenter sync); code is section 9b of `council-dashboard.html`.
+
+1. **Anchors.** `assignAnchors()` tags tiles, panels, chart containers, chart marks, table rows, pitaka rows, legend items, summary tiles and list items with content-derived `data-anchor` keys (`<section>:<kind>:<slug>`); `svgOpen()` takes a chart key (`data-chart`); role-only elements are flagged and never used as scroll anchors.
+2. **Scroll follow** published only after scrolling settles (500ms idle, 800ms min gap), as `{anchor, frac, section, prev}`; followers align the same anchor to their own visible top, with a preceding-anchor then section-top fallback; works in one-at-a-time, show-all and inside Slide show slides; a follower's own wheel/touch/key gesture pauses following.
+3. **Highlight** (ring over the element's bounding rect, section dim, reduced motion = static ring) and **Pen** (3 colours, strokes as fractions of the anchor box, RDP, flat `pts`, <= 30 strokes) ride the same debounced write. Cleared on section/month change, Clear, Stop presenting; never in print or the snapshot.
+4. **Cost:** 60-second scripted session (scrolling + 5 highlights + 5 strokes) = 27 writes (+2 at Start); typical meeting ~60-90.
+
+Deviation from the request: `pts` is a flat `[x0,y0,x1,y1,...]` array, because Firestore does not allow nested arrays.
+
+Harness (not committed): t40 (two-context portrait and landscape follower: scroll alignment, missing-anchor fallback, tile / SVG bar / pitaka-row highlight rings, taps blocked in Highlight mode, strokes inside the tile, Clear, section and month clears, 30-stroke cap, doc size, pause/Resume, Slide show, print, snapshot, audit), t41 (Treasurer toolbar at 390x844 / 844x390 / 1440, 60-second write count), t42 (six roles, no console errors), t3 (reconciliation 22/22), t31, t5.
