@@ -212,6 +212,19 @@ service cloud.firestore {
       allow update, delete: if hasRole(['Treasurer']);
     }
 
+    // Historical finance data (2018-2025), imported by historical-import.html.
+    // Aggregates for dashboards/trend displays ONLY. Nothing here is read by any
+    // balance, cash-level, report or ledger page - see CLAUDE.md "Historical data".
+    match /historicalMonthly/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
+    match /historicalAnnual/{docId} {
+      allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
+      allow create, update, delete: if hasRole(['Treasurer']);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

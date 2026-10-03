@@ -1107,11 +1107,99 @@
     if (Object.prototype.hasOwnProperty.call(reviewByDocId, docId)) return;
     reviewByDocId[docId] = await getDocData('reportReviews', docId);
   }
+  // ───────────────────────────────────────────────────────────────────────
+  // HISTORICAL RECORDS (2018-2025, imported by historical-import.html) - READ-ONLY and for trend / comparison displays
+  // ONLY. They live in historicalAnnual / historicalMonthly (never in income, expenses, budgets or beginning balances), so
+  // nothing here can reach a balance, the statement, the reconciliation or a cash level: this block only feeds the
+  // "vs last year" comparisons, the 12-month ghost line, last year's tithes, the pitaka last-year view and the
+  // "Through the years" section. Rules: live data always wins for any month that has live data (a month is never a mix);
+  // a failed read means "no history"; the annual docs are read once on load, a year's monthly docs only when needed.
+  // Basis: historical figures are ALL FUNDS as reported in the old statements; comparisons use the statement basis
+  // (pass-through included, like the signed statements), the Through the years bars and the pitaka leave pass-through out.
+  // ───────────────────────────────────────────────────────────────────────
+  const HIST_READ_ROLES = ['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee'];
+  const HIST_LABEL = 'from historical records (all funds)';
+  const HIST_TITHES_KEY = 'Regular Giving - Tithes';
+  function histFrom(annualDocs) {
+    if (!annualDocs || !annualDocs.length) return null;
+    const annual = {};
+    annualDocs.forEach(d => { const y = parseInt(d.year != null ? d.year : d.id, 10); if (Number.isFinite(y)) annual[y] = d; });
+    return Object.keys(annual).length ? { annual, monthly: {}, cache: {} } : null;
+  }
+  // months (0-11) that have ANY live income or expense document in a year (cheap pre-check for what history is needed)
+  function rawLiveMonths(raw, y) {
+    if (!raw._liveMonths) {
+      const m = {};
+      (raw.income || []).concat(raw.expenses || []).forEach(d => {
+        const yy = parseInt(String(d.date).slice(0, 4), 10), mm = parseInt(String(d.date).slice(5, 7), 10) - 1;
+        if (yy > 2000 && mm >= 0 && mm < 12) (m[yy] || (m[yy] = new Set())).add(mm);
+      });
+      raw._liveMonths = m;
+    }
+    return raw._liveMonths[y] ? raw._liveMonths[y].size : 0;
+  }
+  async function ensureHistoryMonthly(raw, years) {
+    const H = raw && raw.history; if (!H) return;
+    await Promise.all(years.filter(y => Number.isFinite(y) && H.annual[y] && !(y in H.monthly)).map(async y => {
+      try {
+        const snap = await db.collection('historicalMonthly').where('year', '==', y).get();
+        H.monthly[y] = snap.docs.map(d => d.data());
+      } catch (err) { console.warn('Unable to read historicalMonthly', y, err && err.message); H.monthly[y] = []; }
+    }));
+  }
+  // the years whose monthly history this selection can use (comparison years, the chosen compare year, and any year that
+  // has only SOME live months and so needs history for the rest in the Through the years bars)
+  function histYearsNeeded(raw, year) {
+    const H = raw && raw.history; if (!H) return [];
+    const need = new Set([year - 1, year - 2, ui.compareYear].filter(Number.isFinite));
+    Object.keys(H.annual).map(Number).forEach(y => { const L = rawLiveMonths(raw, y); if (L > 0 && L < 12 && y < nowDate().getFullYear()) need.add(y); });
+    return [...need].filter(y => y < year + 1 && rawLiveMonths(raw, y) < 12);
+  }
+  // one historical month: statement basis (pass-through included) and the pass-through-free basis; null = nothing recorded
+  function histMonth(H, y, m) {
+    if (!H || !H.monthly[y]) return null;
+    const ck = y * 12 + m;
+    if (ck in H.cache) return H.cache[ck];
+    let n = 0; const o = { recIncl: 0, disIncl: 0, rec: 0, dis: 0, tithes: 0 };
+    H.monthly[y].forEach(d => {
+      if (d.month !== m + 1) return;
+      n++;
+      const a = Number(d.amount) || 0, inc = d.direction === 'income';
+      if (inc) o.recIncl += a; else o.disIncl += a;
+      if (!d.passThrough) { if (inc) o.rec += a; else o.dis += a; }
+      if (inc && d.categoryKey === HIST_TITHES_KEY) o.tithes += a;
+    });
+    return (H.cache[ck] = n ? o : null);
+  }
+  // Canonical category -> purpose bucket, by the SAME keyword rules as live spending. The four staff categories are payroll
+  // (people); "Connectional Ministry" is worded "connectional" so the ministry keyword does not catch it; contingency and
+  // advances are unbudgeted/other.
+  const HIST_PAYROLL_CATS = new Set(['Administrative Pastor', 'Mission Support', 'Deaconess', 'Personnel']);
+  function histExpenseBucket(d) {
+    const cat = String(d.category || ''), sub = String(d.subcategory || '');
+    if (cat === 'Administration' && /contingency|advances/i.test(sub)) return PURPOSE_BUCKETS[PURPOSE_BUCKETS.length - 1];
+    const ex = { category: cat, isPayrollGenerated: HIST_PAYROLL_CATS.has(cat) };
+    const text = `${cat === 'Connectional Ministry' ? 'connectional' : cat} ${sub}`.toLowerCase();
+    return PURPOSE_BUCKETS.find(b => b.test(ex, text));
+  }
+  function histPer100(H, y, ms) {
+    if (!H || !H.monthly[y]) return null;
+    const set = new Set(ms.map(m => m + 1)), g = {};
+    H.monthly[y].forEach(d => {
+      if (d.direction !== 'expense' || d.passThrough || !set.has(d.month)) return;
+      const def = histExpenseBucket(d), label = d.subcategory && d.subcategory !== d.category ? `${d.category} - ${d.subcategory}` : String(d.category || '');
+      addLine(g[def.id] || (g[def.id] = { amount: 0, lines: {} }), { key: 'hist|' + normalizeGroupKey(d.categoryKey || label), label, main: label }, Number(d.amount) || 0);
+    });
+    const r = sideRows(PURPOSE_BUCKETS, g);
+    r.hist = true;
+    return r;
+  }
+
   async function loadRaw(profile) {
     const role = profile.role;
     const realYear = new Date().getFullYear();
     const [income, expenses, obligations, projects, projectEntries, projectCosts, attendance, countSheets,
-           beginning, structure, cashControl, yearsCfg, liq, roll, passThrough] = await Promise.all([
+           beginning, structure, cashControl, yearsCfg, liq, roll, passThrough, histAnnual] = await Promise.all([
       getCollection('income'), getCollection('expenses'), getCollection('churchObligations'),
       getCollection('specialProjects'), getCollection('specialProjectEntries'), getCollection('specialProjectCosts'),
       getCollection('attendance'), getCollection('countSheets'),
@@ -1119,7 +1207,8 @@
       getDocData('settings', 'cashControlSettings'), getDocData('settings', 'yearsConfig'),
       LIQ_READ_ROLES.includes(role) ? getCollection('liquidationRequests') : Promise.resolve(null),
       ROLL_READ_ROLES.includes(role) ? getCollection('membershipRoll') : Promise.resolve(null),
-      getDocData('settings', 'passThroughItems')
+      getDocData('settings', 'passThroughItems'),
+      HIST_READ_ROLES.includes(role) ? getCollection('historicalAnnual') : Promise.resolve(null)   // null / empty = no history
     ]);
     await ensureBudgets([realYear, realYear + 1]);
     const dflt = d => d.date ? d : { ...d, date: '2026-01-01', dateDefaulted: true }; // undated = 2026-01-01, as in Financial Overview
@@ -1128,7 +1217,8 @@
       expenses: expenses ? expenses.map(dflt) : null,
       obligations: obligations || [], projects: projects || [], projectEntries: projectEntries || [], projectCosts: projectCosts || [],
       attendance: attendance || [], countSheets: countSheets, // null = unreadable
-      beginning, structure, cashControl, yearsCfg, liquidation: liq, membershipRoll: roll, passThrough
+      beginning, structure, cashControl, yearsCfg, liquidation: liq, membershipRoll: roll, passThrough,
+      history: histFrom(histAnnual)
     };
   }
 
@@ -1762,11 +1852,22 @@
     const sumB = (y, ms, f) => ms.reduce((s, m) => s + f(bk(y, m)), 0);
     const unionTithers = (y, ms) => { const s = new Set(); ms.forEach(m => bk(y, m).tithers.forEach(k => s.add(k))); return s; };
 
+    // Comparison month (last year): live data always wins; a month with NO live General Fund data falls back to the
+    // historical records (statement basis, all funds) - never both in the same month.
+    const H = raw.history || null;
+    const histSeen = { prior: new Set(), priorYtd: new Set(), ghost: new Set(), tithes: new Set(), tithesYtd: new Set() };   // distinct months taken from history
+    const cmpB = (y, m) => {
+      const l = bk(y, m);
+      if (l.rec || l.dis) return { rec: l.rec, dis: l.dis, tithes: l.tithes, src: 'live' };
+      const h = histMonth(H, y, m);
+      return h ? { rec: h.recIncl, dis: h.disIncl, tithes: h.tithes, src: 'hist' } : { rec: 0, dis: 0, tithes: 0, src: 'none' };
+    };
+    const sumC = (y, ms, f, tag) => ms.reduce((s, m) => { const b = cmpB(y, m); if (b.src === 'hist') histSeen[tag].add(y * 12 + m); return s + f(b); }, 0);
     kpi.prior = {
-      receipts: sumB(year - 1, months, b => b.rec), disbursements: sumB(year - 1, months, b => b.dis)
+      receipts: sumC(year - 1, months, b => b.rec, 'prior'), disbursements: sumC(year - 1, months, b => b.dis, 'prior')
     };
     kpi.prior.net = kpi.prior.receipts - kpi.prior.disbursements;
-    kpi.priorYtd = { receipts: sumB(year - 1, ytdMonths, b => b.rec), disbursements: sumB(year - 1, ytdMonths, b => b.dis) };
+    kpi.priorYtd = { receipts: sumC(year - 1, ytdMonths, b => b.rec, 'priorYtd'), disbursements: sumC(year - 1, ytdMonths, b => b.dis, 'priorYtd') };
     kpi.priorYtd.net = kpi.priorYtd.receipts - kpi.priorYtd.disbursements;
     kpi.change = {
       receipts: pctChange(kpi.stmt.receipts, kpi.prior.receipts),
@@ -1778,15 +1879,16 @@
     // 12 months ending at the last selected month (rolling) - sparklines, combo chart
     const attModel = buildAttendanceModel(raw.attendance);
     const capDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const series = { labels: [], selected: [], receipts: [], disbursements: [], net: [], lastYearNet: [], lastYearReceipts: [], lastYearDisb: [], tithes: [], tithers: [], attendance: [] };
+    const series = { labels: [], selected: [], receipts: [], disbursements: [], net: [], lastYearNet: [], lastYearReceipts: [], lastYearDisb: [], lastYearHist: [], tithes: [], tithers: [], attendance: [] };
     for (let i = 11; i >= 0; i--) {
       const idx = year * 12 + last - i;
       const y = Math.floor(idx / 12), m = idx % 12;
-      const b = bk(y, m), bl = bk(y - 1, m);
+      const b = bk(y, m), bl = cmpB(y - 1, m);
       series.labels.push(`${SHORT_MONTHS[m]}${m === 0 || i === 11 ? ' ' + String(y).slice(2) : ''}`);
       series.selected.push(y === year && monthSet.has(m));
       series.receipts.push(b.rec); series.disbursements.push(b.dis); series.net.push(b.rec - b.dis);
       series.lastYearNet.push(bl.rec - bl.dis); series.lastYearReceipts.push(bl.rec); series.lastYearDisb.push(bl.dis);
+      series.lastYearHist.push(bl.src === 'hist'); if (bl.src === 'hist') histSeen.ghost.add((y - 1) * 12 + m);
       series.tithes.push(b.tithes); series.tithers.push(b.tithers.size); series.attendance.push(attendanceStats(attModel, y, [m], capDate).avg);
     }
     kpi.series = series;
@@ -1942,7 +2044,7 @@
 
     // ── 4. Giving health (counts and percentages only - no giver names or amounts) ──
     const tithesSel = sumB(year, months, b => b.tithes), tithesYtd = sumB(year, ytdMonths, b => b.tithes);
-    const tithesPrior = sumB(year - 1, months, b => b.tithes), tithesYtdPrior = sumB(year - 1, ytdMonths, b => b.tithes);
+    const tithesPrior = sumC(year - 1, months, b => b.tithes, 'tithes'), tithesYtdPrior = sumC(year - 1, ytdMonths, b => b.tithes, 'tithesYtd');
     const tithersSel = unionTithers(year, months), tithersYtd = unionTithers(year, ytdMonths), tithersPrior = unionTithers(year - 1, months);
     // Average SUNDAY attendance (never a monthly sum): selection, same months last year, year to date
     const attSel = attendanceStats(attModel, year, months, capDate);
@@ -2006,13 +2108,26 @@
       const recv = sideRows(INCOME_BUCKETS, bucketize(fInc, incomeBucketOf, S, 'income'));
       // comparison: same months last year, and the budget plan (each selected month's own budget mapped to the same buckets)
       const prior = sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(year - 1, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S, 'expense'));
-      // every earlier year's split for the same months (the "last year" view's compare-year select lists those with data)
+      // every earlier year's split for the same months (the "last year" view's compare-year select lists those with data).
+      // Live data wins: a year with live spending in these months uses it; only a year with NONE falls back to the historical
+      // records (all funds, pass-through left out, canonical Category - Subcategory lines). A historical year whose monthly
+      // records are not read yet is listed ("pending") and loaded when picked.
       const firstYear = expenseData.reduce((mn, d) => { const y = parseInt(String(d.date).slice(0, 4), 10); return y > 2000 && y < mn ? y : mn; }, year);
-      const priorBy = { [year - 1]: prior }, priorYears = prior.total > 0.005 ? [year - 1] : [];
-      for (let y = year - 2; y >= firstYear; y--) {
-        const g = sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(y, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S, 'expense'));
-        priorBy[y] = g; if (g.total > 0.005) priorYears.push(y);
+      const minHist = H ? Math.min(...Object.keys(H.annual).map(Number)) : year;
+      const histOut = y => { const A = H && H.annual[y]; return A ? (Number(A.totalExpense) || 0) - (Number(A.passThroughExpense) || 0) : 0; };
+      const priorBy = {}, priorYears = [], histYears = {}, histPending = [];
+      for (let y = year - 1; y >= Math.min(firstYear, minHist, year - 1); y--) {
+        let g = y === year - 1 ? prior : sideRows(PURPOSE_BUCKETS, bucketize(expenseData.filter(inYM(y, ms)).filter(isGeneralFundExpense).filter(notPTe), expenseBucketOf, S, 'expense'));
+        let pending = false;
+        if (!(g.total > 0.005) && H && H.annual[y]) {
+          const hg = histPer100(H, y, ms);
+          if (hg) { g = hg; if (hg.total > 0.005) histYears[y] = true; }
+          else if (!(y in H.monthly) && histOut(y) > 0) pending = true;
+        }
+        priorBy[y] = g;
+        if (g.total > 0.005) priorYears.push(y); else if (pending) { priorYears.push(y); histPending.push(y); }
       }
+      const priorSplit = priorBy[year - 1] || prior;
       const budGrouped = {};
       S.gfExpenseKeys.forEach(key => {
         const v = sumBudget(expenseBudgetForMonth, key, ms); if (!v) return;
@@ -2025,10 +2140,10 @@
       const staffBud = budTotal > 0 ? (planOf('people') ? planOf('people').amount : 0) / budTotal * 100 : null;
       const minBud = budTotal > 0 ? sumBudgetKeys(ms, ex => isNowMinistryExpense(ex)) / budTotal * 100 : null;
       return {
-        total: spend.total, rows: spend.rows, recv, spend, prior, plan, priorBy, priorYears,
+        total: spend.total, rows: spend.rows, recv, spend, prior: priorSplit, plan, priorBy, priorYears, histYears, histPending,
         trio: [
           { label: 'This period', total: spend.total, rows: spend.rows },
-          { label: 'Same months last year', total: prior.total, rows: prior.rows },
+          { label: 'Same months last year', total: priorSplit.total, rows: priorSplit.rows },
           { label: 'Budget plan', total: plan.total, rows: plan.rows }
         ],
         staffRatio: totalOut > 0 ? payrollOf(fExp) / totalOut * 100 : null, ministryRatio: totalOut > 0 ? ministryOf(fExp) / totalOut * 100 : null,
@@ -2109,6 +2224,67 @@
       attendanceAvg, attendancePriorAvg, attendanceChange: pctChange(attendanceAvg, attendancePriorAvg), attendanceYtdAvg,
       sel: attSel, prior: attPrior, ytd: attYtd, series: series.attendance, roll
     };
+
+    // ── 8b. Through the years: historical records (all funds, pass-through left out) + live General Fund. Read-only. ──
+    kpi.history = (() => {
+      if (!H) return { has: false };
+      const curYear = now.getFullYear();
+      const histYrs = Object.keys(H.annual).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (!histYrs.length) return { has: false };
+      const live = {};   // year -> { months: { m: { rec, dis } }, cats: { name: amount } }  (pass-through-tagged lines left out of the amounts)
+      const slotL = dt => { const y = dt.getFullYear(), s = live[y] || (live[y] = { months: {}, cats: {} }); return s.months[dt.getMonth()] || (s.months[dt.getMonth()] = { rec: 0, dis: 0 }); };
+      gfIncAll.forEach(d => { const b = slotL(new Date(d.date)); if (!isPT(d, 'income')) b.rec += amt(d); });
+      gfExpAll.forEach(d => {
+        const dt = new Date(d.date), b = slotL(dt);
+        if (isPT(d, 'expense')) return;
+        b.dis += amt(d);
+        const main = classifyExpense(d, S).main, c = live[dt.getFullYear()].cats; c[main] = (c[main] || 0) + amt(d);
+      });
+      const catName = {}, catKey = n => { const key = nk(n); if (!catName[key]) catName[key] = String(n).trim(); return key; };
+      const histCats = A => { const c = {}; Object.keys((A.byCategory && A.byCategory.expense) || {}).forEach(k => { const key = catKey(String(k).split(' - ')[0]); c[key] = (c[key] || 0) + (Number(A.byCategory.expense[k]) || 0); }); return c; };
+      const yearsAll = new Set(histYrs); Object.keys(live).forEach(y => yearsAll.add(+y));
+      const rows = [];
+      [...yearsAll].filter(y => y >= histYrs[0] && y <= curYear).sort((a, b) => a - b).forEach(y => {
+        const lv = live[y], L = lv ? Object.keys(lv.months).length : 0, A = H.annual[y] || null;
+        const liveRow = () => {
+          let inc = 0, exp = 0, mx = -1;
+          Object.keys(lv.months).forEach(m => { inc += lv.months[m].rec; exp += lv.months[m].dis; mx = Math.max(mx, +m); });
+          const cats = {}; Object.keys(lv.cats).forEach(c => { const key = catKey(c); cats[key] = (cats[key] || 0) + lv.cats[c]; });
+          return { income: inc, expense: exp, months: L, src: 'live', cats, lastMonth: mx };
+        };
+        let r;
+        if (L >= 12 || (L > 0 && (!A || y === curYear))) r = liveRow();
+        else if (L === 0 && A) r = { income: (Number(A.totalIncome) || 0) - (Number(A.passThroughIncome) || 0), expense: (Number(A.totalExpense) || 0) - (Number(A.passThroughExpense) || 0), months: Number(A.monthsCovered) || 0, src: 'hist', cats: histCats(A), lastMonth: -1 };
+        else if (L > 0 && A) {
+          if (!H.monthly[y]) r = liveRow();
+          else {   // some months live, the rest historical - never both in one month; category detail is left out of a mixed year
+            let inc = 0, exp = 0, n = 0;
+            for (let m = 0; m < 12; m++) {
+              if (lv.months[m]) { inc += lv.months[m].rec; exp += lv.months[m].dis; n++; }
+              else { const hm = histMonth(H, y, m); if (hm) { inc += hm.rec; exp += hm.dis; n++; } }
+            }
+            r = { income: inc, expense: exp, months: n, src: 'mixed', cats: {}, lastMonth: -1 };
+          }
+        } else return;
+        rows.push({ year: y, ...r, net: r.income - r.expense, partial: r.months < 12, ytd: y === curYear && r.src === 'live', label: y === curYear && r.src === 'live' ? `${y} YTD` : String(y) });
+      });
+      rows.forEach((r, i) => {
+        const p = i && rows[i - 1].year === r.year - 1 ? rows[i - 1] : null;
+        r.incomeYoY = p ? pctChange(r.income, p.income) : null; r.expenseYoY = p ? pctChange(r.expense, p.expense) : null;
+        r.yoyPartial = !!(p && (p.partial || r.partial));
+      });
+      // top expense categories across the years (historical categories + the live budget's main categories, matched by name)
+      const tot = {};
+      rows.forEach(r => Object.keys(r.cats).forEach(c => { tot[c] = (tot[c] || 0) + r.cats[c]; }));
+      const top = Object.keys(tot).sort((a, b) => tot[b] - tot[a]).slice(0, 5);
+      const catSeries = top.map(c => ({ name: catName[c], total: tot[c], values: rows.map(r => Object.keys(r.cats).length ? (r.cats[c] || 0) : null) }));
+      const notes = [];
+      histYrs.forEach(y => ((H.annual[y].notes) || []).forEach(t => notes.push({ year: y, text: String(t) })));
+      return { has: true, curYear, rows, catSeries, notes, yearsFrom: histYrs[0] };
+    })();
+    const hu = {}; Object.keys(histSeen).forEach(t => { hu[t] = histSeen[t].size; });
+    kpi.historyUse = { year: year - 1, prior: hu.prior, priorOf: months.length, priorYtd: hu.priorYtd, ytdOf: ytdMonths.length, ghost: hu.ghost,
+      tithes: hu.tithes, tithesYtd: hu.tithesYtd, any: hu.prior + hu.priorYtd + hu.ghost + hu.tithes + hu.tithesYtd > 0 };
 
     // ── 9. Stewardship & controls (Treasurer + Auditor only) ──
     kpi.controls = CONTROLS_ROLES.includes(kpi.role) ? computeControls(raw, period, st, now) : null;
@@ -2502,7 +2678,9 @@
       ${tile('Disbursements, 12 months', pesoShort(sumF(sr.disbursements, x => x)), 'rolling to the last selected month', spark(sr.disbursements, 'var(--s2)'))}
       ${tile('Year to date net', `<span class="${signClass(k.ytd.net)}">${pesoShort(k.ytd.net)}</span>`, `Receipts ${pesoShort(k.ytd.receipts)} − disbursements ${pesoShort(k.ytd.disbursements)}`)}
     </div>`;
-    return hero + `<div class="grid2">${wf}<div class="panel"><h3>At a glance</h3>${tiles}</div></div>`;
+    const hu = k.historyUse, hnote = hu && (hu.prior > 0 || hu.priorYtd > 0)
+      ? `<div class="note" id="hist-hero-note">Last year's comparison figures for ${hu.prior ? `${hu.prior} of the ${hu.priorOf} selected month${hu.priorOf === 1 ? '' : 's'}` : 'part of the year to date'} come ${HIST_LABEL}, because no live data was recorded for ${hu.year} then. The old statements cover every fund.</div>` : '';
+    return hero + hnote + `<div class="grid2">${wf}<div class="panel"><h3>At a glance</h3>${tiles}</div></div>`;
   }
 
   function slideLiquidity(k, o) {
@@ -2609,7 +2787,9 @@
     const heat = `<div class="panel"><h3>Sunday collections <span class="hint">last 13 Sundays · darker = more given</span></h3><div class="svgwrap">${heatmapSvg(g.weeks, o.w.full)}</div>
       <div class="legend"><span>less</span>${HEAT.map(c => `<span><i style="background:${c}"></i></span>`).join('')}<span>more</span></div>
       ${tableView(['Week of', 'Collection'], g.weeks.map(w => [w.label, peso(w.amount)]))}</div>`;
-    return tiles + heat + `<div class="note">Privacy: this page shows counts and percentages only - never a giver's name or amount.</div>`;
+    const hu = k.historyUse, tnote = hu && (hu.tithes > 0 || hu.tithesYtd > 0)
+      ? `<div class="note" id="hist-giving-note">Tithes compared with last year: ${hu.tithes ? `${hu.tithes} of the ${hu.priorOf} selected month${hu.priorOf === 1 ? '' : 's'}` : 'part of the year to date'} use Regular Giving - Tithes ${HIST_LABEL}.</div>` : '';
+    return tiles + tnote + heat + `<div class="note">Privacy: this page shows counts and percentages only - never a giver's name or amount.</div>`;
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -2706,16 +2886,18 @@
     else if (view === 'lastyear') {
       grp = (d.priorBy && d.priorBy[cmpYear]) || { total: 0, rows: [], lines: [] };
       const mo = basis === 'ytd' ? `Jan-${SHORT_MONTHS[k.period.last]}` : pkMonthsOnly(k);
-      title = `Bawat ₱100 noong ${cmpYear}`; cap = grp.total > 0 ? `Parehong buwan noong ${cmpYear}: ${peso(grp.total)}` : `Walang datos para sa ${mo} ${cmpYear}`;
+      title = `Bawat ₱100 noong ${cmpYear}`; cap = grp.total > 0 ? `Parehong buwan noong ${cmpYear}: ${peso(grp.total)}${grp.hist ? ` · ${HIST_LABEL}` : ''}` : `Walang datos para sa ${mo} ${cmpYear}`;
       if (!(grp.total > 0)) empty = `Wala pang datos para sa ${mo} ${cmpYear}. Lalabas ito kapag na-upload na ang lumang records.`;
     } else { grp = d.spend; title = 'Bawat ₱100 na ginastos'; cap = `Kabuuang gastos: ${peso(grp.total)} · ${lab}`; if (!(grp.total > 0)) empty = `Walang gastos na naitala para sa ${lab}.`; }
     if (view === 'received' && !(grp.total > 0)) empty = `Walang kita na naitala para sa ${lab}.`;
     let lines = grp.lines.map(l => ({ ...l }));
-    if (view === 'plan' || view === 'lastyear') {
+    // historical lines are canonical Category - Subcategory names, which do not line up one-to-one with the live budget lines,
+    // so a historical last-year view carries no "actual now" comparison
+    if (view === 'plan' || (view === 'lastyear' && !grp.hist)) {
       lines.forEach(l => { const a = spendByKey[l.key]; l.cmpTo = a ? a.pesos : 0; });
       if (grp.total > 0) { const have = new Set(lines.map(l => l.key)); d.spend.lines.filter(l => !have.has(l.key)).forEach(l => lines.push({ ...l, pesos: 0, amount: null, cmpTo: l.pesos, onlyNow: true, view, cmpYear })); }
     }
-    return { view, side, title, cap, empty, total: grp.total, lines, rows: grp.rows, d, cmpYear };
+    return { view, side, title, cap, empty, total: grp.total, lines, rows: grp.rows, d, cmpYear, hist: !!grp.hist };
   }
   function pkRowHtml(l, side, o, i, tone, max, animate) {
     const c = pkCaptionFor(l, side), icon = PK_ICONS[c.icon] || PK_ICONS.other, p = l.pesos;
@@ -2752,7 +2934,7 @@
     if (m.view !== 'lastyear') return '';
     const d = k.per100[ui.per100 === 'ytd' ? 'ytd' : 'period'], ys = pkCompareYears(d, k.period.year);
     if (ys.length < 2) return '';
-    return `<label class="pk-cmp-sel">Ihambing sa: <select id="pk-cmp" onchange="setCompareYear(this.value)" aria-label="Taon na ihahambing">${ys.map(y => `<option value="${y}"${y === m.cmpYear ? ' selected' : ''}>${y}${(d.priorBy[y] && d.priorBy[y].total > 0) ? '' : ' (walang datos)'}</option>`).join('')}</select></label>`;
+    return `<label class="pk-cmp-sel">Ihambing sa: <select id="pk-cmp" onchange="setCompareYear(this.value)" aria-label="Taon na ihahambing">${ys.map(y => `<option value="${y}"${y === m.cmpYear ? ' selected' : ''}>${y}${d.histYears && d.histYears[y] ? ' (historical)' : (d.priorBy[y] && d.priorBy[y].total > 0) ? '' : (d.histPending && d.histPending.includes(y) ? ' (historical)' : ' (walang datos)')}</option>`).join('')}</select></label>`;
   }
   const pkToneBtns = tone => `<button type="button" id="pk-tone-fun" onclick="setPitakaTone('fun')" aria-pressed="${tone === 'fun'}">May konting biro</button><button type="button" id="pk-tone-plain" onclick="setPitakaTone('plain')" aria-pressed="${tone === 'plain'}">Seryoso</button>`;
   const pkViewBtns = (view, cmpYear) => PK_VIEWS.map(v => `<button type="button" class="vbtn" data-pkview="${v.id}" aria-pressed="${v.id === view}"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${v.svg}</svg></span><span><b>${v.t}</b><span>${v.id === 'lastyear' ? `Parehong buwan, ${cmpYear}` : v.s}</span></span></button>`).join('');
@@ -2803,7 +2985,15 @@
     ui.pitakaTone = t; pkRefresh(false);
     if (!opts.remote) schedulePublish();
   }
-  function setCompareYear(y) { ui.compareYear = parseInt(y, 10); pkRefresh(true); }
+  async function setCompareYear(y) {
+    ui.compareYear = parseInt(y, 10);
+    // a historical year's monthly records are read only when it is picked (once); live years are already in memory
+    if (ui.raw && ui.raw.history && ui.raw.history.annual[ui.compareYear] && !(ui.compareYear in ui.raw.history.monthly)) {
+      await ensureHistoryMonthly(ui.raw, [ui.compareYear]);
+      recompute();
+    }
+    pkRefresh(true);
+  }
 
   function slidePer100(k, o) {
     const basis = o.per100 === 'ytd' ? 'ytd' : 'period', d = k.per100[basis];
@@ -2825,7 +3015,7 @@
     if (o.static) {
       const tbl = v => {
         const mm = pkModel(k, basis, v, cmpYear);
-        const head = v === 'plan' || v === 'lastyear' ? ['Budget line', 'Per ₱100', 'Actual now'] : ['Budget line', 'Per ₱100'];
+        const head = v === 'plan' || (v === 'lastyear' && !mm.hist) ? ['Budget line', 'Per ₱100', 'Actual now'] : ['Budget line', 'Per ₱100'];
         const body = mm.empty ? `<tr><td colspan="${head.length}" class="note">${escapeHtml(mm.empty)}</td></tr>` : mm.lines.map(l => `<tr><td>${escapeHtml(l.display)}</td><td class="n">${l.pesos > 0 ? '₱' + l.pesos : '&lt;₱1'}</td>${head.length > 2 ? `<td class="n">₱${l.cmpTo}</td>` : ''}</tr>`).join('');
         return `<div class="panel"><h3>${escapeHtml(mm.title)}</h3><div class="tbl-scroll"><table class="t"><thead><tr>${head.map((h, i) => `<th${i ? ' class="n"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div></div>`;
       };
@@ -2840,7 +3030,7 @@
     const mix = `<div class="panel"><h3>Does our spending match the plan? <span class="hint">share of every ₱100 · ${escapeHtml(basisTxt)}</span></h3>
       <div class="svgwrap">${mixTrioSvg(d.trio, o.w.full)}</div>
       <div class="legend">${PURPOSE_BUCKETS.filter(b => d.trio.some(t => t.rows.some(r => r.id === b.id))).map(b => `<span><i style="background:${b.css}"></i>${escapeHtml(b.label)}</span>`).join('')}</div>
-      <div class="note" style="margin-top:6px">Budget plan = each selected month's own budget, grouped the same way.${d.trio[1].total > 0 ? '' : ' There is no spending recorded for the same months last year.'}${d.trio[2].total > 0 ? '' : ' No budget has been set for these months.'}</div>
+      <div class="note" style="margin-top:6px">Budget plan = each selected month's own budget, grouped the same way.${d.trio[1].total > 0 ? (d.histYears && d.histYears[k.period.year - 1] ? ` Last year's split comes ${HIST_LABEL}.` : '') : ' There is no spending recorded for the same months last year.'}${d.trio[2].total > 0 ? '' : ' No budget has been set for these months.'}</div>
       ${tableView(['Purpose', 'This period', 'Same months last year', 'Budget plan'], mixRows)}</div>`;
     // Ratio tiles with "vs budget plan" deltas
     const vsPlan = (act, plan, what) => {
@@ -3135,6 +3325,76 @@
     return `<div class="scorecard">${tiles}</div><div class="sum-lists">${lists}</div>`;
   }
 
+  // ── Through the years (id 'history') ──
+  const histSrcLabel = src => src === 'live' ? 'live, General Fund' : src === 'mixed' ? 'live + historical' : 'historical, all funds';
+  const yoyTxt = (v, partial) => v === null || v === undefined || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%${partial ? '*' : ''}`;
+  function yearsSvg(rows, w) {
+    const n = rows.length, narrow = w < 520, h = narrow ? 290 : 330, left = narrow ? 46 : 60, right = 10, top = 16, bottom = 46;
+    const all = rows.flatMap(r => [r.income, r.expense, r.net]).concat([0]);
+    const mn = Math.min(...all), mx = Math.max(...all), rng = (mx - mn) || 1, plotH = h - top - bottom, plotW = w - left - right;
+    const yOf = v => top + (1 - (v - mn) / rng) * plotH, gw = plotW / n, bw = Math.max(6, Math.min(26, gw * 0.36)), gx = i => left + i * gw + gw / 2;
+    let out = svgOpen(w, h, 'Annual income and expense by year, with net', 'years');
+    out += '<defs><pattern id="yr-hi" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#dbe8f8"/><line x1="0" y1="0" x2="0" y2="6" stroke="#2a78d6" stroke-width="3"/></pattern>'
+      + '<pattern id="yr-he" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#fbe0d3"/><line x1="0" y1="0" x2="0" y2="6" stroke="#eb6834" stroke-width="3"/></pattern></defs>';
+    for (let i = 0; i <= 4; i++) { const v = mn + rng * i / 4, y = yOf(v); out += `<line x1="${left}" x2="${w - right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#ece6d6" stroke-width="1"/><text x="${left - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11">${escapeHtml(pesoShort(v))}</text>`; }
+    const y0 = yOf(0);
+    out += `<line x1="${left}" x2="${w - right}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="#9aa3b2" stroke-width="1"/>`;
+    rows.forEach((r, i) => {
+      const x = gx(i), bar = (v, dx, solid, hatch, name) => { const y = yOf(v), hh = Math.abs(y0 - y); return `<rect x="${(x + dx).toFixed(1)}" y="${Math.min(y, y0).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, hh).toFixed(1)}" rx="3" fill="${r.partial ? `url(#${hatch})` : solid}"${r.partial ? ` stroke="${solid}" stroke-width="1"` : ''}${tip(`${r.label}${r.partial ? ' (partial year, ' + r.months + ' months)' : ''}: ${name} ${peso(v)} · ${histSrcLabel(r.src)}`)}/>`; };
+      out += bar(r.income, -bw - 1, 'var(--s1)', 'yr-hi', 'income') + bar(r.expense, 1, 'var(--s2)', 'yr-he', 'expense');
+      const lab = narrow ? `${r.ytd ? "'" + String(r.year).slice(2) + ' YTD' : "'" + String(r.year).slice(2)}${r.partial && !r.ytd ? '*' : ''}` : `${r.label}${r.partial && !r.ytd ? '*' : ''}`;
+      out += `<text x="${x.toFixed(1)}" y="${h - bottom + 16}" text-anchor="middle" font-size="${narrow ? 10 : 12}">${escapeHtml(lab)}</text>`;
+    });
+    out += `<polyline fill="none" stroke="var(--navy)" stroke-width="2.5" stroke-linejoin="round" points="${rows.map((r, i) => `${gx(i).toFixed(1)},${yOf(r.net).toFixed(1)}`).join(' ')}"/>`;
+    rows.forEach((r, i) => { out += `<circle cx="${gx(i).toFixed(1)}" cy="${yOf(r.net).toFixed(1)}" r="4" fill="var(--navy)" stroke="#fff" stroke-width="2"${tip(`${r.label}: net ${peso(r.net)}`)}/>`; });
+    return out + '</svg>';
+  }
+  function catTrendSvg(h, w) {
+    const rows = h.rows, n = rows.length, narrow = w < 520, ht = narrow ? 250 : 280, left = narrow ? 46 : 60, right = 12, top = 14, bottom = 34;
+    const vals = h.catSeries.flatMap(c => c.values.filter(v => v !== null)).concat([0]);
+    const mx = Math.max(...vals, 1) * 1.05, plotH = ht - top - bottom, plotW = w - left - right, yOf = v => top + (1 - v / mx) * plotH, gx = i => left + (n > 1 ? i * plotW / (n - 1) : plotW / 2);
+    let out = svgOpen(w, ht, 'Top expense categories by year', 'catyears');
+    for (let i = 0; i <= 4; i++) { const v = mx * i / 4, y = yOf(v); out += `<line x1="${left}" x2="${w - right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${i ? '#ece6d6' : '#9aa3b2'}" stroke-width="1"/><text x="${left - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11">${escapeHtml(pesoShort(v))}</text>`; }
+    rows.forEach((r, i) => { out += `<text x="${gx(i).toFixed(1)}" y="${ht - bottom + 16}" text-anchor="middle" font-size="${narrow ? 10 : 11}">${escapeHtml(narrow ? "'" + String(r.year).slice(2) : String(r.year))}</text>`; });
+    h.catSeries.forEach((c, ci) => {
+      const col = CAT_COLORS[ci % CAT_COLORS.length];
+      let seg = [];
+      const flush = () => { if (seg.length > 1) out += `<polyline fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" points="${seg.join(' ')}"/>`; seg = []; };
+      c.values.forEach((v, i) => { if (v === null) { flush(); return; } seg.push(`${gx(i).toFixed(1)},${yOf(v).toFixed(1)}`); });
+      flush();
+      c.values.forEach((v, i) => { if (v !== null) out += `<circle cx="${gx(i).toFixed(1)}" cy="${yOf(v).toFixed(1)}" r="3.5" fill="${rows[i].partial ? '#fff' : col}" stroke="${rows[i].partial ? col : '#fff'}" stroke-width="${rows[i].partial ? 2 : 1.5}"${tip(`${c.name}, ${rows[i].label}${rows[i].partial ? ' (partial year)' : ''}: ${peso(v)}`)}/>`; });
+    });
+    return out + '</svg>';
+  }
+  function slideHistory(k, o) {
+    const h = k.history;
+    if (!h || !h.has) {
+      const link = !o.static && isTreasurer() ? '<a href="historical-import.html">Historical Data</a>' : 'Historical Data';
+      return `<div class="panel" id="hist-empty"><div class="note" style="font-size:16px">Historical records not imported yet - Treasurer: ${link} page.</div></div>`;
+    }
+    const rows = h.rows;
+    const legend = `<div class="legend"><span><i style="background:var(--s1)"></i>Income</span><span><i style="background:var(--s2)"></i>Expense</span><span><i style="background:transparent;border-top:3px solid var(--navy);height:0;border-radius:0;vertical-align:4px"></i>Net</span>${rows.some(r => r.partial) ? '<span><i style="background:repeating-linear-gradient(45deg,#dbe8f8 0 3px,#2a78d6 3px 6px)"></i>* partial year</span>' : ''}</div>`;
+    const chart = `<div class="panel"><h3>Income and spending, year by year <span class="hint">pass-through collections left out</span></h3><div class="svgwrap">${yearsSvg(rows, o.w.half)}</div>${legend}
+      ${tableView(['Year', 'Income', 'Expense', 'Net'], rows.map(r => [r.label + (r.partial && !r.ytd ? ' (partial)' : ''), peso(r.income), peso(r.expense), peso(r.net)]))}</div>`;
+    const table = `<div class="panel"><h3>Year by year <span class="hint">${escapeHtml(String(rows[0].year))} to ${escapeHtml(String(rows[rows.length - 1].year))}</span></h3><div class="tbl-scroll"><table class="t" id="hist-table"><thead><tr><th>Year</th><th class="n">Income</th><th class="n">Expense</th><th class="n">Net</th><th class="n">Income YoY</th></tr></thead><tbody>${
+      rows.map(r => `<tr><td style="white-space:nowrap"><b>${escapeHtml(r.label)}</b>${r.partial && !r.ytd ? ' <span class="note">partial</span>' : ''}<br><span class="note" title="${escapeAttr(histSrcLabel(r.src))}">${r.src === 'hist' ? 'all funds' : r.src === 'mixed' ? 'live + hist.' : 'General Fund'}${r.ytd ? ` · Jan-${SHORT_MONTHS[r.lastMonth] || ''}` : ''}</span></td><td class="n">${peso(r.income)}</td><td class="n">${peso(r.expense)}</td><td class="n ${signClass(r.net)}">${peso(r.net)}</td><td class="n">${yoyTxt(r.incomeYoY, r.yoyPartial)}</td></tr>`).join('')}</tbody></table></div>
+      ${rows.some(r => r.yoyPartial) ? '<div class="note">* compares with or against a partial year.</div>' : ''}</div>`;
+    const cats = h.catSeries.length ? `<div class="panel"><h3>Where the biggest expenses went <span class="hint">top ${h.catSeries.length} categories across the years</span></h3><div class="svgwrap">${catTrendSvg(h, o.w.half)}</div>
+      <div class="legend">${h.catSeries.map((c, i) => `<span><i style="background:${CAT_COLORS[i % CAT_COLORS.length]}"></i>${escapeHtml(c.name)}</span>`).join('')}${rows.some(r => r.partial) ? '<span>○ hollow dot = partial year</span>' : ''}</div>
+      ${tableView(['Category'].concat(rows.map(r => r.label)), h.catSeries.map(c => [c.name].concat(c.values.map(v => v === null ? '—' : peso(v)))))}</div>` : '';
+    const ghostN = k.series.lastYearHist.filter(Boolean).length;
+    const combo = `<div class="panel"><h3>The last 12 months <span class="hint">grey dashed line = the same month a year earlier</span></h3><div class="svgwrap">${comboSvg(k, o.w.half)}</div>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Receipts</span><span><i style="background:var(--s2)"></i>Disbursements</span><span><i style="background:transparent;border-top:3px solid var(--navy);height:0;border-radius:0;vertical-align:4px"></i>Net</span><span><i style="background:transparent;border-top:2px dashed #9aa3b2;height:0;border-radius:0;vertical-align:4px"></i>Net, a year earlier</span></div>
+      ${ghostN ? `<div class="note" id="hist-ghost-note">${ghostN} month${ghostN === 1 ? '' : 's'} of the grey line come ${HIST_LABEL}.</div>` : ''}
+      ${tableView(['Month', 'Receipts', 'Disbursements', 'Net', 'Net a year earlier'], k.series.labels.map((l, i) => [l, peso(k.series.receipts[i]), peso(k.series.disbursements[i]), peso(k.series.net[i]), peso(k.series.lastYearNet[i]) + (k.series.lastYearHist[i] ? ' (historical)' : '')]))}</div>`;
+    const flags = h.notes.filter(n => /^Source check/i.test(n.text)), other = h.notes.filter(n => !/^Source check/i.test(n.text));
+    const cur = rows.find(r => r.ytd);
+    const note = `<div class="note" id="hist-basis">Basis: historical years (${escapeHtml(String(h.yearsFrom))} onward) are <b>all funds</b> as reported in the old statements, with pass-through collections (workers' tithes received and remitted) left out; ${cur ? `<b>${escapeHtml(String(cur.year))}</b> is <b>General Fund</b> basis from the live records, year to date` : 'years with live records use the General Fund basis'}. These records are used for trends only and never change a balance.${
+      flags.length ? '<br>' + flags.map(n => `<b>${escapeHtml(String(n.year))}</b>: ${escapeHtml(n.text)}`).join('<br>') : ''}</div>${
+      other.length ? `<details class="tv"><summary>Notes on the historical records</summary><div class="note">${other.map(n => `<b>${escapeHtml(String(n.year))}</b>: ${escapeHtml(n.text)}`).join('<br>')}</div></details>` : ''}`;
+    return `<div class="grid2">${chart}${table}</div><div class="grid2">${cats}${combo}</div>${note}`;
+  }
+
   const SLIDES = [
     { id: 'hero', short: 'Where we stand', title: 'Where we stand', q: 'How did the church do, and how healthy is our cash?', fn: slideHero },
     { id: 'liquidity', short: 'Cash', title: 'Can we pay our bills?', q: 'Liquidity, runway and what cash is really free', fn: slideLiquidity },
@@ -3144,6 +3404,7 @@
     { id: 'obligations', short: 'Obligations', title: 'Faithful to the wider church?', q: 'Apportionments and other obligations', fn: slideObligations },
     { id: 'projects', short: 'Projects', title: 'Our building and mission work', q: 'Special projects and the Building Fund', fn: slideProjects },
     { id: 'people', short: 'People', title: 'Who we serve', q: 'Attendance and the membership roll', fn: slidePeople },
+    { id: 'history', short: 'Years', title: 'Through the years', q: 'Giving and spending since the church\'s earliest records on file', fn: slideHistory },
     { id: 'controls', short: 'Controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES },
     { id: 'summary', short: 'Bottom line', title: 'The bottom line', q: k => `Our finances at a glance for ${k.period.label}`, fn: slideSummary, noPoints: true }
   ];
@@ -3216,6 +3477,24 @@
     if (sd.highest && sd.lowest) T.people.push(`${num0(sd.sundays)} Sundays were recorded; the highest was ${num0(sd.highest.att)} (${fmtSunday(sd.highest.date)}) and the lowest ${num0(sd.lowest.att)} (${fmtSunday(sd.lowest.date)}).`);
     if (sd.guestsAvg !== null) T.people.push(`We averaged ${sd.guestsAvg.toFixed(1)} guests per Sunday.`);
     if (pe.roll) T.people.push(`The membership roll has ${num0(pe.roll.Active)} active, ${num0(pe.roll.Inactive)} inactive and ${num0(pe.roll.Overseas)} overseas members.`);
+    T.history = [];
+    const hh = k.history;
+    if (hh && hh.has) {
+      const full = hh.rows.filter(r => !r.partial), pctW = (v, up, down) => v === null ? '' : `${v >= 0 ? up : down} ${Math.abs(v).toFixed(0)}%`;
+      if (full.length >= 2) {
+        const a = full[0], b = full[full.length - 1], gI = pctChange(b.income, a.income), gE = pctChange(b.expense, a.expense);
+        if (gI !== null) T.history.push(`Since ${a.year}, annual income has ${pctW(gI, 'grown', 'fallen')} (${pesoShort(a.income)} in ${a.year}, ${pesoShort(b.income)} in ${b.year})${gE !== null ? `, while annual spending has ${pctW(gE, 'grown', 'fallen')}` : ''}.`);
+        const lastN = full.slice(-8), def = lastN.filter(r => r.net < -0.005).length;
+        T.history.push(`${def} of the last ${lastN.length} years ended in deficit${def ? ` (${lastN.filter(r => r.net < -0.005).map(r => r.year).join(', ')})` : ''}.`);
+        const bi = full.reduce((m, r) => r.income > m.income ? r : m, full[0]), be = full.reduce((m, r) => r.expense > m.expense ? r : m, full[0]);
+        T.history.push(`Income peaked in ${bi.year} at ${pesoShort(bi.income)}; spending peaked in ${be.year} at ${pesoShort(be.expense)}.`);
+      }
+      if (hh.catSeries.length) { const c = hh.catSeries[0]; T.history.push(`${c.name} is the largest expense across the years, ${pesoShort(c.total)} in all.`); }
+      const cur = hh.rows.find(r => r.ytd);
+      if (cur) T.history.push(`${cur.year} so far (General Fund, year to date): income ${pesoW(cur.income)}, spending ${pesoW(cur.expense)}, a ${cur.net >= 0 ? 'surplus' : 'deficit'} of ${pesoW(Math.abs(cur.net))}.`);
+      T.history.push('Historical years are all funds as reported in the old statements; the current year is General Fund basis, so compare the direction, not the last peso.');
+    }
+    if (k.historyUse && (k.historyUse.prior > 0 || k.historyUse.priorYtd > 0)) T.hero.push(`Last year's comparison figures come ${HIST_LABEL}.`);
     if (k.controls) {
       const c = k.controls;
       T.controls = [
@@ -3372,6 +3651,7 @@
       return;
     }
     await ensureBudgets([year, year - 1]);
+    await ensureHistoryMonthly(ui.raw, histYearsNeeded(ui.raw, year));   // once per year; failure = no history for it
     if (CONTROLS_ROLES.includes(activeUserProfile.role)) {
       const wf = ui.period.count === 12 ? `annual-${year}` : ui.period.count === 1 ? `monthly-${year}-${pad2(ui.period.first + 1)}` : '';
       if (wf) await ensureReview(wf);

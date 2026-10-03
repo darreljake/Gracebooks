@@ -559,9 +559,20 @@
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   document.getElementById('attendance-month').value = new Date().toISOString().slice(0, 7);
 
-  window.graceBooksAuthReady.then(profile => {
+  // Historical annual records (2018-2025, Treasurer-imported; trend display ONLY - never added to any figure on this page).
+  // One-time read; a failed read or an unauthorised role simply means no history. Used by the year-over-year chart for a year
+  // that has NO live income/expense data. Figures are all funds, pass-through collections left out.
+  let historicalAnnual = {};
+  window.graceBooksAuthReady.then(async profile => {
     activeUserProfile = profile;
     applyRoleAccess();
+    if (['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee'].includes(profile.role)) {
+      try {
+        const snap = await db.collection('historicalAnnual').get();
+        snap.docs.forEach(d => { const x = d.data(), y = parseInt(x.year != null ? x.year : d.id, 10); if (Number.isFinite(y)) historicalAnnual[y] = x; });
+        if (Object.keys(historicalAnnual).length) renderYearOverYearChart();
+      } catch (err) { console.warn('Historical records unavailable', err && err.message); historicalAnnual = {}; }
+    }
   });
 
   function roleIs(...roles) {
@@ -1688,8 +1699,14 @@
     const totals = years.map(y => {
       const inc = incomeData.filter(d => { const dt = parseDate(d.date); return dt && dt.getFullYear() === y; }).reduce((s, d) => s + d.amount, 0);
       const exp = expenseData.filter(d => { const dt = parseDate(d.date); return dt && dt.getFullYear() === y; }).reduce((s, d) => s + d.amount, 0);
+      const A = historicalAnnual[y];
+      if (!inc && !exp && A) {
+        const hi = (Number(A.totalIncome) || 0) - (Number(A.passThroughIncome) || 0), he = (Number(A.totalExpense) || 0) - (Number(A.passThroughExpense) || 0);
+        return { year: y, inc: hi, exp: he, net: hi - he, hist: true, months: Number(A.monthsCovered) || 0 };
+      }
       return { year: y, inc, exp, net: inc - exp };
     });
+    const anyHist = totals.some(t => t.hist);
 
     const width = 840, height = 280, pad = 40, topPad = 20;
     const zeroY = height - pad;
@@ -1703,10 +1720,10 @@
       const gx = pad + i * groupWidth;
       const netColor = t.net >= 0 ? '#1a5276' : '#c0392b';
       return `
-        <rect x="${gx + barWidth * 0.5}" y="${Math.min(yOf(t.inc), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.inc))}" fill="#1e8449"><title>${t.year} Income: ₱${fmt(t.inc)}</title></rect>
-        <rect x="${gx + barWidth * 1.6}" y="${Math.min(yOf(t.exp), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.exp))}" fill="#c0392b"><title>${t.year} Expenses: ₱${fmt(t.exp)}</title></rect>
+        <rect x="${gx + barWidth * 0.5}" y="${Math.min(yOf(t.inc), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.inc))}" fill="#1e8449"${t.hist ? ' fill-opacity="0.55"' : ''}><title>${t.year} Income: ₱${fmt(t.inc)}${t.hist ? ' (from historical records, all funds)' : ''}</title></rect>
+        <rect x="${gx + barWidth * 1.6}" y="${Math.min(yOf(t.exp), zeroY)}" width="${barWidth}" height="${Math.abs(zeroY - yOf(t.exp))}" fill="#c0392b"${t.hist ? ' fill-opacity="0.55"' : ''}><title>${t.year} Expenses: ₱${fmt(t.exp)}${t.hist ? ' (from historical records, all funds)' : ''}</title></rect>
         <circle cx="${gx + barWidth * 2.7}" cy="${yOf(t.net)}" r="4" fill="${netColor}"><title>${t.year} Net: ${t.net >= 0 ? '+' : '-'}₱${fmt(Math.abs(t.net))}</title></circle>
-        <text x="${gx + groupWidth / 2}" y="${height - 10}" text-anchor="middle" font-size="11" fill="#777">${t.year}</text>
+        <text x="${gx + groupWidth / 2}" y="${height - 10}" text-anchor="middle" font-size="11" fill="#777">${t.year}${t.hist ? ' (historical)' : ''}</text>
       `;
     }).join('');
 
@@ -1715,7 +1732,7 @@
         <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" stroke="#ccc" />
         <line x1="${pad}" y1="${topPad}" x2="${pad}" y2="${zeroY}" stroke="#ddd" />
         ${bars}
-      </svg>`;
+      </svg>${anyHist ? '<div style="font-size:12px;color:#7b8a94;margin-top:6px;">Lighter bars marked "(historical)" are from historical records (all funds, pass-through collections left out) for years with no live data. They are for comparison only.</div>' : ''}`;
   }
 
   function renderGroupedTable(type, data, total) {
