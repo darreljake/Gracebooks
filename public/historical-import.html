@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Historical Data - GraceBooks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; min-height: 100vh; color: #263238; overflow-x: hidden; }
+    .topbar { background: #8B0000; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .topbar h2 { font-size: 20px; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 1180px; margin: 26px auto; padding: 0 20px; visibility: hidden; }
+    .container.ready { visibility: visible; }
+    .card { background: white; border-radius: 10px; padding: 22px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 22px; }
+    .card h3 { color: #8B0000; font-size: 18px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid #f2d7d5; }
+    .sub { font-size: 12px; color: #6b7b86; line-height: 1.5; margin-bottom: 12px; }
+    .rule { background: #fff8e6; border: 1px solid #f0d78c; border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; color: #5d4a0a; margin-bottom: 16px; }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+    th { background: #8B0000; color: white; text-align: left; padding: 10px 11px; white-space: nowrap; }
+    td { padding: 10px 11px; border-bottom: 1px solid #edf2f5; vertical-align: top; }
+    td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    tr.bad td { background: #fdf0ef; }
+    tr.warn td { background: #fff8e6; }
+    .muted { color: #7b8a94; font-size: 12px; }
+    .ok { color: #1e8449; font-weight: bold; }
+    .badge { display: inline-block; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+    .b-ok { background: #d5f5e3; color: #1e8449; }
+    .b-warn { background: #fcf3cf; color: #9a6a00; }
+    .b-bad { background: #fdedec; color: #a93226; }
+    .b-info { background: #d6eaf8; color: #1a5276; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    input[type=file], select { padding: 9px 10px; border: 1px solid #cfd8dc; border-radius: 6px; background: white; font-size: 13px; max-width: 100%; }
+    .btn { background: #8B0000; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn:disabled { background: #c9a9a9; cursor: not-allowed; }
+    .btn-danger { background: #a93226; }
+    .btn-light { background: #eef2f5; color: #37474f; border: 1px solid #cfd8dc; }
+    .errors { background: #fdf0ef; border: 1px solid #f5c6c2; border-radius: 8px; padding: 12px 14px; font-size: 12px; max-height: 220px; overflow: auto; margin: 12px 0; }
+    .errors li { margin-left: 18px; margin-bottom: 3px; }
+    .note-list { font-size: 12px; color: #5d6d78; line-height: 1.45; }
+    .note-list div { margin-top: 3px; }
+    .confirm-panel { background: #fdf0ef; border: 2px solid #a93226; border-radius: 8px; padding: 14px 16px; margin-top: 12px; display: none; }
+    .confirm-panel.show { display: block; }
+    #msg { font-size: 13px; margin: 10px 0; min-height: 18px; }
+    #msg.err { color: #a93226; font-weight: bold; }
+    #msg.good { color: #1e8449; font-weight: bold; }
+    progress { width: 100%; height: 10px; }
+    @media (max-width: 760px) { .container { padding: 0 12px; } .card { padding: 16px 14px; } }
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 12px; }
+      .topbar h2 { font-size: 17px; min-width: 0; }
+      .back-btn { flex: 0 0 auto; white-space: nowrap; min-height: 40px; }
+      input:not([type=checkbox]):not([type=file]), select { font-size: 16px !important; min-height: 40px; }
+      .btn { min-height: 44px; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+<div class="topbar">
+  <h2>🕰️ Historical Data</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">Back to Dashboard</button>
+</div>
+
+<div class="container" id="main">
+  <div class="card">
+    <h3>What this is</h3>
+    <div class="rule">
+      <strong>Historical records never touch current balances.</strong> Imported figures live only in the
+      <code>historicalMonthly</code> and <code>historicalAnnual</code> collections and are used only for trend and
+      comparison displays (Council Dashboard, Reports year-over-year chart). They are never written to income, expenses,
+      budgets or beginning balances, so Financial Overview, cash levels, the Print Report and every live balance are unaffected.
+    </div>
+    <div class="sub">Upload the prepared <strong>GraceBooks-Historical-Import.xlsx</strong>: a <em>Monthly Ledger</em> sheet with the columns
+      Year, Month, Period, Direction, Category, Subcategory, Category Key, Fund, Amount, Source Label, Source File (and optionally
+      Pass Through, Note). The file is read in this browser; its contents go nowhere except to Firestore when you press Import.
+      <strong>Donor names are never imported</strong>: a Donor Giving sheet, if present, is ignored.</div>
+  </div>
+
+  <div class="card">
+    <h3>Currently imported</h3>
+    <div class="table-wrap">
+      <table id="status-table">
+        <thead><tr><th>Year</th><th class="num">Months</th><th class="num">Income</th><th class="num">Expense</th><th class="num">Net</th><th class="num">Pass-through in / out</th><th>Source file</th><th>Imported</th></tr></thead>
+        <tbody id="status-body"><tr><td colspan="8" class="muted">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Import a workbook</h3>
+    <div class="row">
+      <input type="file" id="file-input" accept=".xlsx" />
+    </div>
+    <div id="privacy-note" class="sub"></div>
+    <div id="parse-errors"></div>
+    <div id="preview" style="display:none;">
+      <div class="sub">Tick the years to import. Each ticked year is <strong>replaced</strong>: that year's existing historical documents are deleted, then the file's rows are written.</div>
+      <div class="table-wrap">
+        <table id="preview-table">
+          <thead><tr><th></th><th>Year</th><th class="num">Rows</th><th>Months</th><th class="num">Income</th><th class="num">Expense</th><th class="num">Net</th><th class="num">Pass-through in / out</th><th>Check against the file's own totals</th></tr></thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button class="btn" id="import-btn" disabled>Import selected years</button>
+        <span class="muted" id="import-hint"></span>
+      </div>
+      <progress id="progress" value="0" max="1" style="display:none;"></progress>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Delete a year's historical data</h3>
+    <div class="sub">Removes that year's monthly records and its annual summary. Live income, expenses and balances are not affected.</div>
+    <div class="row">
+      <select id="del-year"></select>
+      <button class="btn btn-danger" id="del-btn" disabled>Delete this year...</button>
+    </div>
+    <div class="confirm-panel" id="del-confirm">
+      <div id="del-confirm-text" style="margin-bottom:10px; font-size:14px;"></div>
+      <div class="row">
+        <button class="btn btn-danger" id="del-yes">Yes, delete permanently</button>
+        <button class="btn btn-light" id="del-no">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let activeUserProfile = null;
+  let statusRows = [];     // historicalAnnual docs
+  let parsed = null;       // { fileName, years: {year: {...}}, errors: [], summary: {}, recon: [], budget: {}, donorSheet }
+  let busy = false;
+
+  window.graceBooksAuthReady.then(profile => {
+    activeUserProfile = profile;
+    if (profile.role !== 'Treasurer') { window.location.href = 'index.html'; return; }
+    document.getElementById('main').classList.add('ready');
+    loadStatus();
+  });
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  const peso = n => '₱' + (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cents = n => Math.round((Number(n) || 0) * 100);
+  const fromCents = c => c / 100;
+  function setMsg(text, kind) {
+    const el = document.getElementById('msg');
+    el.textContent = text || '';
+    el.className = kind || '';
+  }
+
+  // -------------------------------------------------------------- status
+  async function loadStatus() {
+    const body = document.getElementById('status-body');
+    try {
+      const snap = await db.collection('historicalAnnual').get();
+      statusRows = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.year || 0) - (b.year || 0));
+    } catch (e) {
+      console.error(e);
+      statusRows = [];
+      body.innerHTML = '<tr><td colspan="8" class="muted">Could not read the historical records.</td></tr>';
+      refreshDeleteControl();
+      return;
+    }
+    if (!statusRows.length) {
+      body.innerHTML = '<tr><td colspan="8" class="muted">Nothing imported yet.</td></tr>';
+    } else {
+      body.innerHTML = statusRows.map(r => `<tr>
+        <td><strong>${escapeHtml(r.year)}</strong></td>
+        <td class="num">${escapeHtml(r.monthsCovered)}</td>
+        <td class="num">${peso(r.totalIncome)}</td>
+        <td class="num">${peso(r.totalExpense)}</td>
+        <td class="num">${peso(r.net)}</td>
+        <td class="num">${peso(r.passThroughIncome)} / ${peso(r.passThroughExpense)}</td>
+        <td>${escapeHtml(r.sourceFile || '')}</td>
+        <td><span class="muted">${escapeHtml(r.importedAt ? new Date(r.importedAt).toLocaleString('en-PH') : '')}<br>${escapeHtml(r.importedBy && r.importedBy.name || '')}</span></td>
+      </tr>`).join('');
+    }
+    refreshDeleteControl();
+  }
+
+  // -------------------------------------------------------------- parse
+  const norm = s => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+  const truthy = v => ['y', 'yes', 'true', '1', 'pass-through', 'pass through'].includes(norm(v));
+  function slug(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'x'; }
+  function fieldKey(k) { return String(k || '').replace(/[.\/\[\]*~`]/g, '-').trim() || '-'; }
+  const toNumber = v => {
+    if (typeof v === 'number') return v;
+    const s = String(v == null ? '' : v).replace(/[₱,\s]/g, '');
+    if (s === '' || !/^-?\d+(\.\d+)?$/.test(s)) return NaN;
+    return parseFloat(s);
+  };
+
+  function findHeaderRow(rows, needles) {
+    for (let i = 0; i < Math.min(rows.length, 15); i++) {
+      const cells = (rows[i] || []).map(norm);
+      if (needles.every(n => cells.includes(n))) return i;
+    }
+    return -1;
+  }
+
+  function parseWorkbook(buffer, fileName) {
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const out = { fileName, years: {}, errors: [], summary: {}, recon: [], budget: {}, donorSheet: false, rowsRead: 0 };
+    out.donorSheet = wb.SheetNames.some(n => /donor/i.test(n));
+    const sheetByName = re => { const n = wb.SheetNames.find(x => re.test(x.trim())); return n ? wb.Sheets[n] : null; };
+    const ledger = sheetByName(/^monthly ledger$/i);
+    if (!ledger) { out.errors.push({ row: 0, msg: 'No "Monthly Ledger" sheet found in this workbook.' }); return out; }
+    const grid = XLSX.utils.sheet_to_json(ledger, { header: 1, raw: true, defval: '' });
+    const hi = findHeaderRow(grid, ['year', 'month', 'direction', 'amount']);
+    if (hi < 0) { out.errors.push({ row: 0, msg: 'Monthly Ledger header row not found (needs Year, Month, Direction, Category, Amount ...).' }); return out; }
+    const head = grid[hi].map(norm);
+    const col = n => head.indexOf(n);
+    const need = ['year', 'month', 'direction', 'category', 'amount'];
+    const missing = need.filter(n => col(n) < 0);
+    if (missing.length) { out.errors.push({ row: hi + 1, msg: 'Missing required column(s): ' + missing.join(', ') }); return out; }
+    const C = { year: col('year'), month: col('month'), direction: col('direction'), category: col('category'), sub: col('subcategory'), key: col('category key'),
+      fund: col('fund'), amount: col('amount'), label: col('source label'), file: col('source file'), pt: col('pass through'), note: col('note') };
+    const at = (r, i) => (i >= 0 ? r[i] : '');
+    for (let i = hi + 1; i < grid.length; i++) {
+      const r = grid[i];
+      if (!r || r.every(v => v === '' || v == null)) continue;
+      out.rowsRead++;
+      const rowNo = i + 1;
+      const problems = [];
+      const year = toNumber(at(r, C.year)); const month = toNumber(at(r, C.month));
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) problems.push('Year "' + at(r, C.year) + '" is not a valid year');
+      if (!Number.isInteger(month) || month < 1 || month > 12) problems.push('Month "' + at(r, C.month) + '" is not 1-12');
+      const dir = norm(at(r, C.direction));
+      if (dir !== 'income' && dir !== 'expense') problems.push('Direction "' + at(r, C.direction) + '" must be Income or Expense');
+      const amount = toNumber(at(r, C.amount));
+      if (!Number.isFinite(amount)) problems.push('Amount "' + at(r, C.amount) + '" is not a number');
+      const category = String(at(r, C.category) || '').trim();
+      if (!category) problems.push('Category is blank');
+      if (problems.length) { out.errors.push({ row: rowNo, msg: problems.join('; ') }); continue; }
+      const sub = String(at(r, C.sub) || '').trim();
+      const key = String(at(r, C.key) || '').trim() || (sub ? category + ' - ' + sub : category);
+      const row = { year, month, direction: dir, category, subcategory: sub, categoryKey: key,
+        fund: String(at(r, C.fund) || '').trim() || 'General', amount, label: String(at(r, C.label) || '').trim().slice(0, 120),
+        pt: truthy(at(r, C.pt)), note: String(at(r, C.note) || '').trim().slice(0, 500) };
+      const y = out.years[year] || (out.years[year] = { year, rows: [], months: new Set(), inc: 0, exp: 0, ptInc: 0, ptExp: 0 });
+      y.rows.push(row); y.months.add(month);
+      const c = cents(amount);
+      if (dir === 'income') { y.inc += c; if (row.pt) y.ptInc += c; } else { y.exp += c; if (row.pt) y.ptExp += c; }
+    }
+    // optional cross-check sheets
+    const ys = sheetByName(/^year summary$/i);
+    if (ys) {
+      const g = XLSX.utils.sheet_to_json(ys, { header: 1, raw: true, defval: '' });
+      const h = findHeaderRow(g, ['year', 'total income', 'total expense']);
+      if (h >= 0) {
+        const hh = g[h].map(norm);
+        for (let i = h + 1; i < g.length; i++) {
+          const y = toNumber(g[i][hh.indexOf('year')]);
+          if (Number.isInteger(y)) out.summary[y] = { inc: toNumber(g[i][hh.indexOf('total income')]), exp: toNumber(g[i][hh.indexOf('total expense')]) };
+        }
+      }
+    }
+    const rs = sheetByName(/^reconciliation$/i);
+    if (rs) {
+      const g = XLSX.utils.sheet_to_json(rs, { header: 1, raw: true, defval: '' });
+      const h = findHeaderRow(g, ['year', 'fund', 'direction', 'match']);
+      if (h >= 0) {
+        const hh = g[h].map(norm); const ix = n => hh.indexOf(n);
+        for (let i = h + 1; i < g.length; i++) {
+          const y = toNumber(g[i][ix('year')]);
+          if (!Number.isInteger(y)) continue;
+          const fund = String(g[i][ix('fund')] || '').trim();
+          if (/^bridge$/i.test(fund)) continue;
+          out.recon.push({ year: y, fund, direction: String(g[i][ix('direction')] || ''), extracted: toNumber(g[i][ix('extracted total')]),
+            source: toNumber(g[i][ix('source sheet total')]), diff: toNumber(g[i][ix('difference')]), match: String(g[i][ix('match')] || '').trim().toUpperCase(),
+            note: ix('note') >= 0 ? String(g[i][ix('note')] || '').trim() : '' });
+        }
+      }
+    }
+    const bs = sheetByName(/^(budget vs actual|budget)$/i);
+    if (bs) {
+      const g = XLSX.utils.sheet_to_json(bs, { header: 1, raw: true, defval: '' });
+      const h = findHeaderRow(g, ['year', 'direction', 'category key', 'approved budget']);
+      if (h >= 0) {
+        const hh = g[h].map(norm); const ix = n => hh.indexOf(n);
+        for (let i = h + 1; i < g.length; i++) {
+          const y = toNumber(g[i][ix('year')]); const a = toNumber(g[i][ix('approved budget')]);
+          const d = norm(g[i][ix('direction')]);
+          if (!Number.isInteger(y) || !Number.isFinite(a) || (d !== 'income' && d !== 'expense')) continue;
+          const b = out.budget[y] || (out.budget[y] = { income: {}, expense: {} });
+          const k = fieldKey(g[i][ix('category key')]);
+          b[d][k] = fromCents(cents((b[d][k] || 0)) + cents(a));
+        }
+      }
+    }
+    return out;
+  }
+
+  // -------------------------------------------------------------- build docs
+  function buildYear(y, fileName) {
+    const monthDocs = {};
+    y.rows.forEach(r => {
+      const mm = String(r.month).padStart(2, '0');
+      const id = `${r.year}-${mm}-${r.direction === 'income' ? 'I' : 'E'}-${slug(r.categoryKey)}-${slug(r.fund)}${r.pt ? '-pt' : ''}`;
+      const d = monthDocs[id] || (monthDocs[id] = { id, data: { year: r.year, month: r.month, period: `${r.year}-${mm}`, direction: r.direction,
+        category: r.category, subcategory: r.subcategory, categoryKey: r.categoryKey, fund: r.fund, amountC: 0, passThrough: r.pt, sourceLabels: [], notes: [] } });
+      d.data.amountC += cents(r.amount);
+      if (r.label && !d.data.sourceLabels.includes(r.label) && d.data.sourceLabels.length < 20) d.data.sourceLabels.push(r.label);
+      if (r.note && !d.data.notes.includes(r.note)) d.data.notes.push(r.note);
+    });
+    const docs = Object.values(monthDocs).map(d => {
+      const x = d.data; const amount = fromCents(x.amountC);
+      const note = x.notes.join(' | ').slice(0, 600);
+      delete x.amountC; delete x.notes;
+      return { id: d.id, data: { ...x, amount, note } };
+    });
+    // annual summary (byCategory leaves pass-through out so category trends compare like with like)
+    const byCat = { income: {}, expense: {} };
+    docs.forEach(d => {
+      if (d.data.passThrough) return;
+      const k = fieldKey(d.data.categoryKey);
+      byCat[d.data.direction][k] = fromCents(cents(byCat[d.data.direction][k] || 0) + cents(d.data.amount));
+    });
+    const notes = [];
+    parsed.recon.filter(r => r.year === y.year && r.match !== 'YES').forEach(r => {
+      notes.push(`Source check ${r.fund} ${r.direction}: extracted ${peso(r.extracted)} vs source total ${Number.isFinite(r.source) ? peso(r.source) : 'n/a'}${Number.isFinite(r.diff) ? ' (difference ' + peso(r.diff) + ')' : ''}${r.note ? ' - ' + r.note : ''}`.slice(0, 700));
+    });
+    const seen = new Set();
+    y.rows.forEach(r => {
+      if (!r.note || seen.has(r.note) || /^workers' tithes( flagged)?[^.]{0,80}\.$/i.test(r.note)) return;
+      seen.add(r.note);
+      if (notes.length < 12) notes.push(r.note.slice(0, 500));
+    });
+    const annual = {
+      year: y.year, monthsCovered: y.months.size, totalIncome: fromCents(y.inc), totalExpense: fromCents(y.exp), net: fromCents(y.inc - y.exp),
+      passThroughIncome: fromCents(y.ptInc), passThroughExpense: fromCents(y.ptExp), byCategory: byCat,
+      approvedBudget: parsed.budget[y.year] || null, notes, monthlyDocs: docs.length, sourceFile: parsed.fileName
+    };
+    return { docs, annual };
+  }
+
+  // -------------------------------------------------------------- preview
+  function renderPreview() {
+    const body = document.getElementById('preview-body');
+    const yrs = Object.values(parsed.years).sort((a, b) => a.year - b.year);
+    body.innerHTML = yrs.map(y => {
+      const s = parsed.summary[y.year];
+      const flags = parsed.recon.filter(r => r.year === y.year && r.match !== 'YES');
+      let check = '';
+      let rowClass = '';
+      if (s) {
+        const di = Math.abs(fromCents(y.inc) - s.inc) >= 0.005; const de = Math.abs(fromCents(y.exp) - s.exp) >= 0.005;
+        if (di || de) {
+          rowClass = 'bad';
+          check += `<span class="badge b-bad">Differs from Year Summary</span><div class="note-list">${di ? `Income ${peso(fromCents(y.inc))} vs ${peso(s.inc)}. ` : ''}${de ? `Expense ${peso(fromCents(y.exp))} vs ${peso(s.exp)}.` : ''}</div>`;
+        } else check += '<span class="badge b-ok">Matches Year Summary</span>';
+      } else check += '<span class="badge b-info">No Year Summary row</span>';
+      if (flags.length) {
+        rowClass = rowClass || 'warn';
+        check += flags.map(f => `<div class="note-list"><span class="badge b-warn">Source flag ${escapeHtml(f.match || 'CHECK')}</span> ${escapeHtml(f.fund)} ${escapeHtml(f.direction)}: extracted ${peso(f.extracted)} vs source ${Number.isFinite(f.source) ? peso(f.source) : 'n/a'}${f.note ? '<br>' + escapeHtml(f.note) : ''}</div>`).join('');
+      } else if (parsed.recon.some(r => r.year === y.year)) check += ' <span class="badge b-ok">Reconciliation clear</span>';
+      const existing = statusRows.find(r => Number(r.year) === y.year);
+      return `<tr class="${rowClass}">
+        <td><input type="checkbox" class="year-pick" data-year="${y.year}" ${parsed.errors.length ? 'disabled' : 'checked'}></td>
+        <td><strong>${y.year}</strong>${existing ? '<div class="muted">replaces existing</div>' : ''}</td>
+        <td class="num">${y.rows.length.toLocaleString('en-PH')}</td>
+        <td>${y.months.size}/12<div class="muted">${monthSpan([...y.months])}</div></td>
+        <td class="num">${peso(fromCents(y.inc))}</td>
+        <td class="num">${peso(fromCents(y.exp))}</td>
+        <td class="num">${peso(fromCents(y.inc - y.exp))}</td>
+        <td class="num">${peso(fromCents(y.ptInc))} / ${peso(fromCents(y.ptExp))}</td>
+        <td>${check}</td></tr>`;
+    }).join('');
+    document.getElementById('preview').style.display = yrs.length ? '' : 'none';
+    updateImportBtn();
+  }
+  function monthSpan(ms) {
+    ms = ms.sort((a, b) => a - b); const parts = []; let s = ms[0], p = ms[0];
+    for (let i = 1; i <= ms.length; i++) {
+      if (ms[i] === p + 1) { p = ms[i]; continue; }
+      parts.push(s === p ? String(s) : s + '-' + p); s = ms[i]; p = ms[i];
+    }
+    return 'months ' + parts.join(', ');
+  }
+  function pickedYears() { return [...document.querySelectorAll('.year-pick:checked')].map(c => Number(c.dataset.year)); }
+  function updateImportBtn() {
+    const n = pickedYears().length;
+    const btn = document.getElementById('import-btn');
+    btn.disabled = busy || !n || !!(parsed && parsed.errors.length);
+    document.getElementById('import-hint').textContent = parsed && parsed.errors.length ? 'Fix the errors above and re-upload before importing.' : (n ? n + ' year(s) selected' : 'Select at least one year');
+  }
+  document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('year-pick')) updateImportBtn(); });
+
+  document.getElementById('file-input').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    parsed = null; setMsg('');
+    document.getElementById('preview').style.display = 'none';
+    document.getElementById('parse-errors').innerHTML = '';
+    document.getElementById('privacy-note').textContent = '';
+    if (!file) return;
+    try {
+      if (typeof XLSX === 'undefined') throw new Error('The spreadsheet reader (SheetJS) could not be loaded. Check your connection and reload.');
+      const buf = await file.arrayBuffer();
+      parsed = parseWorkbook(buf, file.name);
+    } catch (err) {
+      console.error(err);
+      setMsg('Could not read this file: ' + (err && err.message || err), 'err');
+      return;
+    }
+    if (parsed.donorSheet) document.getElementById('privacy-note').textContent = 'A Donor Giving sheet was found and ignored. Donor names are never imported.';
+    if (parsed.errors.length) {
+      const shown = parsed.errors.slice(0, 60);
+      document.getElementById('parse-errors').innerHTML = `<div class="errors"><strong>${parsed.errors.length} problem${parsed.errors.length === 1 ? '' : 's'} found. Nothing can be imported until they are fixed.</strong><ul>${shown.map(x => `<li>${x.row ? 'Row ' + x.row + ': ' : ''}${escapeHtml(x.msg)}</li>`).join('')}</ul>${parsed.errors.length > shown.length ? `<div class="muted">...and ${parsed.errors.length - shown.length} more.</div>` : ''}</div>`;
+    }
+    setMsg(`${parsed.rowsRead.toLocaleString('en-PH')} ledger rows read, ${Object.keys(parsed.years).length} year(s).`);
+    renderPreview();
+  });
+
+  // -------------------------------------------------------------- audit + batching
+  async function writeAuditLog(action, docId, beforeData, afterData, summary, collection) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action, collection: collection || 'historicalAnnual', docId: String(docId), summary,
+      before: beforeData || null, after: afterData || null,
+      actorUid: user ? user.uid : '', actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '', actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+  const MAX_BATCH = 450;
+  async function runOps(ops, onProgress) {
+    for (let i = 0; i < ops.length; i += MAX_BATCH) {
+      const batch = db.batch();
+      ops.slice(i, i + MAX_BATCH).forEach(op => { if (op.type === 'delete') batch.delete(op.ref); else batch.set(op.ref, op.data); });
+      await batch.commit();
+      if (onProgress) onProgress(Math.min(i + MAX_BATCH, ops.length), ops.length);
+    }
+  }
+  const annualSummary = a => a ? { totalIncome: a.totalIncome, totalExpense: a.totalExpense, net: a.net, passThroughIncome: a.passThroughIncome,
+    passThroughExpense: a.passThroughExpense, monthsCovered: a.monthsCovered, monthlyDocs: a.monthlyDocs ?? null, sourceFile: a.sourceFile || null } : null;
+
+  async function importSelected() {
+    const years = pickedYears();
+    if (!years.length || !parsed || parsed.errors.length || busy) return;
+    busy = true; updateImportBtn();
+    const prog = document.getElementById('progress'); prog.style.display = '';
+    const user = firebase.auth().currentUser;
+    const by = { uid: user ? user.uid : '', name: activeUserProfile.name || '', role: activeUserProfile.role || '' };
+    const now = new Date().toISOString();
+    try {
+      for (const year of years) {
+        setMsg(`Importing ${year}...`);
+        const built = buildYear(parsed.years[year], parsed.fileName);
+        const oldAnnualSnap = await db.collection('historicalAnnual').doc(String(year)).get();
+        const oldAnnual = oldAnnualSnap.exists ? oldAnnualSnap.data() : null;
+        const oldMonthly = await db.collection('historicalMonthly').where('year', '==', year).get();
+        const ops = [];
+        oldMonthly.docs.forEach(d => ops.push({ type: 'delete', ref: db.collection('historicalMonthly').doc(d.id) }));
+        if (oldAnnualSnap.exists) ops.push({ type: 'delete', ref: db.collection('historicalAnnual').doc(String(year)) });
+        built.docs.forEach(d => ops.push({ type: 'set', ref: db.collection('historicalMonthly').doc(d.id), data: { ...d.data, importedAt: now, importedBy: by } }));
+        ops.push({ type: 'set', ref: db.collection('historicalAnnual').doc(String(year)), data: { ...built.annual, importedAt: now, importedBy: by } });
+        await runOps(ops, (done, total) => { prog.max = total; prog.value = done; setMsg(`Importing ${year}: ${done} / ${total} writes`); });
+        await writeAuditLog('historical_data_imported', year,
+          { ...annualSummary(oldAnnual), monthlyDocs: oldMonthly.docs.length },
+          { ...annualSummary(built.annual), rowCount: parsed.years[year].rows.length, monthlyDocs: built.docs.length, fileName: parsed.fileName },
+          `Imported historical data for ${year} from ${parsed.fileName}: ${parsed.years[year].rows.length} rows into ${built.docs.length} monthly documents (replaced ${oldMonthly.docs.length}).`);
+      }
+      setMsg(`Imported ${years.join(', ')}. These figures are used for trends and comparisons only.`, 'good');
+    } catch (err) {
+      console.error(err);
+      setMsg('Import stopped: ' + (err && err.message || err) + ' - the year in progress may be incomplete. Fix the cause and import it again (the import replaces the year).', 'err');
+    }
+    busy = false; prog.style.display = 'none';
+    await loadStatus();
+    if (parsed) renderPreview();
+  }
+  document.getElementById('import-btn').addEventListener('click', importSelected);
+
+  // -------------------------------------------------------------- delete a year
+  function refreshDeleteControl() {
+    const sel = document.getElementById('del-year');
+    const prev = sel.value;
+    sel.innerHTML = statusRows.length ? statusRows.map(r => `<option value="${escapeHtml(r.year)}">${escapeHtml(r.year)}</option>`).join('') : '<option value="">No years imported</option>';
+    if (prev && statusRows.some(r => String(r.year) === prev)) sel.value = prev;
+    document.getElementById('del-btn').disabled = !statusRows.length;
+    document.getElementById('del-confirm').classList.remove('show');
+  }
+  document.getElementById('del-btn').addEventListener('click', () => {
+    const year = document.getElementById('del-year').value; if (!year) return;
+    const row = statusRows.find(r => String(r.year) === year);
+    document.getElementById('del-confirm-text').innerHTML = `Permanently delete <strong>${escapeHtml(year)}</strong> historical data (${row && row.monthlyDocs != null ? escapeHtml(row.monthlyDocs) + ' monthly records and ' : ''}the annual summary)? This cannot be undone. Live income, expenses and balances are not touched.`;
+    document.getElementById('del-confirm').classList.add('show');
+  });
+  document.getElementById('del-no').addEventListener('click', () => document.getElementById('del-confirm').classList.remove('show'));
+  document.getElementById('del-yes').addEventListener('click', async () => {
+    const year = Number(document.getElementById('del-year').value); if (!year || busy) return;
+    busy = true; document.getElementById('del-yes').disabled = true;
+    try {
+      const annualSnap = await db.collection('historicalAnnual').doc(String(year)).get();
+      const before = annualSnap.exists ? annualSnap.data() : null;
+      const monthly = await db.collection('historicalMonthly').where('year', '==', year).get();
+      const ops = monthly.docs.map(d => ({ type: 'delete', ref: db.collection('historicalMonthly').doc(d.id) }));
+      if (annualSnap.exists) ops.push({ type: 'delete', ref: db.collection('historicalAnnual').doc(String(year)) });
+      await runOps(ops);
+      await writeAuditLog('historical_data_deleted', year, { ...annualSummary(before), monthlyDocs: monthly.docs.length }, null,
+        `Deleted historical data for ${year} (${monthly.docs.length} monthly records${before ? ' and the annual summary' : ''}).`);
+      setMsg(`Deleted ${year} historical data.`, 'good');
+    } catch (err) {
+      console.error(err);
+      setMsg('Delete failed: ' + (err && err.message || err), 'err');
+    }
+    busy = false; document.getElementById('del-yes').disabled = false;
+    await loadStatus();
+    if (parsed) renderPreview();
+  });
+</script>
+</body>
+</html>
