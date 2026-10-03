@@ -537,10 +537,32 @@
     }
 
     /* ── Print: one section per page, no buttons ───────── */
+
+    /* Presenter annotations (section 9b): ring + dim, strokes, pen layer, floating presenter tools. Never in print / the snapshot. */
+    #ann-dim { display: none; position: fixed; overflow: hidden; pointer-events: none; z-index: 30; }
+    #ann-ring { position: absolute; border: 3px solid #f1b81c; border-radius: 10px; box-sizing: border-box; box-shadow: 0 0 0 9999px rgba(20,35,63,.30), 0 0 16px 4px rgba(241,184,28,.85), inset 0 0 10px rgba(241,184,28,.45); }
+    @media (prefers-reduced-motion: no-preference) { #ann-ring { animation: annPulse 1.9s ease-in-out infinite; } }
+    @keyframes annPulse { 0%, 100% { box-shadow: 0 0 0 9999px rgba(20,35,63,.30), 0 0 12px 3px rgba(241,184,28,.70), inset 0 0 8px rgba(241,184,28,.35); } 50% { box-shadow: 0 0 0 9999px rgba(20,35,63,.30), 0 0 24px 8px rgba(241,184,28,1), inset 0 0 14px rgba(241,184,28,.55); } }
+    #ann-strokes, #ann-live { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 31; overflow: visible; }
+    .ann-halo { fill: none; stroke: rgba(255,255,255,.85); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+    .ann-stroke { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+    #pen-layer { display: none; position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 32; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; }
+    body.pen-on #pen-layer { display: block; }
+    body.hl-on .slide, body.hl-on .slide * { cursor: pointer; }
+    #ann-bar { position: fixed; z-index: 60; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: calc(100vw - 16px); display: none; align-items: center; gap: 6px; padding: 5px 6px; background: rgba(20,35,63,.95); border: 1px solid rgba(255,255,255,.25); border-radius: 999px; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+    #ann-bar button { border: 0; border-radius: 999px; background: rgba(255,255,255,.14); color: #fff; font: inherit; font-weight: 700; font-size: 13px; padding: 7px 12px; min-height: 34px; cursor: pointer; white-space: nowrap; }
+    #ann-bar button[aria-pressed="true"] { background: #f1b81c; color: #14233f; }
+    #ann-bar button:disabled { opacity: .45; cursor: default; }
+    #ann-bar .ab-cols { gap: 4px; align-items: center; }
+    #ann-bar .ab-cols button { width: 30px; min-width: 30px; height: 30px; min-height: 30px; padding: 0; background: var(--c); border: 2px solid rgba(255,255,255,.7); }
+    #ann-bar .ab-cols button[aria-pressed="true"] { background: var(--c); color: inherit; box-shadow: 0 0 0 3px #fff; }
+    body.presenting #ann-bar { bottom: 62px; }
+    @media (max-width: 420px) { #ann-bar { gap: 4px; padding: 4px; } #ann-bar button { padding: 6px 9px; font-size: 12px; } #ann-bar .ab-cols button { width: 28px; min-width: 28px; height: 28px; min-height: 28px; } }
+    @media (orientation: landscape) and (max-height: 500px) { #ann-bar { padding: 3px 5px; bottom: 8px; } #ann-bar button { min-height: 28px; padding: 4px 10px; font-size: 12px; } #ann-bar .ab-cols button { width: 24px; min-width: 24px; height: 24px; min-height: 24px; } body.presenting #ann-bar { bottom: 46px; } }
     @media print {
       @page { size: A4 landscape; margin: 10mm; }
       body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only, .sec-nav, .sec-foot, .sec-divider { display: none !important; }
+      #ann-dim, #ann-strokes, #ann-live, #pen-layer, #ann-bar, .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only, .sec-nav, .sec-foot, .sec-divider { display: none !important; }
       body.view-one .slide { display: block !important; }
       #dash { max-width: none; padding: 0; }
       .slide { box-shadow: none; border-radius: 0; break-after: page; page-break-after: always; margin: 0; border-top: 6px solid var(--red); }
@@ -609,6 +631,16 @@
     <button class="btn" onclick="stopPresentation()">Esc &times;</button>
   </div>
   <div id="tip" role="tooltip"></div>
+  <div id="ann-dim" aria-hidden="true"><div id="ann-ring"></div></div>
+  <svg id="ann-strokes" aria-hidden="true"></svg>
+  <div id="pen-layer" aria-hidden="true"></div>
+  <svg id="ann-live" aria-hidden="true"></svg>
+  <div id="ann-bar" role="toolbar" aria-label="Presenter tools" style="display:none">
+    <button type="button" id="ab-hl" aria-pressed="false" onclick="toggleHlMode()"><span aria-hidden="true">&#10022;</span> Highlight</button>
+    <button type="button" id="ab-pen" aria-pressed="false" onclick="togglePenMode()"><span aria-hidden="true">&#9998;</span> Pen</button>
+    <span class="ab-cols" id="ab-cols" role="group" aria-label="Pen colour" style="display:none"><button type="button" data-col="gold" aria-label="Gold pen" onclick="setPenColor('gold')" style="--c:#f1b81c"></button><button type="button" data-col="red" aria-label="Red pen" onclick="setPenColor('red')" style="--c:#d6453a"></button><button type="button" data-col="navy" aria-label="Navy pen" onclick="setPenColor('navy')" style="--c:#14233f"></button></span>
+    <button type="button" id="ab-clear" onclick="clearAnnotationsNow()"><span aria-hidden="true">&#10005;</span> Clear</button>
+  </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -2174,8 +2206,9 @@
   const CAT_HEX = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
   const OTHER_HEX = '#8a8f98';
 
-  function svgOpen(w, h, label) {
-    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${escapeAttr(label)}" preserveAspectRatio="xMidYMid meet">`;
+  // `key` (optional) names a chart for the presenter-sync anchors (data-chart -> data-anchor keys, see section 9b).
+  function svgOpen(w, h, label, key) {
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-label="${escapeAttr(label)}"${key ? ` data-chart="${key}"` : ''} preserveAspectRatio="xMidYMid meet">`;
   }
   const tip = t => ` data-tip="${escapeAttr(t)}"`;
   function tableView(headers, rows) {
@@ -2233,7 +2266,7 @@
     const top = 26, bottom = narrow ? 44 : 38, h = narrow ? 250 : 290, plotH = h - top - bottom;
     const yOf = v => top + (1 - (v - mn) / rng) * plotH;
     const n = geo.length, bw = w / n, barW = Math.min(88, bw * 0.62);
-    let out = svgOpen(w, h, `Cash waterfall from beginning balance ${peso(s.begBal)} to ending balance ${peso(s.endBal)}`);
+    let out = svgOpen(w, h, `Cash waterfall from beginning balance ${peso(s.begBal)} to ending balance ${peso(s.endBal)}`, 'waterfall');
     if (!lifted) out += `<line x1="0" x2="${w}" y1="${yOf(0).toFixed(1)}" y2="${yOf(0).toFixed(1)}" stroke="#c9c3b3" stroke-width="1"/>`;
     geo.forEach((g, i) => {
       const pA = g.t === 'total' ? g.to : g.from, pB = g.t === 'total' ? (lifted ? mn : 0) : g.to;
@@ -2260,7 +2293,7 @@
     const pt = (f, rad) => { const a = Math.PI * (1 - f); return [cx + rad * Math.cos(a), cy - rad * Math.sin(a)]; };
     const arc = (f1, f2, color, title) => { const [x1, y1] = pt(f1, r), [x2, y2] = pt(f2, r); return `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="${bandW}"${tip(title)}/>`; };
     const g = 0.004;
-    let out = svgOpen(w, cy + 54, `Cash runway gauge, ${Number.isFinite(months) ? months.toFixed(1) + ' months of cover' : 'not set up'}, level ${level.level}`);
+    let out = svgOpen(w, cy + 54, `Cash runway gauge, ${Number.isFinite(months) ? months.toFixed(1) + ' months of cover' : 'not set up'}, level ${level.level}`, 'gauge');
     out += arc(0, 0.14 - g, LEVEL_FILL.black, 'Black: under 0.5 months') + arc(0.14, 0.34 - g, LEVEL_FILL.red, 'Red: 0.5 to 1 month')
       + arc(0.34, 0.66 - g, LEVEL_FILL.yellow, 'Yellow: 1 to 3 months') + arc(0.66, 1, LEVEL_FILL.green, 'Green: 3 months or more');
     [[0, '0'], [0.5, '½'], [1, '1'], [3, '3'], [6, '6+']].forEach(([m, t]) => { const [x, y] = pt(frac(m), r + bandW / 2 + 12); out += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="12">${t}</text>`; });
@@ -2281,7 +2314,7 @@
     if (E > 0) { mx = Math.max(mx, E * 3.4); mn = Math.min(mn, 0); }
     const rng = (mx - mn) || 1, plotH = h - top - bottom, plotW = w - left - right;
     const yOf = v => top + (1 - (v - mn) / rng) * plotH, xOf = i => left + i * (plotW / (pts.length - 1));
-    let out = svgOpen(w, h, `Projected available operating cash for the next ${p.rows.length} months`);
+    let out = svgOpen(w, h, `Projected available operating cash for the next ${p.rows.length} months`, 'projection');
     if (E > 0) {
       const bands = [[mn, E * 0.5, '#212121', .12, 'Black'], [E * 0.5, E, '#d6453a', .13, 'Red'], [E, E * 3, '#e0b11a', .15, 'Yellow'], [E * 3, mx, '#2e9e5b', .13, 'Green']];
       bands.forEach(([a, b, c, o, nm]) => { const y1 = yOf(Math.min(b, mx)), y2 = yOf(Math.max(a, mn)); out += `<rect x="${left}" y="${y1.toFixed(1)}" width="${plotW}" height="${Math.max(0, y2 - y1).toFixed(1)}" fill="${c}" fill-opacity="${o}"/>`; });
@@ -2302,7 +2335,7 @@
   function bulletSvg(rows, w, side) {
     if (!rows.length) return '<div class="note">No budget lines for this selection.</div>';
     const narrowB = w < 480, rowH = narrowB ? 72 : 54, labelW = w, h = rows.length * rowH + 4;
-    let out = svgOpen(w, h, `Budget versus actual bullet bars, ${side}`);
+    let out = svgOpen(w, h, `Budget versus actual bullet bars, ${side}`, 'bullets-' + side);
     rows.forEach((r, i) => {
       const y = i * rowH + 4, maxv = Math.max(r.actual, r.budget, 1) * 1.1, bar = v => Math.max(0, Math.min(1, v / maxv)) * w;
       const over = side === 'expense' && r.budget > 0 && r.actual > r.budget;
@@ -2323,7 +2356,7 @@
   // off for reduced-motion, print and the saved snapshot).
   function coinGridSvg(rows, w, label) {
     const size = Math.max(160, Math.min(w, 340)), cell = size / 10, R = cell * 0.46;
-    let out = svgOpen(size, size, label), idx = 0;
+    let out = svgOpen(size, size, label, 'coins'), idx = 0;
     rows.forEach(r => {
       for (let n = 0; n < r.pesos; n++, idx++) {
         const cx = (idx % 10) * cell + cell / 2, cy = Math.floor(idx / 10) * cell + cell / 2;
@@ -2338,7 +2371,7 @@
   // Three 100%-stacked horizontal bars (this period / same months last year / budget plan), one segment per bucket.
   function mixTrioSvg(trio, w) {
     const narrow = w < 520, barH = narrow ? 30 : 34, rowH = barH + 26, h = trio.length * rowH + 4, gap = 2;
-    let out = svgOpen(w, h, 'How the spending mix compares: this period, the same months last year and the budget plan');
+    let out = svgOpen(w, h, 'How the spending mix compares: this period, the same months last year and the budget plan', 'mix');
     trio.forEach((t, i) => {
       const y = i * rowH + 4;
       out += `<text x="0" y="${y + 13}" font-size="13" font-weight="700" style="fill:var(--navy)">${escapeHtml(t.label)}${t.total > 0 ? '' : ' · no data'}</text>`;
@@ -2366,7 +2399,7 @@
     const step = [1, 2, 5, 10].map(m => m * mag).find(v => v * 4 >= rawMax) || 10 * mag, mx = Math.ceil(rawMax / step) * step, ticks = Math.round(mx / step);
     const plotW = w - left - right, plotH = h - top - bottom;
     const yOf = v => top + (1 - v / mx) * plotH, slotW = plotW / n, bw = Math.max(4, Math.min(40, slotW - 2));
-    let out = svgOpen(w, h, `Attendance at each recorded Sunday, average ${Math.round(st.avg)}`);
+    let out = svgOpen(w, h, `Attendance at each recorded Sunday, average ${Math.round(st.avg)}`, 'sundays');
     out += '<defs><pattern id="att-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#d6f1e6"/><line x1="0" y1="0" x2="0" y2="6" stroke="#1baf7a" stroke-width="3"/></pattern></defs>';
     for (let i = 0; i <= ticks; i++) {
       const v = step * i, y = yOf(v);
@@ -2400,7 +2433,7 @@
     const all = s.receipts.concat(s.disbursements, s.net, s.lastYearNet, [0]);
     const mn = Math.min(...all), mx = Math.max(...all), rng = (mx - mn) || 1, plotH = h - top - bottom, plotW = w - left - right;
     const yOf = v => top + (1 - (v - mn) / rng) * plotH, gw = plotW / 12, bw = Math.max(5, Math.min(22, gw * 0.36));
-    let out = svgOpen(w, h, 'Twelve month receipts, disbursements and net, with last year net');
+    let out = svgOpen(w, h, 'Twelve month receipts, disbursements and net, with last year net', 'history');
     for (let i = 0; i <= 4; i++) { const v = mn + rng * i / 4, y = yOf(v); out += `<line x1="${left}" x2="${w - right}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#ece6d6" stroke-width="1"/><text x="${left - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11">${escapeHtml(pesoShort(v))}</text>`; }
     out += `<line x1="${left}" x2="${w - right}" y1="${yOf(0).toFixed(1)}" y2="${yOf(0).toFixed(1)}" stroke="#9aa3b2" stroke-width="1"/>`;
     const gx = i => left + i * gw + gw / 2;
@@ -2422,7 +2455,7 @@
   function heatmapSvg(weeks, w) {
     const perRow = w < 520 ? 7 : 13, gap = 6, cell = Math.min(74, Math.floor((w - gap * (perRow - 1)) / perRow)), rows = Math.ceil(weeks.length / perRow), cellH = cell + 4;
     const mx = Math.max(...weeks.map(x => x.amount), 1);
-    let out = svgOpen(perRow * (cell + gap) - gap, rows * (cellH + gap) - gap, 'Weekly Sunday collections, last 13 Sundays, darker means more');
+    let out = svgOpen(perRow * (cell + gap) - gap, rows * (cellH + gap) - gap, 'Weekly Sunday collections, last 13 Sundays, darker means more', 'heatmap');
     weeks.forEach((wk, i) => {
       const x = (i % perRow) * (cell + gap), y = Math.floor(i / perRow) * (cellH + gap);
       const lvl = wk.amount <= 0 ? -1 : Math.min(4, Math.floor(wk.amount / mx * 4.999));
@@ -2692,7 +2725,7 @@
       cmp = dlt === 0 ? `<span class="pk-cmp">Aktwal ngayon: ₱${l.cmpTo} (pareho)</span>` : `<span class="pk-cmp ${dlt > 0 ? 'up' : 'down'}">Aktwal ngayon: ₱${l.cmpTo} (${dlt > 0 ? '+' : '−'}₱${Math.abs(dlt)})</span>`;
     }
     const width = max > 0 ? p / max * 100 : 0;
-    return `<div class="pk-row${animate ? ' enter' : ''}" style="animation-delay:${animate ? 250 + i * 70 : 0}ms">
+    return `<div class="pk-row${animate ? ' enter' : ''}" ${o.static ? '' : ` data-ak="${escapeAttr(l.label + (l.qual ? ' ' + l.qual : ''))}"`} style="animation-delay:${animate ? 250 + i * 70 : 0}ms">
       <div class="pk-ri" style="background:${l.css};color:${l.ink || '#fff'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg></div>
       <div class="pk-rt">${escapeHtml(l.label)}<small>${escapeHtml(l.bucket)}</small>${l.qual ? `<span class="note"> (${escapeHtml(l.qual)})</span>` : ''}${l.onlyNow ? `<span class="note"> · ${side === 'expense' && l.view === 'lastyear' ? 'wala noong ' + l.cmpYear : 'walang nakalaan sa budget'}</span>` : ''}</div>
       <div class="pk-rp">${p > 0 ? '₱' + p : '&lt;₱1'}</div>
@@ -2738,6 +2771,7 @@
     $('pk-coins').innerHTML = pkCoinHtml(m, o); $('pk-foot').innerHTML = pkFootHtml(m);
     $('pk-rows').innerHTML = pkRowsHtml(m, o, ui.pitakaTone, go);
     requestAnimationFrame(() => requestAnimationFrame(() => host.querySelectorAll('.pk-bar i[data-w]').forEach(el => { el.style.width = el.dataset.w + '%'; })));
+    assignAnchors($('slide-per100')); pruneAnnotations(); layoutAnn();
     if (go) pkTear(m);
   }
   // The ₱100 note tears into coloured strips (width = peso share) that fly toward the list.
@@ -3201,7 +3235,7 @@
   // ───────────────────────────────────────────────────────────────────────
   // 7. PAGE STATE + ORCHESTRATION
   // ───────────────────────────────────────────────────────────────────────
-  const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', per100View: 'spent', pitakaTone: 'fun', compareYear: null, budgetThroughToday: true, presenting: false, editing: false, slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
+  const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', per100View: 'spent', pitakaTone: 'fun', compareYear: null, budgetThroughToday: true, presenting: false, editing: false, hlMode: false, penMode: false, penColor: 'gold', slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
   const $ = id => document.getElementById(id);
   ui.viewMode = 'one'; ui.navLockUntil = 0;   // 'one' = one section at a time (default) | 'all' = long scroll
   try { const v = localStorage.getItem('councilViewMode'); if (v === 'one' || v === 'all') ui.viewMode = v; } catch (e) { /* storage may be blocked */ }
@@ -3295,9 +3329,11 @@
     document.title = `Council Dashboard — ${k.period.label}`;
     renderNav();
     applyPresentationClasses();
+    assignAnchors();
     setupSectionObserver();
     if (animate && !ui.presenting) runCountUp();
     renderPresDots();
+    pruneAnnotations(); layoutAnn();
   }
   function runCountUp() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -3325,7 +3361,9 @@
     opts = opts || {};
     if (!opts.remote) manualAction();
     const token = ++selectionToken;
+    const prevSel = ui.period ? ui.period.year + ':' + ui.period.months.join() : '';
     ui.period = makePeriod(year, months);
+    if (!opts.remote && prevSel !== ui.period.year + ':' + ui.period.months.join()) onSectionChanged();   // annotations belong to one month selection
     syncControlsUi();
     if (!ui.period.count) {
       $('dash').innerHTML = '<div class="status-msg">Select one or more months above to build the dashboard.</div>';
@@ -3495,7 +3533,9 @@
   function goToSlide(i, opts) {
     opts = opts || {};
     if (!opts.remote) manualAction();
+    const prevIdx = ui.slideIdx;
     ui.slideIdx = Math.max(0, Math.min(ui.slides.length - 1, i));
+    if (!opts.remote && prevIdx !== ui.slideIdx) onSectionChanged();
     if (ui.presenting) {
       applyPresentationClasses(); renderPresDots();
       const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) el.scrollTop = 0;
@@ -3557,7 +3597,7 @@
       entries.forEach(en => { const i = els.indexOf(en.target); if (en.isIntersecting) secVisible.add(i); else secVisible.delete(i); });
       if (Date.now() < ui.navLockUntil || !secVisible.size) return;
       const i = Math.max(...secVisible);
-      if (i !== ui.slideIdx) { ui.slideIdx = i; updateNav(); schedulePublish(); }
+      if (i !== ui.slideIdx) { ui.slideIdx = i; onSectionChanged(); updateNav(); schedulePublish(); }
     }, { rootMargin: `-${top}px 0px -55% 0px`, threshold: 0 });
     els.forEach(el => secObserver.observe(el));
   }
@@ -3593,7 +3633,7 @@
   let touchX = null, touchY = null;
   document.addEventListener('touchstart', e => { if (ui.presenting && e.touches.length === 1) { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; } }, { passive: true });
   document.addEventListener('touchend', e => {
-    if (!ui.presenting || touchX === null) return;
+    if (!ui.presenting || touchX === null || ui.penMode) { touchX = null; return; }
     const dx = e.changedTouches[0].clientX - touchX, dy = e.changedTouches[0].clientY - touchY; touchX = null;
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) presNav(dx < 0 ? 1 : -1);
   }, { passive: true });
@@ -3623,7 +3663,7 @@
   window.addEventListener('scroll', () => {
     if (ui.presenting || ui.viewMode === 'one' || 'IntersectionObserver' in window) return;   // the IntersectionObserver does this in show-all mode
     clearTimeout(spyT);
-    spyT = setTimeout(() => { const i = currentVisibleSlide(); if (i >= 0 && i !== ui.slideIdx) { ui.slideIdx = i; schedulePublish(); } }, 150);
+    spyT = setTimeout(() => { const i = currentVisibleSlide(); if (i >= 0 && i !== ui.slideIdx) { ui.slideIdx = i; onSectionChanged(); schedulePublish(); } }, 150);
   }, { passive: true });
 
   // tooltips (delegated; elements carry data-tip)
@@ -3646,22 +3686,30 @@
   //    No rules change: settings is Treasurer-write and readable by every allowed role.
   // ───────────────────────────────────────────────────────────────────────
   const PRESENTER_DOC = 'councilPresenter';
-  const presenter = { active: false, timer: null };           // Treasurer side
-  const follow = { on: false, paused: false, unsub: null, last: null, applying: false, doc: null }; // viewer side
+  const presenter = { active: false, timer: null, dueAt: 0, lastPubAt: 0, scroll: null };           // Treasurer side
+  const follow = { on: false, paused: false, unsub: null, last: null, applying: false, doc: null, force: false, lastScrollSig: null }; // viewer side
 
-  function schedulePublish() {
+  // ~300ms debounce for every change; a scroll-caused publish also keeps >= SCROLL_MIN_GAP_MS since the last write.
+  function schedulePublish(opts) {
     if (!isTreasurer() || !presenter.active) return;
-    clearTimeout(presenter.timer);
-    presenter.timer = setTimeout(publishView, 300); // ~300ms debounce
+    let due = Date.now() + 300;
+    if (opts && opts.scroll) due = Math.max(due, (presenter.lastPubAt || 0) + SCROLL_MIN_GAP_MS);
+    if (presenter.timer && presenter.dueAt && presenter.dueAt <= due) return;    // an earlier write is already pending and will carry the latest state
+    clearTimeout(presenter.timer); presenter.dueAt = due;
+    presenter.timer = setTimeout(publishView, Math.max(0, due - Date.now()));
   }
   async function publishView() {
+    presenter.timer = null; presenter.dueAt = 0;
     if (!isTreasurer() || !presenter.active || !ui.period) return;
+    presenter.lastPubAt = Date.now();
     const user = firebase.auth().currentUser;
     const def = ui.slides[ui.slideIdx];
     try {
       await db.collection('settings').doc(PRESENTER_DOC).set({
         active: true, year: ui.period.year, months: ui.period.keys, section: def ? def.id : 'hero', slideIndex: ui.slideIdx,
         presentationMode: !!ui.presenting, per100View: ui.per100View, pitakaTone: ui.pitakaTone, periodLabel: ui.period.label,
+        scroll: presenter.scroll || null, highlight: ann.hl ? { anchor: ann.hl } : null,
+        strokes: ann.strokes.map(x => ({ id: x.id, anchor: x.anchor, color: x.color, pts: x.pts })),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(), by: { uid: user ? user.uid : '', name: activeUserProfile.name }
       });
     } catch (err) { console.warn('Presenter publish failed', err && err.message); }
@@ -3670,16 +3718,17 @@
     const b = $('btn-broadcast'); if (!b) return;
     b.textContent = presenter.active ? '■ Stop presenting' : '📡 Start presenting';
     b.classList.toggle('live', presenter.active);
+    updateAnnBar();
   }
   async function toggleBroadcast() {
     if (!isTreasurer()) return;
     const user = firebase.auth().currentUser;
     if (!presenter.active) {
-      presenter.active = true; updateBroadcastButton();
+      presenter.active = true; presenter.scroll = null; ann.hl = null; ann.strokes = []; updateBroadcastButton();
       await publishView();
       try { await writeAuditLog('council_presenting_started', 'settings', PRESENTER_DOC, null, { period: ui.period.label }, `Started presenting the Council Dashboard (${ui.period.label})`); } catch (e) { console.warn(e); }
     } else {
-      clearTimeout(presenter.timer); presenter.active = false; updateBroadcastButton();
+      clearTimeout(presenter.timer); presenter.timer = null; presenter.dueAt = 0; presenter.active = false; resetAnnState(); updateBroadcastButton();
       try {
         await db.collection('settings').doc(PRESENTER_DOC).set({ active: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), by: { uid: user ? user.uid : '', name: activeUserProfile.name } });
         await writeAuditLog('council_presenting_stopped', 'settings', PRESENTER_DOC, { period: ui.period && ui.period.label }, null, 'Stopped presenting the Council Dashboard');
@@ -3730,7 +3779,7 @@
   // this attaches an onSnapshot listener to the single settings/councilPresenter doc. It is detached on
   // unfollow, when the presenter stops, and on pagehide.
   function startFollow() {
-    follow.on = true; follow.paused = false;
+    follow.on = true; follow.paused = false; follow.force = true; follow.lastScrollSig = null;
     follow.unsub = db.collection('settings').doc(PRESENTER_DOC).onSnapshot(snap => {
       const d = snap.exists ? snap.data() : null;
       follow.last = d; follow.doc = d;
@@ -3742,32 +3791,384 @@
   }
   function endFollow(msg) {
     if (follow.unsub) { try { follow.unsub(); } catch (e) { /* ignore */ } }
-    follow.unsub = null; follow.on = false; follow.paused = false; follow.last = null;
+    follow.unsub = null; follow.on = false; follow.paused = false; follow.last = null; follow.lastScrollSig = null;
+    ann.hl = null; ann.strokes = []; layoutAnn();
     if (msg) { follow.doc = { active: false }; $('follow-hint').textContent = msg; }
     updateFollowUi();
     if (msg) $('follow-hint').textContent = msg;
   }
-  function resumeFollow() { follow.paused = false; if (follow.last) applyRemote(follow.last); updateFollowUi(); }
+  function resumeFollow() { follow.paused = false; follow.force = true; follow.lastScrollSig = null; if (follow.last) applyRemote(follow.last); updateFollowUi(); }
   async function applyRemote(d) {
     if (follow.applying) { follow.pending = d; return; }
     follow.applying = true;
     try {
       const months = (d.months || []).map(s => parseInt(String(s).slice(5, 7), 10) - 1);
+      const wasPres = !!ui.presenting;
       const sameSel = ui.period && ui.period.year === d.year && JSON.stringify(ui.period.months) === JSON.stringify(makePeriod(d.year, months).months);
       if (!sameSel) await setSelection(d.year, months, { remote: true });
       if (d.presentationMode && !ui.presenting) startPresentation({ remote: true });
       else if (!d.presentationMode && ui.presenting) stopPresentation({ remote: true });
       let idx = ui.slides.findIndex(s => s.id === d.section);
       if (idx < 0) idx = Math.min(d.slideIndex || 0, ui.slides.length - 1);
-      goToSlide(idx, { remote: true });
+      const force = follow.force || !sameSel || (!!d.presentationMode !== wasPres);
+      follow.force = false;
+      // only move to the section when it changed (otherwise every annotation/scroll publish would snap the follower to the section top)
+      if (force || idx !== ui.slideIdx) goToSlide(idx, { remote: true });
+      const viewChanged = (d.per100View && d.per100View !== ui.per100View) || (d.pitakaTone && d.pitakaTone !== ui.pitakaTone);
       if (d.pitakaTone && d.pitakaTone !== ui.pitakaTone) setPitakaTone(d.pitakaTone, { remote: true });
       if (d.per100View && d.per100View !== ui.per100View) setPer100View(d.per100View, { remote: true });
+      // highlight + strokes, then scroll (same anchor at the same relative place), then bring a new highlight into view
+      const prevHl = ann.hl;
+      setAnnFromDoc(d);
+      await nextFrames();
+      if (viewChanged) await new Promise(r => setTimeout(r, 450));   // pitaka rows slide in; measure after they settle
+      const scrolled = applyRemoteScroll(d.scroll || null, force);
+      // a highlight wins over the scroll anchor: if the aligned view hides it, bring it into view afterwards
+      if (ann.hl && (ann.hl !== prevHl || scrolled)) setTimeout(() => { if (follow.on && !follow.paused) { revealHighlight(); scheduleAnnLayout(); } }, reducedMotion() ? 50 : 650);
+      layoutAnn();
     } finally {
       follow.applying = false;
       if (follow.pending) { const p = follow.pending; follow.pending = null; if (!follow.paused) applyRemote(p); }
     }
   }
   window.addEventListener('pagehide', () => { if (follow.unsub) { try { follow.unsub(); } catch (e) { /* ignore */ } follow.unsub = null; } });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // 9b. PRESENTER ANNOTATIONS - anchors, scroll follow, highlight ("spotlight") and pen.
+  //
+  // All three ride the EXISTING debounced publish of settings/councilPresenter (section 9): nothing is written unless
+  // the Treasurer is presenting, followers never write, and there is no live pointer/laser.
+  //   scroll    : {anchor, frac, section, prev:[keys]} | null   published only after scrolling SETTLES
+  //   highlight : {anchor} | null
+  //   strokes   : [{id, anchor, color, pts:[x0,y0,x1,y1,...]}]   <= 30 strokes, <= 60 points each, published on pointer-up only
+  //               (pts is FLAT: Firestore rejects an array directly inside an array, so [[x,y],...] cannot be stored)
+  //
+  // COST (writes to settings/councilPresenter; each is one small doc write, a few KB at most):
+  //   a ~45 minute meeting over 10 sections ~= 10 section changes + ~20-30 settled scroll stops (500ms idle, and never more
+  //   than one scroll-caused write per 800ms) + ~5 pitaka view/tone changes + ~10 highlights + ~10 strokes
+  //   ~= 60-90 writes in total (the scripted 60 second test in the QA notes made ~25). Nothing is written while scrolling,
+  //   dragging a stroke, or while nobody is presenting.
+  //
+  // ANCHOR KEYS: every anchorable element gets data-anchor="<section>:<kind>:<slug of its own content>" after each render
+  // (assignAnchors) - never a DOM index. Kinds: head, body, panel, tile, ring, chart, mark, legend, row, more, sc, li,
+  // point(s), rc. A repeated key gets a "~2", "~3" suffix in document order. Examples: budget:tile:income-achieved,
+  // per100:row:administrative-pastor, hero:mark:waterfall:receipts, history:mark:jun-2026-receipts, summary:sc:cash.
+  // Elements only some roles have (the Controls section, .edit-only) are flagged data-role-only: they can still be
+  // highlighted/drawn on, but are never used as SCROLL anchors, so a follower is never sent to something it lacks.
+  // ───────────────────────────────────────────────────────────────────────
+  const ann = { hl: null, strokes: [] };
+  const ANN_COLORS = { gold: '#f1b81c', red: '#d6453a', navy: '#14233f' };
+  const ANN_MAX_STROKES = 30, ANN_MAX_PTS = 60;
+  const SCROLL_IDLE_MS = 500, SCROLL_MIN_GAP_MS = 800, SCROLL_MAX_WAIT_MS = 2500;
+  let anchorIndex = new Map();
+  const slug = (t, n) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, n || 40).replace(/-+$/, '');
+  const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function ownText(el) { let t = ''; el.childNodes.forEach(n => { if (n.nodeType === 3) t += n.nodeValue; else if (n.nodeType === 1 && !n.classList.contains('hint') && !n.classList.contains('edited-badge')) t += n.textContent; }); return t; }
+  const ANCHOR_SEL = '.slide-head, .slide-body, .panel, .tile, .hero .big, .ring-box, .svgwrap, .legend > span, .bk-legend > span, table.t tbody tr, .pk-row, .pk-more > summary, .sc, ul.rank li, ul.sum-list li, .points, .points li, .rc-item, svg[data-chart] [data-tip]';
+  function assignAnchors(only) {
+    const slides = only ? [only] : [...document.querySelectorAll('.slide')];
+    slides.forEach(sl => {
+      const sid = sl.dataset.slide, seen = Object.create(null);
+      sl.querySelectorAll('[data-anchor]').forEach(e => { e.removeAttribute('data-anchor'); e.removeAttribute('data-role-only'); });
+      sl.querySelectorAll(ANCHOR_SEL).forEach(el => {
+        let key = null;
+        const cl = el.classList;
+        if (el.closest('svg') && el.tagName.toLowerCase() !== 'svg') {
+          if (cl.contains('coin')) return;                                    // 100 identical coins: the legend items are the anchors
+          const svg = el.closest('svg[data-chart]'); if (!svg) return;
+          const tipText = (el.getAttribute('data-tip') || '').split(';')[0].replace(/₱[\d,.]+[Mk]?/g, '').replace(/[\s:+\-−·()]+$/g, '');
+          key = `${sid}:mark:${svg.dataset.chart}:${slug(tipText, 40) || 'mark'}`;
+        } else if (cl.contains('slide-head')) key = `${sid}:head`;
+        else if (cl.contains('slide-body')) key = `${sid}:body`;
+        else if (cl.contains('sc')) key = `${sid}:sc:${slug((el.id || '').replace(/^sc-/, '') || el.textContent, 30)}`;
+        else if (cl.contains('tile') || cl.contains('big')) { const l = el.querySelector('.lbl'); key = `${sid}:tile:${slug(l ? l.textContent : el.textContent, 40)}`; }
+        else if (cl.contains('ring-box')) key = `${sid}:ring`;
+        else if (cl.contains('svgwrap')) { const sv = el.querySelector('svg[data-chart]'), any = el.querySelector('svg'); key = `${sid}:chart:${sv ? sv.dataset.chart : slug(any ? any.getAttribute('aria-label') : '', 24) || 'img'}`; }
+        else if (cl.contains('pk-row')) key = `${sid}:row:${slug(el.dataset.ak, 40)}`;
+        else if (el.tagName === 'TR') { const pn = el.closest('.panel'), h = pn && pn.querySelector('h3'); key = `${sid}:row:${slug(h ? ownText(h) : '', 24)}:${slug(el.cells[0] ? el.cells[0].textContent : '', 30)}`; }
+        else if (el.tagName === 'SUMMARY') key = `${sid}:more`;
+        else if (cl.contains('points')) key = `${sid}:points`;
+        else if (cl.contains('rc-item')) key = `${sid}:rc:${slug(el.textContent, 30)}`;
+        else if (el.tagName === 'LI') key = `${sid}:${el.closest('.points') ? 'point' : 'li'}:${slug(el.textContent, 40)}`;
+        else if (el.parentNode && /legend/.test(el.parentNode.className || '')) key = `${sid}:legend:${slug(el.textContent, 30)}`;
+        else if (cl.contains('panel')) { const h = el.querySelector('h3'); key = `${sid}:panel:${slug(h ? ownText(h) : el.textContent, 30) || 'panel'}`; }
+        if (!key || /:$/.test(key)) return;                                // nothing to name it by (e.g. a colour swatch with no text)
+        let k = key, n = 1; while (seen[k]) k = `${key}~${++n}`; seen[k] = 1;
+        el.setAttribute('data-anchor', k);
+        if (el.closest('.edit-only') || (sid === 'controls' && !/:(head|body)$/.test(k))) el.setAttribute('data-role-only', '1');
+      });
+    });
+    anchorIndex = new Map(); document.querySelectorAll('[data-anchor]').forEach(el => anchorIndex.set(el.getAttribute('data-anchor'), el));
+  }
+  function findAnchor(key) {
+    if (!key) return null;
+    let el = anchorIndex.get(key);
+    if (el && !el.isConnected) { anchorIndex = new Map(); document.querySelectorAll('[data-anchor]').forEach(e => anchorIndex.set(e.getAttribute('data-anchor'), e)); el = anchorIndex.get(key); }
+    return el || null;
+  }
+  const isShown = el => { if (!el || !el.isConnected) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+
+  // --- scroll geometry (the window in dashboard mode, the active slide in Slide show) ---
+  const scroller = () => (ui.presenting ? document.querySelector('.slide.active') : null);
+  const scrollTopOf = () => { const s = scroller(); return s ? s.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0); };
+  function presBarH() { const b = $('pres-ui'); return ui.presenting && b ? Math.ceil(b.getBoundingClientRect().height) : 0; }
+  // y of the top of the area content is actually visible in: below the sticky section navigator and the follower banner
+  function visibleTop() {
+    const s = scroller(); if (s) return Math.max(0, s.getBoundingClientRect().top);
+    const nav = $('sec-nav'), navH = nav && nav.style.display !== 'none' ? Math.ceil(nav.getBoundingClientRect().height) : 0;
+    const fh = follow.on ? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--follow-h'), 10) || 0) : 0;
+    return navH + fh + 8;
+  }
+  function scrollByDelta(d) {
+    const s = scroller(), opt = { top: d, behavior: reducedMotion() ? 'auto' : 'smooth' };
+    try { (s || window).scrollBy(opt); } catch (e) { if (s) s.scrollTop += d; else window.scrollBy(0, d); }
+  }
+
+  // --- presenter: publish the scroll anchor once scrolling settles ---
+  function computeScrollAnchor() {
+    if (scrollTopOf() <= 2) return null;
+    const T = visibleTop(), list = [];
+    let best = null, bestA = Infinity, below = null, belowTop = Infinity;
+    document.querySelectorAll('.slide [data-anchor]').forEach(el => {
+      if (el.hasAttribute('data-role-only') || el.closest('svg')) return;
+      if (/:body(~\d+)?$/.test(el.getAttribute('data-anchor'))) return;
+      const r = el.getBoundingClientRect(); if (r.width <= 0 || r.height <= 0) return;
+      list.push(el);
+      if (r.top <= T + 1 && r.bottom > T + 1) { const a = r.width * r.height; if (a < bestA) { bestA = a; best = el; } }
+      else if (r.top > T + 1 && r.top < belowTop) { belowTop = r.top; below = el; }
+    });
+    const el = best || below; if (!el) return null;
+    const r = el.getBoundingClientRect(), key = el.getAttribute('data-anchor'), sid = el.closest('.slide').dataset.slide;
+    const frac = best ? Math.max(0, Math.min(1, (T - r.top) / r.height)) : 0;
+    if (/:head$/.test(key) && frac < 0.05) return null;       // at the top of the section
+    const i = list.indexOf(el), prev = [];
+    for (let j = i - 1; j >= 0 && prev.length < 3; j--) if (list[j].closest('.slide').dataset.slide === sid) prev.push(list[j].getAttribute('data-anchor'));
+    return { anchor: key, frac: +frac.toFixed(3), section: sid, prev };
+  }
+  const scrollSig = s => (s ? JSON.stringify([s.anchor, Math.round((s.frac || 0) * 20)]) : 'top');
+  let scrollIdleT = null, scrollFirstAt = 0;
+  function onPresenterScroll(e) {
+    if (!isTreasurer() || !presenter.active || !ui.kpi) return;
+    const t = e.target;
+    if (t !== document && !(t.classList && t.classList.contains('slide') && t.classList.contains('active'))) return;   // inner scrollers (tables, pills) are not page scrolls
+    const now = Date.now(); if (!scrollFirstAt) scrollFirstAt = now;
+    clearTimeout(scrollIdleT);
+    scrollIdleT = setTimeout(settleScroll, now - scrollFirstAt >= SCROLL_MAX_WAIT_MS ? 0 : SCROLL_IDLE_MS);
+  }
+  function settleScroll() {
+    scrollFirstAt = 0;
+    if (!isTreasurer() || !presenter.active) return;
+    const a = computeScrollAnchor();
+    if (scrollSig(a) === scrollSig(presenter.scroll)) return;
+    presenter.scroll = a;
+    schedulePublish({ scroll: true });
+  }
+  document.addEventListener('scroll', e => { onPresenterScroll(e); scheduleAnnLayout(); }, { passive: true, capture: true });
+
+  // --- follower: align the same anchor to the same place ---
+  function alignAnchor(sc) {
+    let el = findAnchor(sc.anchor), f = sc.frac || 0;
+    if (!isShown(el)) {                                       // missing on this screen/role: nearest preceding anchor of the section, else the section top
+      el = null;
+      for (const p of (sc.prev || [])) { const e2 = findAnchor(p); if (isShown(e2)) { el = e2; f = 0; break; } }
+    }
+    if (!el) { scrollSectionTop(); return; }
+    const r = el.getBoundingClientRect(), delta = r.top + f * r.height - visibleTop();
+    if (Math.abs(delta) > Math.max(20, window.innerHeight * 0.04)) scrollByDelta(delta);
+  }
+  function scrollSectionTop() {
+    const s = scroller();
+    if (s) { try { s.scrollTo({ top: 0, behavior: reducedMotion() ? 'auto' : 'smooth' }); } catch (e) { s.scrollTop = 0; } }
+    else { const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) { ui.navLockUntil = Date.now() + 800; el.scrollIntoView({ behavior: 'auto', block: 'start' }); } }
+  }
+  // returns true when it moved (or decided) something
+  function applyRemoteScroll(sc, force) {
+    const sig = scrollSig(sc);
+    if (!force && sig === follow.lastScrollSig) return false;
+    const had = follow.lastScrollSig && follow.lastScrollSig !== 'top';
+    follow.lastScrollSig = sig;
+    if (!sc) { if (had || force) scrollSectionTop(); return true; }
+    alignAnchor(sc); return true;
+  }
+  function revealHighlight() {
+    const el = findAnchor(ann.hl); if (!isShown(el)) return;
+    const T = visibleTop(), bottom = window.innerHeight - presBarH() - (ui.presenting ? 0 : 8), r = el.getBoundingClientRect();
+    if (r.top >= T && r.bottom <= bottom) return;
+    const delta = r.height > bottom - T ? r.top - T - 8 : (r.top + r.height / 2) - (T + (bottom - T) / 2);
+    scrollByDelta(delta);
+  }
+  const nextFrames = () => new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+  function validStroke(s) {
+    return s && typeof s.anchor === 'string' && /^#[0-9a-f]{6}$/i.test(s.color || '') && Array.isArray(s.pts) && s.pts.length >= 4 && s.pts.length % 2 === 0 && s.pts.every(n => typeof n === 'number' && Number.isFinite(n));
+  }
+  function setAnnFromDoc(d) {
+    ann.hl = d.highlight && typeof d.highlight.anchor === 'string' ? d.highlight.anchor : null;
+    ann.strokes = (Array.isArray(d.strokes) ? d.strokes : []).filter(validStroke).slice(-ANN_MAX_STROKES);
+    layoutAnn();
+  }
+
+  // --- overlays: ring + dim, strokes (presenter and followers draw the same thing) ---
+  const HL_PAD = 4;
+  function regionFor(el) {
+    const sl = el.closest('.slide'); if (!sl) return null;
+    const sr = sl.getBoundingClientRect(), top = Math.max(sr.top, visibleTop()), bottom = Math.min(sr.bottom, window.innerHeight - presBarH());
+    const left = Math.max(sr.left, 0), right = Math.min(sr.right, window.innerWidth);
+    return bottom > top && right > left ? { top, bottom, left, right } : null;
+  }
+  let annRaf = 0;
+  function scheduleAnnLayout() { if (annRaf || (!ann.hl && !ann.strokes.length && !ui.penMode)) return; annRaf = requestAnimationFrame(() => { annRaf = 0; layoutAnn(); }); }
+  function layoutAnn() {
+    const dim = $('ann-dim'), ring = $('ann-ring'), svg = $('ann-strokes'), pen = $('pen-layer');
+    if (!dim || !svg) return;
+    let hlOn = false;
+    const hel = ann.hl ? findAnchor(ann.hl) : null;
+    if (hel && isShown(hel)) {
+      const reg = regionFor(hel), r = hel.getBoundingClientRect();
+      if (reg && r.bottom > reg.top && r.top < reg.bottom && r.right > reg.left && r.left < reg.right) {
+        dim.style.cssText = `display:block;left:${reg.left}px;top:${reg.top}px;width:${reg.right - reg.left}px;height:${reg.bottom - reg.top}px`;
+        ring.style.cssText = `left:${(r.left - reg.left - HL_PAD).toFixed(1)}px;top:${(r.top - reg.top - HL_PAD).toFixed(1)}px;width:${(r.width + 2 * HL_PAD).toFixed(1)}px;height:${(r.height + 2 * HL_PAD).toFixed(1)}px`;
+        hlOn = true;
+      }
+    }
+    if (!hlOn) dim.style.display = 'none';
+    let h = '';
+    ann.strokes.forEach((s, i) => {
+      const el = findAnchor(s.anchor); if (!isShown(el)) return;
+      const r = el.getBoundingClientRect(), reg = regionFor(el); if (!reg) return;
+      let d = '';
+      for (let j = 0; j < s.pts.length; j += 2) d += `${j ? 'L' : 'M'}${(r.left + s.pts[j] * r.width).toFixed(1)} ${(r.top + s.pts[j + 1] * r.height).toFixed(1)}`;
+      h += `<clipPath id="ann-c${i}"><rect x="${reg.left}" y="${reg.top}" width="${reg.right - reg.left}" height="${reg.bottom - reg.top}"/></clipPath><g clip-path="url(#ann-c${i})"><path class="ann-halo" d="${d}"/><path class="ann-stroke" data-stroke="${escapeAttr(s.id)}" data-stroke-anchor="${escapeAttr(s.anchor)}" stroke="${s.color}" d="${d}"/></g>`;
+    });
+    if (svg.__h !== h) { svg.innerHTML = h; svg.__h = h; }
+    if (pen) { pen.style.top = visibleTop() + 'px'; pen.style.bottom = presBarH() + 'px'; }
+  }
+  window.addEventListener('resize', scheduleAnnLayout);
+  window.addEventListener('orientationchange', () => setTimeout(scheduleAnnLayout, 250));
+  document.addEventListener('animationend', scheduleAnnLayout, true);
+  if (window.ResizeObserver) { try { new ResizeObserver(scheduleAnnLayout).observe($('dash')); } catch (e) { /* optional */ } }
+
+  // --- presenter tools: Highlight and Pen modes ---
+  function updateAnnBar() {
+    const bar = $('ann-bar'); if (!bar) return;
+    const show = isTreasurer() && presenter.active && !!ui.kpi;
+    bar.style.display = show ? 'flex' : 'none';
+    document.body.classList.toggle('ann-tools', show);
+    $('ab-hl').setAttribute('aria-pressed', String(!!ui.hlMode)); $('ab-pen').setAttribute('aria-pressed', String(!!ui.penMode));
+    $('ab-cols').style.display = ui.penMode ? 'inline-flex' : 'none';
+    bar.querySelectorAll('[data-col]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.col === ui.penColor)));
+    document.body.classList.toggle('hl-on', !!ui.hlMode); document.body.classList.toggle('pen-on', !!ui.penMode);
+    $('ab-clear').disabled = !(ann.hl || ann.strokes.length);
+  }
+  function toggleHlMode(on) { if (!presenter.active) return; ui.hlMode = on === undefined ? !ui.hlMode : !!on; if (ui.hlMode) ui.penMode = false; updateAnnBar(); layoutAnn(); }
+  function togglePenMode(on) { if (!presenter.active) return; ui.penMode = on === undefined ? !ui.penMode : !!on; if (ui.penMode) ui.hlMode = false; updateAnnBar(); layoutAnn(); }
+  function setPenColor(c) { if (ANN_COLORS[c]) { ui.penColor = c; updateAnnBar(); } }
+  function setHighlight(key) { ann.hl = key || null; layoutAnn(); updateAnnBar(); schedulePublish(); }
+  function clearAnnotationsNow() { ann.hl = null; ann.strokes = []; layoutAnn(); updateAnnBar(); schedulePublish(); }
+  // the annotations belong to one section and one month selection: drop them (and the stale scroll anchor) when either changes
+  function onSectionChanged() {
+    if (!presenter.active) return;
+    ann.hl = null; ann.strokes = []; presenter.scroll = null; layoutAnn(); updateAnnBar();
+  }
+  function resetAnnState() {
+    ui.hlMode = false; ui.penMode = false; ann.hl = null; ann.strokes = []; presenter.scroll = null;
+    layoutAnn(); updateAnnBar();
+  }
+  // Pruning: if the presenter's own re-render removed the highlighted/drawn-on element (e.g. another pitaka view), drop it.
+  function pruneAnnotations() {
+    if (!presenter.active) return;
+    let changed = false;
+    if (ann.hl && !findAnchor(ann.hl)) { ann.hl = null; changed = true; }
+    const keep = ann.strokes.filter(s => findAnchor(s.anchor));
+    if (keep.length !== ann.strokes.length) { ann.strokes = keep; changed = true; }
+    if (changed) { layoutAnn(); updateAnnBar(); schedulePublish(); }
+  }
+  const ANN_CHROME = '#ann-bar, .pres-ui, .topbar, .controls, #sec-nav, .follow-bar, #rotate-hint';
+  // While Highlight or Pen is on, taps in the content must not navigate / toggle / switch views.
+  window.addEventListener('click', e => {
+    if (!(ui.hlMode || ui.penMode)) return;
+    const t = e.target; if (!t || !t.closest || t.closest(ANN_CHROME)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (ui.hlMode) { const a = t.closest('[data-anchor]'); if (a && !/:body(~\d+)?$/.test(a.getAttribute('data-anchor'))) setHighlight(a.getAttribute('data-anchor')); }
+  }, true);
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && (ui.hlMode || ui.penMode)) { e.preventDefault(); e.stopImmediatePropagation(); ui.hlMode = false; ui.penMode = false; updateAnnBar(); layoutAnn(); }
+  }, true);
+
+  // --- pen ---
+  const pen = { on: false, pts: [], id: null };
+  function rdp(pts, eps) {
+    if (pts.length < 3) return pts;
+    const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+    const stack = [[0, pts.length - 1]];
+    const dist = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; if (!l) return Math.hypot(p[0] - a[0], p[1] - a[1]); const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l)); return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy)); };
+    while (stack.length) {
+      const [a, b] = stack.pop(); let dm = 0, ix = -1;
+      for (let i = a + 1; i < b; i++) { const d = dist(pts[i], pts[a], pts[b]); if (d > dm) { dm = d; ix = i; } }
+      if (dm > eps && ix > 0) { keep[ix] = 1; stack.push([a, ix], [ix, b]); }
+    }
+    return pts.filter((_, i) => keep[i]);
+  }
+  function simplifyStroke(pts) {
+    const dedup = pts.filter((p, i) => !i || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) >= 0.5);
+    let eps = 1.2, out = rdp(dedup, eps);
+    while (out.length > ANN_MAX_PTS) { eps *= 1.4; out = rdp(dedup, eps); }
+    return out;
+  }
+  function strokeAnchorFor(pts) {
+    const els = document.elementsFromPoint(pts[0][0], pts[0][1]);
+    let first = null;
+    for (const e of els) { const a = e.closest && e.closest('[data-anchor]'); if (a) { first = a; break; } }
+    if (!first) return null;
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), bx0 = Math.min(...xs), bx1 = Math.max(...xs), by0 = Math.min(...ys), by1 = Math.max(...ys);
+    const chain = []; for (let a = first; a; a = a.parentElement && a.parentElement.closest('[data-anchor]')) chain.push(a);
+    const usable = chain.filter(a => !a.closest('svg') || a.tagName.toLowerCase() === 'svg').filter(a => !/:mark:/.test(a.getAttribute('data-anchor')));
+    const fits = a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.height > 0 && bx0 >= r.left - 6 && bx1 <= r.right + 6 && by0 >= r.top - 6 && by1 <= r.bottom + 6; };
+    return usable.find(fits) || usable[usable.length - 1] || null;
+  }
+  function finishStroke() {
+    const live = $('ann-live'); live.innerHTML = '';
+    const raw = pen.pts; pen.pts = []; pen.id = null;
+    if (raw.length < 2) return;
+    const xs = raw.map(p => p[0]), ys = raw.map(p => p[1]);
+    if (Math.max(...xs) - Math.min(...xs) < 4 && Math.max(...ys) - Math.min(...ys) < 4) return;   // a tap, not a stroke
+    const pts = simplifyStroke(raw), el = strokeAnchorFor(pts); if (!el || pts.length < 2) return;
+    const r = el.getBoundingClientRect(), flat = [];
+    pts.forEach(p => { flat.push(+Math.max(-2, Math.min(3, (p[0] - r.left) / r.width)).toFixed(3), +Math.max(-2, Math.min(3, (p[1] - r.top) / r.height)).toFixed(3)); });
+    ann.strokes.push({ id: 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), anchor: el.getAttribute('data-anchor'), color: ANN_COLORS[ui.penColor] || ANN_COLORS.gold, pts: flat });
+    if (ann.strokes.length > ANN_MAX_STROKES) ann.strokes = ann.strokes.slice(-ANN_MAX_STROKES);   // drop the oldest
+    layoutAnn(); updateAnnBar();
+    schedulePublish();                                                        // pointer-up only: never streamed live
+  }
+  (function () {
+    const layer = $('pen-layer'); if (!layer) return;
+    const liveD = () => 'M' + pen.pts.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L');
+    layer.addEventListener('pointerdown', e => {
+      if (!ui.penMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault(); pen.id = e.pointerId; pen.pts = [[e.clientX, e.clientY]];
+      try { layer.setPointerCapture(e.pointerId); } catch (x) { /* optional */ }
+      $('ann-live').innerHTML = `<path class="ann-halo" d="${liveD()}"/><path class="ann-stroke" stroke="${ANN_COLORS[ui.penColor]}" d="${liveD()}"/>`;
+    });
+    layer.addEventListener('pointermove', e => {
+      if (pen.id === null || e.pointerId !== pen.id) return;
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      (evs.length ? evs : [e]).forEach(c => pen.pts.push([c.clientX, c.clientY]));
+      $('ann-live').querySelectorAll('path').forEach(p => p.setAttribute('d', liveD()));
+    });
+    const up = e => { if (pen.id === null || e.pointerId !== pen.id) return; try { layer.releasePointerCapture(e.pointerId); } catch (x) { /* optional */ } finishStroke(); };
+    layer.addEventListener('pointerup', up); layer.addEventListener('pointercancel', up);
+    layer.addEventListener('wheel', e => { const s = scroller(); e.preventDefault(); (s || window).scrollBy({ top: e.deltaY, behavior: 'auto' }); }, { passive: false });
+    layer.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); });
+  })();
+
+  // --- follower: a manual scroll gesture (wheel / touch / scroll keys - not programmatic scrolling) pauses following ---
+  (function () {
+    const pause = () => { if (follow.on && !follow.paused && !follow.applying) manualAction(); };
+    window.addEventListener('wheel', pause, { passive: true });
+    window.addEventListener('touchmove', pause, { passive: true });
+    window.addEventListener('keydown', e => {
+      if (/^(ArrowUp|ArrowDown|PageUp|PageDown|Home|End| )$/.test(e.key) && !(e.target && (/^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(e.target.tagName) || e.target.isContentEditable))) pause();
+    });
+  })();
 
   // ───────────────────────────────────────────────────────────────────────
   // 10. GENERATE & SAVE VERSION (Treasurer only) -> reportArchive + Storage, like the other pages
