@@ -148,6 +148,71 @@
     .points textarea { width: 100%; min-height: 96px; font-size: 16px; padding: 10px; border: 1px solid var(--gold); border-radius: 8px; font-family: inherit; color: var(--navy); }
     .edited-badge { font-size: 11px; background: var(--navy); color: #fff; border-radius: 999px; padding: 1px 8px; text-transform: none; letter-spacing: 0; }
 
+    /* Ending Balance check: full amount always shown (wraps), plus the Treasurer/Auditor "Explain the difference" panel */
+    .tile .val.wrapval { white-space: normal; overflow-wrap: anywhere; font-size: 22px; line-height: 1.2; }
+    .recon { border-color: #f1b5b0; background: #fff8f7; }
+    .recon h3 { color: var(--bad); }
+    .rc-sum-line { font-size: 15px; color: var(--navy); line-height: 1.35; margin-bottom: 4px; }
+    ul.rc-list { list-style: none; display: grid; gap: 8px; margin: 8px 0; }
+    .rc-item { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+    .rc-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+    .rc-eff { font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .rc-line { font-size: 14px; color: var(--ink-2); overflow-wrap: anywhere; margin-top: 2px; }
+    .rc-fine { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+    details.rc-more { margin-top: 8px; font-size: 14px; }
+    details.rc-more > summary { cursor: pointer; color: var(--navy-2); font-weight: 700; min-height: 32px; display: flex; align-items: center; }
+    table.rc-t td, table.rc-t th { white-space: nowrap; }
+    table.rc-t tr.rc-sum td { font-weight: 800; border-top: 2px solid var(--line); }
+
+
+    /* ── Section navigator + view modes (screen only; print, Slide show and the saved snapshot are untouched) ── */
+    .sec-nav { display: none; position: sticky; top: 0; z-index: 35; align-items: center; gap: 8px; background: #fff; border-bottom: 1px solid var(--line); box-shadow: 0 2px 8px rgba(20,35,63,.12);
+      padding: 6px max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); padding-top: calc(6px + env(safe-area-inset-top)); }
+    body.following .sec-nav { top: var(--follow-h); padding-top: 6px; }
+    .sec-pills { position: relative; display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 0; }
+    .sec-pills::-webkit-scrollbar { display: none; }
+    .sec-pill { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 4px 14px 4px 5px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; color: var(--navy); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .sec-pill b { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+    .sec-pill:hover { background: #f6f1e4; }
+    .sec-pill.on { background: var(--red); border-color: var(--red); color: #fff; }
+    .sec-pill.on b { background: var(--gold); color: var(--navy); }
+    .sec-pill:focus-visible, .sec-mode:focus-visible, .sf-btn:focus-visible { outline: 3px solid var(--navy-2); outline-offset: 2px; }
+    .sec-mode { flex: 0 0 auto; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1.5px solid var(--navy); background: #fff; color: var(--navy); font-weight: 700; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    .sec-mode:hover { background: #f6f1e4; }
+    body.presenting .sec-nav { display: none !important; }
+    .slide { scroll-margin-top: calc(var(--nav-h, 0px) + 8px); }
+    body.following .slide { scroll-margin-top: calc(var(--nav-h, 0px) + var(--follow-h) + 8px); }
+    .sec-foot, .sec-divider { display: none; }
+    /* One section at a time (default): only the current section is shown, with big Previous / Next buttons */
+    body.view-one:not(.presenting) .slide { display: none; }
+    body.view-one:not(.presenting) .slide.current { display: block; }
+    body.view-one:not(.presenting) .sec-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px 22px 22px; border-top: 2px solid var(--line); background: #faf7ef; }
+    .sf-count { grid-column: 1 / -1; text-align: center; font-size: 15px; font-weight: 700; color: var(--muted); letter-spacing: .3px; }
+    .sf-btn { min-height: 58px; padding: 10px 14px; border-radius: 14px; font-size: 17px; font-weight: 800; cursor: pointer; border: 2px solid var(--navy); background: #fff; color: var(--navy); display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+    .sf-btn.next { background: var(--navy); color: var(--gold); }
+    .sf-btn:hover { background: #f6f1e4; } .sf-btn.next:hover { background: var(--navy-2); }
+    .sf-btn.next:first-of-type:last-child { grid-column: 2; }
+    .sf-spacer { display: block; }
+    /* Show all sections: the long scroll, but with a clearly separated block per section */
+    body.view-all:not(.presenting) .slide { margin-bottom: 0; box-shadow: 0 4px 22px rgba(20,35,63,.16); }
+    body.view-all:not(.presenting) .sec-divider { display: flex; align-items: center; gap: 12px; margin: 34px 6px; }
+    body.view-all:not(.presenting) .sec-divider::before, body.view-all:not(.presenting) .sec-divider::after { content: ''; flex: 1; height: 0; border-top: 3px dashed #d9cfae; }
+    body.view-all:not(.presenting) .sec-divider i { width: 12px; height: 12px; background: var(--gold); transform: rotate(45deg); display: block; }
+    @media screen {
+      body.dash-nav:not(.presenting) .slide-head { background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); padding: 16px 22px; margin-bottom: 10px; }
+      body.dash-nav:not(.presenting) .slide-head h2 { color: #fff; }
+      body.dash-nav:not(.presenting) .slide-head .q { color: #dbe3f3; }
+      body.dash-nav:not(.presenting) .slide-num { background: var(--gold); color: var(--navy); }
+    }
+    @media (max-width: 600px) {
+      .sec-pill { font-size: 13px; padding-right: 12px; }
+      .sec-mode { padding: 0 9px; font-size: 12px; }
+      body.dash-nav:not(.presenting) .slide-head { padding: 14px 14px; }
+      body.view-one:not(.presenting) .sec-foot { padding: 14px 14px 18px; }
+      .sf-btn { font-size: 15px; padding: 8px 10px; }
+      body.view-all:not(.presenting) .sec-divider { margin: 26px 4px; }
+    }
+
     /* navigation helpers */
     .tools { display: none; }
     body.presenting .per100-toggle { display: none; }
@@ -409,6 +474,18 @@
       .legend { font-size: 11px; gap: 4px 10px; }
       .status-msg { padding: 16px 12px; font-size: 14px; }
 
+      .sec-nav { padding-top: 3px; padding-bottom: 3px; padding-top: calc(3px + env(safe-area-inset-top)); gap: 6px; }
+      body.following .sec-nav { padding-top: 3px; }
+      .sec-pill { min-height: 34px; font-size: 12.5px; padding: 2px 11px 2px 4px; gap: 6px; } .sec-pill b { width: 26px; height: 26px; font-size: 13px; }
+      .sec-mode { min-height: 34px; font-size: 12px; padding: 0 10px; }
+      body.dash-nav:not(.presenting) .slide-head { padding: 7px 14px; margin-bottom: 4px; }
+      body.view-one:not(.presenting) .sec-foot { padding: 8px 14px 10px; gap: 6px; grid-template-columns: 1fr auto 1fr; }
+      .sf-count { grid-row: 1; grid-column: 2; font-size: 12px; align-self: center; }
+      .sf-btn { min-height: 44px; font-size: 14px; border-radius: 10px; padding: 4px 10px; }
+      .sf-btn.prev { grid-row: 1; grid-column: 1; } .sf-spacer { grid-row: 1; grid-column: 1; }
+      .sf-btn.next { grid-row: 1; grid-column: 3; } .sf-btn.next:first-of-type:last-child { grid-column: 3; }
+      body.view-all:not(.presenting) .sec-divider { margin: 16px 4px; }
+
       /* Slide show / follow mode */
       body.presenting .slide { border-top-width: 6px; padding-bottom: 46px; }
       body.presenting .slide-head { padding: 6px 3vw 2px; }
@@ -463,7 +540,8 @@
     @media print {
       @page { size: A4 landscape; margin: 10mm; }
       body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only { display: none !important; }
+      .topbar, .controls, .tools, .per100-toggle, .bt-toggle, .follow-bar, .pres-ui, #rotate-hint, details.tv, #tip, .edit-only, .sec-nav, .sec-foot, .sec-divider { display: none !important; }
+      body.view-one .slide { display: block !important; }
       #dash { max-width: none; padding: 0; }
       .slide { box-shadow: none; border-radius: 0; break-after: page; page-break-after: always; margin: 0; border-top: 6px solid var(--red); }
       .slide:last-child { break-after: auto; page-break-after: auto; }
@@ -514,6 +592,11 @@
     <button class="btn" id="btn-resume" style="display:none" onclick="resumeFollow()">Resume following</button>
     <button class="btn" onclick="toggleFollow()">Stop following</button>
   </div>
+
+  <nav class="sec-nav" id="sec-nav" aria-label="Dashboard sections">
+    <div class="sec-pills" id="sec-pills"></div>
+    <button type="button" class="sec-mode" id="btn-viewmode" aria-pressed="false">Show all</button>
+  </nav>
 
   <div id="rotate-hint" role="status" style="display:none"><span>&#128241; Rotate your phone for a bigger view</span><button type="button" id="btn-landscape" class="hint-land" style="display:none" onclick="landscapeFromHint()">Landscape</button><button type="button" class="hint-x" aria-label="Dismiss" onclick="dismissRotateHint()">&times;</button></div>
   <div id="dash"><div class="status-msg" id="loading-msg">Loading the numbers&hellip;</div></div>
@@ -720,22 +803,30 @@
     return hasNetPayroll ? Math.max(0, netPay) : (parseFloat(d.amount) || 0);
   }
   // True per-account cash balances through endDate (same rules as financial-overview.html's combineAndRender()).
+  // The per-document step is factored out (applyIncomeToBalances / applyExpenseToBalances) so the Ending Balance
+  // diagnostic (explainReconcile) uses exactly the same rule - behaviour is unchanged.
+  function applyIncomeToBalances(balances, d) {
+    const id = getIncomeAccountId(d);
+    if (balances[id] === undefined) return;
+    balances[id] += parseFloat(d.amount || 0);
+  }
+  function applyExpenseToBalances(balances, d) {
+    const id = getExpenseAccountId(d);
+    if (balances[id] === undefined) return;
+    balances[id] -= getExpenseCashImpact(d);
+  }
   function getAccountBalancesThrough(endDate) {
     const balances = {};
     FINANCIAL_ACCOUNTS.forEach(a => balances[a.id] = parseFloat(beginningAccounts[a.id] || 0));
 
     allIncomeData.forEach(d => {
       if (!d.date || new Date(d.date) > endDate) return;
-      const id = getIncomeAccountId(d);
-      if (balances[id] === undefined) return;
-      balances[id] += parseFloat(d.amount || 0);
+      applyIncomeToBalances(balances, d);
     });
 
     allExpenseData.forEach(d => {
       if (!d.date || new Date(d.date) > endDate) return;
-      const id = getExpenseAccountId(d);
-      if (balances[id] === undefined) return;
-      balances[id] -= getExpenseCashImpact(d);
+      applyExpenseToBalances(balances, d);
     });
 
     return balances;
@@ -1268,6 +1359,124 @@
       outstandingWithholdingsAtEnd, buildingHeldAtEnd, gfTrueEndBalance, restrictedTrueEndBalance, accountBalances,
       gfAccounts, restrictedAccounts, restrictedActivityAll, fInc, fExp, periodIncome
     };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Ending Balance check - "Explain the difference" (Treasurer / Auditor diagnostic; READ-ONLY).
+  // The check itself (computeStatement's reconcileDiff) is a verbatim copy of print-report.html and is NOT touched.
+  // Algebra: begBal is derived from the balances, so
+  //   reconcileDiff = (GFend - W_end - B_end) - endBal,  endBal = (GFbeg - W_beg - B_beg) + spanNet
+  //                 = SUM over documents of  a - c - b
+  // where, per document dated in the first..last span,
+  //   a = its effect on the General Fund account balances (the SAME per-document rule getAccountBalancesThrough() uses),
+  //   b = its effect on the statement's Ending Balance (receipts / disbursements / net transfers, over the first..last span),
+  //   c = its effect on the two "set aside" adjustments (payroll withholdings held + Building Fund money held in GF accounts).
+  // Documents with a - c = b cancel out; the rest are listed and their effects add up EXACTLY to reconcileDiff.
+  // Internal control panel: payee / member names are shown to Treasurer and Auditor only, never in print or the snapshot.
+  const RECON_CAUSES = {
+    'unknown-account': 'posted to an account the system does not recognise',
+    'special-project-excluded': 'special-project costs the statement leaves out',
+    'payroll-net-over-gross': 'payroll entries with net pay above gross pay',
+    'other': 'other (unclassified)'
+  };
+  function explainReconcile(year, monthsArr, st) {
+    const first = monthsArr[0], last = monthsArr[monthsArr.length - 1];
+    const targetDate = new Date(year, first, 1);
+    const periodEndDate = new Date(year, last + 1, 0, 23, 59, 59);
+    const dayBeforeStart = new Date(targetDate.getTime() - 1);
+    // same predicates as getAccountBalancesThrough / outstandingWithholdingsThrough / buildingFundHeldInGfThrough
+    const reached = (d, through) => !!d.date && !(new Date(d.date) > through);
+    const win = d => (reached(d, periodEndDate) ? 1 : 0) - (reached(d, dayBeforeStart) ? 1 : 0);
+    // same predicate as computeStatement's inSpan
+    const inSpan = d => { if (!d.date) return false; const dt = new Date(d.date); return dt.getFullYear() === year && dt.getMonth() >= first && dt.getMonth() <= last; };
+    const gfIds = FINANCIAL_ACCOUNTS.filter(a => isGeneralFundAccount(a.id)).map(a => a.id);
+    const zero = () => { const b = {}; FINANCIAL_ACCOUNTS.forEach(a => b[a.id] = 0); return b; };
+    const gfSum = b => gfIds.reduce((s, id) => s + b[id], 0);
+    const known = id => FINANCIAL_ACCOUNTS.some(a => a.id === id);
+    const nameOf = id => { const a = FINANCIAL_ACCOUNTS.find(x => x.id === id); return a ? a.name : `"${id}" (not a known account)`; };
+    const amt = d => parseFloat(d.amount || 0);
+    const rows = [];
+    const examined = { income: 0, expense: 0, transfer: 0, payroll: 0, remittance: 0 };
+
+    allIncomeData.forEach(d => {
+      const w = win(d), isT = d.type === 'transfer', span = inSpan(d);
+      if (!w && !span) return;
+      const id = getIncomeAccountId(d), bal = zero();
+      applyIncomeToBalances(bal, d);
+      const a = gfSum(bal) * w;
+      const b = span ? ((isT ? isGeneralFundAccount(id) : isGeneralFundIncome(d)) ? amt(d) : 0) : 0;
+      const held = !isT && isBuildingFundEntry(d, false) && isGeneralFundAccount(id);
+      const c = w * (held ? amt(d) : 0);
+      const pool = isT ? (isGeneralFundAccount(id) ? 'Net Fund Transfers (General Fund side)' : 'Transfers - restricted account side (not in the General Fund statement)')
+        : held ? 'Building Fund money held in General Fund accounts' : isGeneralFundIncome(d) ? 'General Fund receipts' : 'Restricted Fund Activity (not in General Fund receipts)';
+      examined[isT ? 'transfer' : 'income']++;
+      rows.push({ kind: isT ? 'Transfer in' : 'Income', group: isT ? 'transfer' : 'income', date: d.date, category: d.budgetCategory || d.category || d.type || '', who: d.member || d.payee || '',
+        amount: amt(d), accountId: id, accountName: nameOf(id), accountKnown: known(id), pool, a, b, c, effect: a - c - b });
+    });
+    allExpenseData.forEach(d => {
+      const w = win(d), isT = d.type === 'transfer', isRem = d.type === 'deduction-payment', span = inSpan(d);
+      if (!w && !span) return;
+      const id = getExpenseAccountId(d), bal = zero();
+      applyExpenseToBalances(bal, d);
+      const a = gfSum(bal) * w;
+      const reportable = !isT && !isRem && isReportableSpecialProjectExpense(d);
+      let b = 0, pool;
+      if (isT) { b = span && isGeneralFundAccount(id) ? -amt(d) : 0; pool = isGeneralFundAccount(id) ? 'Net Fund Transfers (General Fund side)' : 'Transfers - restricted account side (not in the General Fund statement)'; }
+      else if (isRem) pool = 'Not in Disbursements (remittance of payroll withholdings)';
+      else if (!reportable) pool = 'EXCLUDED from the statement (special-project cost not paid from Cash on Hand / Cash in Bank)';
+      else { b = span && isGeneralFundExpense(d) ? -amt(d) : 0; pool = isBuildingFundEntry(d, true) && isGeneralFundAccount(id) ? 'Building Fund money held in General Fund accounts' : isGeneralFundExpense(d) ? 'General Fund disbursements' : 'Restricted Fund Activity (not in General Fund disbursements)'; }
+      // payroll withholdings: same branch structure as outstandingWithholdingsThrough()
+      let wTerm = 0;
+      if (isGeneralFundAccount(id)) {
+        if (d.isPayrollGenerated && !d.isBenefit) { const netPay = parseFloat(d.netPay); if (Number.isFinite(netPay)) wTerm = Math.max(0, amt(d) - netPay); }
+        else if (isRem) wTerm = -amt(d);
+      }
+      const bTerm = reportable && isBuildingFundEntry(d, true) && isGeneralFundAccount(id) ? -amt(d) : 0;
+      const c = w * (wTerm + bTerm);
+      const isPay = !!d.isPayrollGenerated && !d.isBenefit;
+      const g = isT ? 'transfer' : isRem ? 'remittance' : isPay ? 'payroll' : 'expense';
+      examined[g]++;
+      rows.push({ kind: isT ? 'Transfer out' : isRem ? 'Remittance' : isPay ? 'Payroll' : 'Expense', group: g, date: d.date, category: d.category || d.budgetCategory || d.type || '', who: d.payee || d.sub || '',
+        amount: amt(d), accountId: id, accountName: nameOf(id), accountKnown: known(id), pool, a, b, c, effect: a - c - b, payment: String(d.payment || ''),
+        spExcluded: g === 'expense' && !reportable, netOverGross: isPay && Number.isFinite(parseFloat(d.netPay)) && parseFloat(d.netPay) > amt(d) + 0.004 });
+    });
+
+    const items = rows.filter(r => Math.abs(r.effect) >= 0.005).map(r => {
+      const cause = !r.accountKnown ? 'unknown-account' : r.spExcluded ? 'special-project-excluded' : r.netOverGross ? 'payroll-net-over-gross' : 'other';
+      return { ...r, cause };
+    }).sort((x, y) => Math.abs(y.effect) - Math.abs(x.effect) || String(x.date).localeCompare(String(y.date)));
+    const totals = rows.reduce((t, r) => ({ a: t.a + r.a, b: t.b + r.b, c: t.c + r.c }), { a: 0, b: 0, c: 0 });
+    const groups = ['income', 'expense', 'payroll', 'remittance', 'transfer'].map(g => {
+      const rs = rows.filter(r => r.group === g);
+      return { id: g, n: rs.length, a: rs.reduce((s, r) => s + r.a, 0), b: rs.reduce((s, r) => s + r.b, 0), c: rs.reduce((s, r) => s + r.c, 0) };
+    });
+    const listedTotal = items.reduce((s, r) => s + r.effect, 0);
+    const rebuilt = totals.a - totals.c - totals.b;
+    return {
+      items, totals, groups, examined, rebuilt, listedTotal, reconcileDiff: st.reconcileDiff,
+      ties: Math.abs(listedTotal - st.reconcileDiff) < 0.005 && Math.abs(rebuilt - st.reconcileDiff) < 0.005,
+      overRemitted: st.outstandingWithholdingsAtEnd < -0.005 ? -st.outstandingWithholdingsAtEnd : 0,
+      summary: reconcileSummary(items, st.reconcileDiff)
+    };
+  }
+  const reconDay = iso => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? `${parseInt(m[3], 10)} ${SHORT_MONTHS[parseInt(m[2], 10) - 1]}` : String(iso || 'undated'); };
+  function reconItemReason(r) {
+    const amtTxt = '₱' + fmt(Math.abs(r.amount)), when = reconDay(r.date), what = r.kind.toLowerCase();
+    if (r.cause === 'unknown-account') return `1 ${what} of ${amtTxt} on ${when} is posted to ${r.accountName}: the account balances skip it, but the statement counts it as General Fund.`;
+    if (r.cause === 'special-project-excluded') return `1 special-project cost of ${amtTxt} on ${when} was paid from ${r.accountName}${r.payment && !/^(cash|bank transfer|petty cash)$/i.test(r.payment) ? ` (payment method "${r.payment}")` : ''}: the General Fund accounts are reduced, but the statement leaves out special-project costs not paid from Cash on Hand / Cash in Bank.`;
+    if (r.cause === 'payroll-net-over-gross') return `1 payroll entry on ${when} has net pay above its gross pay, so cash fell by more than the ${amtTxt} that was expensed.`;
+    return `1 ${what} of ${amtTxt} on ${when} (${r.accountName}) is treated differently by the account balances and the statement.`;
+  }
+  function reconcileSummary(items, diff) {
+    if (!items.length) return Math.abs(diff) < 0.01 ? 'The accounts and the statement agree - no document explains a difference.' : 'No single document explains the difference.';
+    if (items.length === 1) return reconItemReason(items[0]);
+    const by = {};
+    items.forEach(r => { (by[r.cause] = by[r.cause] || []).push(r); });
+    const mag = l => l.reduce((s, r) => s + Math.abs(r.effect), 0);
+    const top = Object.keys(by).sort((x, y) => mag(by[y]) - mag(by[x]))[0], list = by[top];
+    const others = items.length - list.length;
+    if (list.length === 1) return reconItemReason(list[0]) + (others ? ` ${others} other document${others === 1 ? '' : 's'} also differ.` : '');
+    return `${list.length} documents (${RECON_CAUSES[top]}) together move the check by ${spesos(list.reduce((s, r) => s + r.effect, 0))}${others ? `; ${others} more document${others === 1 ? '' : 's'} differ` : ''}.`;
   }
 
   function pctChange(cur, prev) { return Math.abs(prev) > 0.005 ? ((cur - prev) / Math.abs(prev)) * 100 : null; }
@@ -1927,7 +2136,8 @@
       sundays: sundays.length, sundaysWithSheet: withSheet, countMismatches: mismatches, countChecked: checked, countSheetsReadable: raw.countSheets !== null,
       advancesOpen: open.length, advancesAmount: sumF(open, r => Number(r.amount || 0)), advancesOldestDays: oldest,
       workflowApplies: !!wfId, workflowStatus: wfId ? (review ? (WF[review.status] || review.status || 'Draft') : 'Not started') : '',
-      reconcileClean: st.reconcileIsClean, reconcileDiff: st.reconcileDiff
+      reconcileClean: st.reconcileIsClean, reconcileDiff: st.reconcileDiff,
+      explain: explainReconcile(period.year, period.months, st)
     };
   }
 
@@ -2681,11 +2891,38 @@
     return `<div class="grid2"><div class="panel"><h3>Sunday worship attendance</h3>${att}</div><div class="panel"><h3>Membership roll</h3>${roll}</div></div>${chartPanel}`;
   }
 
+  const spesos = n => (n > 0.004 ? '+' : '') + peso(n);
+  // Treasurer/Auditor-only "Explain the difference" panel (never in print, Slide show or the saved snapshot: it names payees).
+  function reconPanel(c, o) {
+    const x = c.explain;
+    if (!x || o.static) return '';
+    const off = !c.reconcileClean;
+    const items = x.items.map(r => `<li class="rc-item">
+        <div class="rc-top"><b>${escapeHtml(reconDay(r.date))} · ${escapeHtml(r.kind)}</b><span class="rc-eff ${r.effect < 0 ? 'neg' : 'pos'}">${escapeHtml(spesos(r.effect))}</span></div>
+        <div class="rc-line">${escapeHtml(r.category || '(no category)')}${r.who ? ' - ' + escapeHtml(r.who) : ''} · <b>₱${fmt(Math.abs(r.amount))}</b></div>
+        <div class="rc-line">Account: <b>${escapeHtml(r.accountName)}</b> · ${escapeHtml(r.pool)}</div>
+        <div class="rc-fine">Accounts ${escapeHtml(spesos(r.a))} · set-aside adjustments ${escapeHtml(spesos(r.c))} · statement ${escapeHtml(spesos(r.b))}</div>
+      </li>`).join('');
+    const GN = { income: 'Income', expense: 'Expenses', payroll: 'Payroll', remittance: 'Remittances', transfer: 'Transfers' };
+    const grid = `<div class="tbl-scroll"><table class="t rc-t"><thead><tr><th>Documents</th><th class="n">Docs</th><th class="n">Accounts</th><th class="n">Set-aside</th><th class="n">Statement</th><th class="n">Effect</th></tr></thead><tbody>
+      ${x.groups.filter(g => g.n).map(g => `<tr><td>${GN[g.id]}</td><td class="n">${g.n}</td><td class="n">${escapeHtml(peso(g.a))}</td><td class="n">${escapeHtml(peso(g.c))}</td><td class="n">${escapeHtml(peso(g.b))}</td><td class="n">${escapeHtml(peso(g.a - g.c - g.b))}</td></tr>`).join('')}
+      <tr class="rc-sum"><td>Total</td><td class="n">${x.groups.reduce((s, g) => s + g.n, 0)}</td><td class="n">${escapeHtml(peso(x.totals.a))}</td><td class="n">${escapeHtml(peso(x.totals.c))}</td><td class="n">${escapeHtml(peso(x.totals.b))}</td><td class="n">${escapeHtml(peso(x.rebuilt))}</td></tr></tbody></table></div>
+      <p class="note">Effect = Accounts - Set-aside - Statement, for every document dated in the selected months. <b>Accounts</b> = how the General Fund account balances move; <b>Set-aside</b> = payroll withholdings held and Building Fund money held in General Fund accounts; <b>Statement</b> = receipts, disbursements and net transfers on the statement. The Total effect is the Ending Balance check difference (${escapeHtml(peso(c.reconcileDiff))}): ${x.ties ? '<b class="pos">&#10003; the listed documents add up to it exactly.</b>' : '<b class="neg">&#10007; the listed documents do NOT add up to it - report this.</b>'}</p>
+      ${x.overRemitted ? `<p class="note">Note: payroll remittances paid exceed the payroll withheld by ${escapeHtml(peso(x.overRemitted))} (cumulative). That alone does not unbalance this check - it is shown so it is not a surprise.</p>` : ''}`;
+    const dirText = c.reconcileDiff < 0 ? `The General Fund accounts hold ${peso(Math.abs(c.reconcileDiff))} LESS than the statement's Ending Balance.` : `The General Fund accounts hold ${peso(Math.abs(c.reconcileDiff))} MORE than the statement's Ending Balance.`;
+    if (!off) return `<div class="panel recon edit-only"><details class="rc-more"><summary>Show details</summary>${grid}</details></div>`;
+    return `<div class="panel recon edit-only" id="recon-panel"><h3>Explain the difference <span class="hint">internal - Treasurer and Auditor only</span></h3>
+      <p class="rc-sum-line"><b>${escapeHtml(x.summary)}</b></p>
+      <p class="note">${escapeHtml(dirText)}</p>
+      ${items ? `<ul class="rc-list">${items}</ul>` : '<p class="note">No single document explains it.</p>'}
+      <details class="rc-more"><summary>Show details</summary>${grid}</details></div>`;
+  }
   function slideControls(k, o) {
     const c = k.controls;
     const good = (cond) => cond ? 'pos' : 'neg';
     const pctOk = v => v === null ? '—' : `<span class="${v >= 90 ? 'pos' : v >= 60 ? '' : 'neg'}">${v.toFixed(0)}%</span>`;
-    const rec = `<div class="tile"><div class="lbl">Ending Balance check</div><div class="val ${c.reconcileClean ? 'pos' : 'neg'}">${c.reconcileClean ? '✓ Balanced' : '✗ Off by ' + peso(c.reconcileDiff)}</div><div class="sub">General Fund accounts vs the statement's Ending Balance</div></div>`;
+    const recSub = c.reconcileClean ? "General Fund accounts vs the statement's Ending Balance" : `General Fund accounts are ${c.reconcileDiff < 0 ? 'LOWER' : 'HIGHER'} than the statement's Ending Balance`;
+    const rec = `<div class="tile"><div class="lbl">Ending Balance check</div><div class="val wrapval ${c.reconcileClean ? 'pos' : 'neg'}">${c.reconcileClean ? '✓ Balanced' : '✗ Off by ₱' + fmt(Math.abs(c.reconcileDiff))}</div><div class="sub">${recSub}</div></div>`;
     return `<div class="tiles">
       ${rec}
       ${tile('Expenses with a receipt', pctOk(c.receiptPct), c.expenseCount ? `${c.expenseCount - c.missingReceipt} of ${c.expenseCount}` : 'no expenses to check')}
@@ -2693,7 +2930,7 @@
       ${tile('Sundays with a count sheet', c.sundays ? `${c.sundaysWithSheet} / ${c.sundays}` : '—', c.countSheetsReadable ? (c.countChecked ? `${c.countMismatches} cash-count mismatch${c.countMismatches === 1 ? '' : 'es'} of ${c.countChecked} checked` : 'no denomination counts saved') : 'count sheets not readable')}
       ${tile('Cash advances not yet liquidated', `<span class="${c.advancesOpen ? 'neg' : 'pos'}">${c.advancesOpen}</span>`, c.advancesOpen ? `${peso(c.advancesAmount)} · oldest ${c.advancesOldestDays} days` : 'all liquidated')}
       ${tile('Report workflow', c.workflowApplies ? escapeHtml(c.workflowStatus) : 'n/a', c.workflowApplies ? 'monthly / annual report status' : 'applies to a single month or the full year')}
-    </div>`;
+    </div>${reconPanel(c, o)}`;
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -2769,7 +3006,7 @@
     { list: 'action', id: 'remit', test: k => k.passThrough.hasItems && k.passThrough.toRemitYtd > 0.005 ? `Remit the ${pesoW(k.passThrough.toRemitYtd)} of pass-through collections still held.` : null },
     { list: 'action', id: 'no-sheets', test: k => k.controls && k.controls.sundays > k.controls.sundaysWithSheet ? `Attach count sheets for ${k.controls.sundays - k.controls.sundaysWithSheet} Sunday${k.controls.sundays - k.controls.sundaysWithSheet === 1 ? '' : 's'} that have none.` : null },
     { list: 'action', id: 'advances', test: k => k.controls && k.controls.advancesOpen ? `Liquidate ${k.controls.advancesOpen} cash advance${k.controls.advancesOpen === 1 ? '' : 's'} (${pesoW(k.controls.advancesAmount)}), the oldest ${k.controls.advancesOldestDays} days old.` : null },
-    { list: 'action', id: 'reconcile', test: k => k.controls && !k.controls.reconcileClean ? `Investigate the ${pesoW(k.controls.reconcileDiff)} difference in the Ending Balance check.` : null },
+    { list: 'action', id: 'reconcile', test: k => k.controls && !k.controls.reconcileClean ? `Investigate the ${pesoW(Math.abs(k.controls.reconcileDiff))} difference in the Ending Balance check.` : null },
     { list: 'action', id: 'receipts', test: k => k.controls && k.controls.receiptPct !== null && k.controls.receiptPct < 90 ? `Collect the ${k.controls.missingReceipt} missing expense receipt${k.controls.missingReceipt === 1 ? '' : 's'} (${k.controls.receiptPct.toFixed(0)}% on file).` : null }
   ];
   const SUMMARY_LIST_META = [
@@ -2832,7 +3069,7 @@
     if (c) {
       const gaps = (c.receiptPct !== null && c.receiptPct < 90) + (c.sundays > c.sundaysWithSheet) + (c.advancesOpen > 0) + (c.receiptPct !== null && c.voucherPct < 90);
       row('controls', 'Controls', !c.reconcileClean ? 'red' : gaps ? 'amber' : 'green',
-        c.reconcileClean ? '✓ Balanced' : `✗ Off by ${pesoW(c.reconcileDiff)}`,
+        c.reconcileClean ? '✓ Balanced' : `✗ Off by ₱${fmt(Math.abs(c.reconcileDiff))}`,
         [`Receipts ${c.receiptPct === null ? '—' : c.receiptPct.toFixed(0) + '%'} · vouchers ${c.voucherPct === null ? '—' : c.voucherPct.toFixed(0) + '%'}`,
          `Count sheets ${c.sundays ? c.sundaysWithSheet + ' of ' + c.sundays + ' Sundays' : '—'} · open advances ${c.advancesOpen}`]);
     }
@@ -2865,16 +3102,16 @@
   }
 
   const SLIDES = [
-    { id: 'hero', title: 'Where we stand', q: 'How did the church do, and how healthy is our cash?', fn: slideHero },
-    { id: 'liquidity', title: 'Can we pay our bills?', q: 'Liquidity, runway and what cash is really free', fn: slideLiquidity },
-    { id: 'budget', title: 'Are we on plan?', q: 'Actuals against the approved budget', fn: slideBudget },
-    { id: 'giving', title: 'Is our giving base healthy?', q: 'Tithes, tithers and weekly collections', fn: slideGiving },
-    { id: 'per100', title: 'How we use the offering', q: 'Where every ₱100 goes', fn: slidePer100 },
-    { id: 'obligations', title: 'Faithful to the wider church?', q: 'Apportionments and other obligations', fn: slideObligations },
-    { id: 'projects', title: 'Our building and mission work', q: 'Special projects and the Building Fund', fn: slideProjects },
-    { id: 'people', title: 'Who we serve', q: 'Attendance and the membership roll', fn: slidePeople },
-    { id: 'controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES },
-    { id: 'summary', title: 'The bottom line', q: k => `Our finances at a glance for ${k.period.label}`, fn: slideSummary, noPoints: true }
+    { id: 'hero', short: 'Where we stand', title: 'Where we stand', q: 'How did the church do, and how healthy is our cash?', fn: slideHero },
+    { id: 'liquidity', short: 'Cash', title: 'Can we pay our bills?', q: 'Liquidity, runway and what cash is really free', fn: slideLiquidity },
+    { id: 'budget', short: 'Budget', title: 'Are we on plan?', q: 'Actuals against the approved budget', fn: slideBudget },
+    { id: 'giving', short: 'Giving', title: 'Is our giving base healthy?', q: 'Tithes, tithers and weekly collections', fn: slideGiving },
+    { id: 'per100', short: '₱100', title: 'How we use the offering', q: 'Where every ₱100 goes', fn: slidePer100 },
+    { id: 'obligations', short: 'Obligations', title: 'Faithful to the wider church?', q: 'Apportionments and other obligations', fn: slideObligations },
+    { id: 'projects', short: 'Projects', title: 'Our building and mission work', q: 'Special projects and the Building Fund', fn: slideProjects },
+    { id: 'people', short: 'People', title: 'Who we serve', q: 'Attendance and the membership roll', fn: slidePeople },
+    { id: 'controls', short: 'Controls', title: 'Can the Council trust these numbers?', q: 'Stewardship and controls (Treasurer and Auditor)', fn: slideControls, only: CONTROLS_ROLES },
+    { id: 'summary', short: 'Bottom line', title: 'The bottom line', q: k => `Our finances at a glance for ${k.period.label}`, fn: slideSummary, noPoints: true }
   ];
   function slidesFor(k) { return SLIDES.filter(s => !s.only || (s.id === 'controls' ? !!k.controls : true)); }
 
@@ -2948,7 +3185,7 @@
     if (k.controls) {
       const c = k.controls;
       T.controls = [
-        c.reconcileClean ? 'The General Fund accounts reconcile to the statement Ending Balance to the centavo.' : `The Ending Balance check is off by ${pesoW(c.reconcileDiff)} - needs investigation.`,
+        c.reconcileClean ? 'The General Fund accounts reconcile to the statement Ending Balance to the centavo.' : `The Ending Balance check is off by ${pesoW(Math.abs(c.reconcileDiff))} - needs investigation.`,
         c.receiptPct === null ? 'No expenses to check for receipts in these months.' : `${c.receiptPct.toFixed(0)}% of expenses have a receipt on file and ${c.voucherPct.toFixed(0)}% have a cash voucher.`,
         c.advancesOpen ? `${c.advancesOpen} cash advance${c.advancesOpen === 1 ? '' : 's'} (${pesoW(c.advancesAmount)}) not yet liquidated; the oldest is ${c.advancesOldestDays} days old.` : 'All released cash advances have been liquidated.'
       ];
@@ -2966,6 +3203,8 @@
   // ───────────────────────────────────────────────────────────────────────
   const ui = { raw: null, period: null, kpi: null, auto: null, notes: null, per100: 'period', per100View: 'spent', pitakaTone: 'fun', compareYear: null, budgetThroughToday: true, presenting: false, editing: false, slideIdx: 0, slides: [], w: { full: 1000, half: 480 } };
   const $ = id => document.getElementById(id);
+  ui.viewMode = 'one'; ui.navLockUntil = 0;   // 'one' = one section at a time (default) | 'all' = long scroll
+  try { const v = localStorage.getItem('councilViewMode'); if (v === 'one' || v === 'all') ui.viewMode = v; } catch (e) { /* storage may be blocked */ }
   try { const t = localStorage.getItem('councilPitakaTone'); if (t === 'fun' || t === 'plain') ui.pitakaTone = t; } catch (e) { /* storage may be blocked */ }
   const nowDate = () => new Date();
   const isTreasurer = () => !!activeUserProfile && activeUserProfile.role === 'Treasurer';
@@ -3037,7 +3276,8 @@
     } else if (pts.list.length) {
       points = `<div class="points"><h3>Talking points ${pts.edited ? '<span class="edited-badge">edited by the Treasurer</span>' : ''}</h3><ul>${pts.list.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`;
     } else points = '';
-    return `<section class="slide" id="slide-${def.id}" data-slide="${def.id}"><header class="slide-head"><span class="slide-num">${num}</span><div><h2>${escapeHtml(def.title)}</h2><p class="q">${escapeHtml(typeof def.q === 'function' ? def.q(k) : def.q)}</p></div></header><div class="slide-body">${body}</div>${points}</section>`;
+    const foot = !o.static && o.slides ? sectionFootHtml(num - 1, o.slides) : '';
+    return `<section class="slide" id="slide-${def.id}" data-slide="${def.id}"><header class="slide-head"><span class="slide-num">${num}</span><div><h2>${escapeHtml(def.title)}</h2><p class="q">${escapeHtml(typeof def.q === 'function' ? def.q(k) : def.q)}</p></div></header><div class="slide-body">${body}</div>${points}${foot}</section>`;
   }
 
   function renderAll(animate) {
@@ -3048,12 +3288,14 @@
     ui.renderedVw = window.innerWidth; // resize re-renders only when the WIDTH changes (charts are drawn at pixel width)
     ui.slides = slidesFor(k);
     if (ui.slideIdx >= ui.slides.length) ui.slideIdx = ui.slides.length - 1;
-    const o = { static: false, w: ui.w, per100: ui.per100, editing: ui.editing };
-    $('dash').innerHTML = ui.slides.map((def, i) => slideHtml(def, i + 1, k, o)).join('');
+    const o = { static: false, w: ui.w, per100: ui.per100, editing: ui.editing, slides: ui.slides };
+    $('dash').innerHTML = ui.slides.map((def, i) => (i ? `<div class="sec-divider" aria-hidden="true"><i></i></div>` : '') + slideHtml(def, i + 1, k, o)).join('');
     $('period-label').textContent = k.period.label;
     $('who-line').textContent = `Tagaytay United Methodist Church · ${k.period.label}`;
     document.title = `Council Dashboard — ${k.period.label}`;
+    renderNav();
     applyPresentationClasses();
+    setupSectionObserver();
     if (animate && !ui.presenting) runCountUp();
     renderPresDots();
   }
@@ -3217,8 +3459,11 @@
   // ───────────────────────────────────────────────────────────────────────
   function applyPresentationClasses() {
     document.body.classList.toggle('presenting', ui.presenting);
-    document.querySelectorAll('.slide').forEach((el, i) => el.classList.toggle('active', ui.presenting && i === ui.slideIdx));
-    updateRotateHint(); syncFollowBarHeight();
+    document.querySelectorAll('.slide').forEach((el, i) => { el.classList.toggle('active', ui.presenting && i === ui.slideIdx); el.classList.toggle('current', i === ui.slideIdx); });
+    document.body.classList.toggle('dash-nav', ui.slides.length > 0);
+    document.body.classList.toggle('view-one', ui.viewMode === 'one');
+    document.body.classList.toggle('view-all', ui.viewMode === 'all');
+    updateRotateHint(); syncFollowBarHeight(); syncNavHeight();
   }
   function renderPresDots() {
     $('pres-ctr').textContent = `${ui.slideIdx + 1} / ${ui.slides.length}`;
@@ -3255,13 +3500,82 @@
       applyPresentationClasses(); renderPresDots();
       const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) el.scrollTop = 0;
     } else {
-      const el = document.querySelectorAll('.slide')[ui.slideIdx]; if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
+      updateNav(); scrollToSectionTop(ui.slideIdx);
     }
     schedulePublish();
   }
+  // ── Section navigator (outside Slide show): sticky pills, "one section at a time" (default) or "show all sections" ──
+  function renderNav() {
+    const nav = $('sec-nav');
+    if (!ui.slides.length) { nav.style.display = 'none'; return; }
+    nav.style.display = 'flex';
+    $('sec-pills').innerHTML = ui.slides.map((d, i) => `<button type="button" class="sec-pill${i === ui.slideIdx ? ' on' : ''}" data-secgo="${i}"${i === ui.slideIdx ? ' aria-current="true"' : ''} aria-label="Section ${i + 1}: ${escapeAttr(d.title)}"><b>${i + 1}</b><span>${escapeHtml(d.short || d.title)}</span></button>`).join('');
+    const b = $('btn-viewmode');
+    b.textContent = ui.viewMode === 'one' ? 'Show all' : 'One at a time';
+    b.setAttribute('aria-pressed', ui.viewMode === 'all' ? 'true' : 'false');
+    b.setAttribute('aria-label', ui.viewMode === 'one' ? 'Show all sections in one long page' : 'Show one section at a time');
+    syncNavHeight(); centerPill();
+  }
+  function updateNav() {
+    document.querySelectorAll('#sec-pills .sec-pill').forEach((b, i) => { const on = i === ui.slideIdx; b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+    document.querySelectorAll('.slide').forEach((el, i) => el.classList.toggle('current', i === ui.slideIdx));
+    centerPill();
+  }
+  function centerPill() {
+    const sc = $('sec-pills'), b = sc && sc.querySelector('.sec-pill.on'); if (!b) return;
+    const left = Math.max(0, b.offsetLeft - (sc.clientWidth - b.offsetWidth) / 2);
+    try { sc.scrollTo({ left }); } catch (e) { sc.scrollLeft = left; }
+  }
+  function syncNavHeight() { const n = $('sec-nav'); document.documentElement.style.setProperty('--nav-h', (n && n.style.display !== 'none' ? Math.ceil(n.getBoundingClientRect().height) : 0) + 'px'); }
+  function scrollToSectionTop(i) {
+    const el = document.querySelectorAll('.slide')[i]; if (!el) return;
+    ui.navLockUntil = Date.now() + 800;   // ignore the observer while we scroll there ourselves
+    el.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+  function sectionFootHtml(i, slides) {
+    const prev = slides[i - 1], next = slides[i + 1], lab = d => escapeHtml(d.short || d.title);
+    return `<footer class="sec-foot"><div class="sf-count">Section ${i + 1} of ${slides.length}</div>${
+      prev ? `<button type="button" class="sf-btn prev" data-secgo="${i - 1}">&larr; ${i} ${lab(prev)}</button>` : '<span class="sf-spacer"></span>'}${
+      next ? `<button type="button" class="sf-btn next" data-secgo="${i + 1}">${i + 2} ${lab(next)} &rarr;</button>` : ''}</footer>`;
+  }
+  function toggleViewMode() {
+    manualAction();
+    ui.viewMode = ui.viewMode === 'one' ? 'all' : 'one';
+    try { localStorage.setItem('councilViewMode', ui.viewMode); } catch (e) { /* storage may be blocked */ }
+    renderNav(); applyPresentationClasses(); setupSectionObserver();
+    scrollToSectionTop(ui.slideIdx);
+  }
+  // Show-all mode: highlight the pill of the section in view (IntersectionObserver on a band below the sticky navigator)
+  let secObserver = null, secVisible = new Set();
+  function setupSectionObserver() {
+    if (secObserver) { secObserver.disconnect(); secObserver = null; }
+    secVisible = new Set();
+    if (ui.presenting || ui.viewMode !== 'all' || !('IntersectionObserver' in window)) return;
+    const els = [...document.querySelectorAll('.slide')]; if (!els.length) return;
+    const nav = $('sec-nav'), top = Math.round((nav ? nav.getBoundingClientRect().height : 0) + (follow.on ? (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--follow-h'), 10) || 0) : 0) + 16);
+    secObserver = new IntersectionObserver(entries => {
+      entries.forEach(en => { const i = els.indexOf(en.target); if (en.isIntersecting) secVisible.add(i); else secVisible.delete(i); });
+      if (Date.now() < ui.navLockUntil || !secVisible.size) return;
+      const i = Math.max(...secVisible);
+      if (i !== ui.slideIdx) { ui.slideIdx = i; updateNav(); schedulePublish(); }
+    }, { rootMargin: `-${top}px 0px -55% 0px`, threshold: 0 });
+    els.forEach(el => secObserver.observe(el));
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-secgo]');
+    if (b && !ui.presenting) { goToSlide(parseInt(b.dataset.secgo, 10)); return; }
+    if (e.target.closest && e.target.closest('#btn-viewmode')) toggleViewMode();
+  });
   function presNav(d) { goToSlide(ui.slideIdx + d); }
   document.addEventListener('keydown', e => {
-    if (!ui.presenting) return;
+    if (!ui.presenting) {
+      // one-at-a-time: left / right arrows move between sections (not while typing, not with a modifier)
+      if (ui.viewMode === 'one' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+        && !(e.target && (/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable)) && document.querySelector('.slide')) {
+        e.preventDefault(); goToSlide(ui.slideIdx + (e.key === 'ArrowRight' ? 1 : -1));
+      }
+      return;
+    }
     if (e.target && /^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName)) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); presNav(1); }
     else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { e.preventDefault(); presNav(-1); }
@@ -3290,7 +3604,7 @@
     return () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        updateRotateHint(); syncFollowBarHeight();
+        updateRotateHint(); syncFollowBarHeight(); syncNavHeight();
         if (ui.kpi && ui.period && ui.period.count && !ui.editing && (window.innerWidth !== ui.renderedVw || isShortLandscape() !== ui.renderedMode)) renderAll(false);
       }, 200);
     };
@@ -3300,14 +3614,14 @@
 
   // In dashboard mode, which section is currently at the top of the viewport (scroll-spy; feeds follower sync)
   function currentVisibleSlide() {
-    if (ui.presenting) return ui.slideIdx;
+    if (ui.presenting || ui.viewMode === 'one') return ui.slideIdx;
     const els = [...document.querySelectorAll('.slide')]; let best = -1;
     els.forEach((el, i) => { const r = el.getBoundingClientRect(); if (r.top <= window.innerHeight * 0.35 && r.bottom > window.innerHeight * 0.2) best = i; });
     return best;
   }
   let spyT = null;
   window.addEventListener('scroll', () => {
-    if (ui.presenting) return;
+    if (ui.presenting || ui.viewMode === 'one' || 'IntersectionObserver' in window) return;   // the IntersectionObserver does this in show-all mode
     clearTimeout(spyT);
     spyT = setTimeout(() => { const i = currentVisibleSlide(); if (i >= 0 && i !== ui.slideIdx) { ui.slideIdx = i; schedulePublish(); } }, 150);
   }, { passive: true });
