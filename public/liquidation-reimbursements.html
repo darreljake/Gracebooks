@@ -669,11 +669,20 @@
       return pool;
     }
 
+    // Who may change a saved liquidation item's highlights: the Treasurer,
+    // or the Pastor/Deaconess/Admin Assistant group while the liquidation
+    // still awaits review ('Liquidation Submitted' - firestore.rules allows
+    // only liquidationItems/updatedAt to change then). Before submitting,
+    // staff highlight inside the Submit Liquidation modal instead.
+    function canEditItemHighlights(row) {
+      if (!row) return false;
+      if (roleIs('Treasurer')) return true;
+      return canSelfManageLiquidation() && row.status === 'Liquidation Submitted';
+    }
+
     // Opens the shared annotator against one (liquidation item, receipt)
-    // pair. `editable` is only honored for the Treasurer - everyone else
-    // (Details modal, or a non-Treasurer somehow reaching this) gets a
-    // read-only view, matching the read-only default everywhere else this
-    // annotator is used.
+    // pair. `editable` is only honored for a user canEditItemHighlights()
+    // allows - everyone else gets a read-only view.
     function openItemReceiptHighlights(requestId, itemIndex, receiptId, editable) {
       const row = requestRows.find(item => item.id === requestId);
       if (!row) return;
@@ -683,7 +692,7 @@
       const pool = receiptPoolFromRow(row);
       const entry = pool.find(p => p.receiptId === receiptId);
       if (!entry || !entry.url) return alert('Receipt file not available.');
-      const canEdit = !!editable && roleIs('Treasurer');
+      const canEdit = !!editable && canEditItemHighlights(row);
       window.GraceBooksAnnotator.open({
         title: entry.name,
         imageUrl: entry.url,
@@ -696,13 +705,14 @@
       });
     }
 
-    // Treasurer-only: persists highlights drawn from the Reconcile modal
-    // straight back onto liquidationRequests/{id}.liquidationItems, scoped
-    // to the one receipt they were drawn on.
+    // Persists highlights drawn from the Reconcile modal (Treasurer) or the
+    // Details modal (staff, while the liquidation awaits review) straight
+    // back onto liquidationRequests/{id}.liquidationItems, scoped to the one
+    // receipt they were drawn on.
     async function saveLiquidationItemAnnotations(requestId, itemIndex, receiptId, annotations, locked) {
-      if (!roleIs('Treasurer')) throw new Error('Only the Treasurer can save receipt highlights here.');
       const row = requestRows.find(item => item.id === requestId);
       if (!row) throw new Error('Request not found.');
+      if (!canEditItemHighlights(row)) throw new Error('Receipt highlights can no longer be changed on this request.');
       const beforeItems = row.liquidationItems || [];
       const items = beforeItems.map(item => ({ ...item, annotations: (item.annotations || []).slice() }));
       const item = items[itemIndex];
@@ -734,12 +744,81 @@
         badge.style.display = newCount ? '' : 'none';
       }
       await loadRequests();
+      refreshOpenDetailsModal(requestId);
+    }
+
+    // Re-renders the Details modal after a highlight save so its badges and
+    // buttons reflect the saved state, but only if it is still showing that
+    // same request.
+    let detailsRequestId = null;
+    function refreshOpenDetailsModal(requestId) {
+      if (detailsRequestId !== requestId) return;
+      if (!document.getElementById('detailsModal').classList.contains('open')) return;
+      openDetailsModal(requestId);
+    }
+
+    /* ---------- Reimbursement receipt highlights ----------
+       A reimbursement has no liquidation items, so its highlights hang off
+       the request itself: supportingReceiptAnnotations = [{receiptId, id, x,
+       y, w, h, label, color, createdAt}] plus supportingReceiptAnnotationsLocked.
+       Editable by the requester group while still 'Submitted' (the existing
+       Submitted -> Submitted rule) and by the Treasurer until release; on
+       release the first receipt's highlights are copied onto the expense,
+       which owns them from then on (expenses.html). */
+
+    function canEditReimbursementHighlights(row) {
+      if (!row || isCashAdvance(row) || isAutoReimbursement(row)) return false;
+      if (roleIs('Treasurer')) return ['Submitted', 'Approved'].includes(row.status);
+      return canSelfManageLiquidation() && row.status === 'Submitted';
+    }
+
+    function openReimbursementReceiptHighlights(requestId, receiptId) {
+      const row = requestRows.find(item => item.id === requestId);
+      if (!row) return;
+      const entry = receiptPoolFromRow(row).find(p => p.receiptId === receiptId);
+      if (!entry || !entry.url) return alert('Receipt file not available.');
+      const canEdit = canEditReimbursementHighlights(row);
+      window.GraceBooksAnnotator.open({
+        title: entry.name,
+        imageUrl: entry.url,
+        fileName: entry.name,
+        subtitle: `${row.title || 'Reimbursement'} — ₱${fmt(row.amount)}`,
+        annotations: (row.supportingReceiptAnnotations || []).filter(a => a.receiptId === receiptId),
+        editable: canEdit,
+        locked: !!row.supportingReceiptAnnotationsLocked,
+        onSave: canEdit ? (annotations, locked) => saveReimbursementReceiptAnnotations(requestId, receiptId, annotations, locked) : undefined
+      });
+    }
+
+    async function saveReimbursementReceiptAnnotations(requestId, receiptId, annotations, locked) {
+      const row = requestRows.find(item => item.id === requestId);
+      if (!row) throw new Error('Request not found.');
+      if (!canEditReimbursementHighlights(row)) throw new Error('Receipt highlights can no longer be changed on this request.');
+      const before = (row.supportingReceiptAnnotations || []).map(a => ({ ...a }));
+      const wasLocked = !!row.supportingReceiptAnnotationsLocked;
+      const after = before.filter(a => a.receiptId !== receiptId)
+        .concat(annotations.map(a => ({ ...a, receiptId })));
+      const isLocked = !!locked;
+      const now = new Date().toISOString();
+      await db.collection('liquidationRequests').doc(requestId).update({
+        supportingReceiptAnnotations: after,
+        supportingReceiptAnnotationsLocked: isLocked,
+        updatedAt: now
+      });
+      await writeAuditLog('reimbursement_receipt_annotations_updated', 'liquidationRequests', requestId,
+        { supportingReceiptAnnotations: before, supportingReceiptAnnotationsLocked: wasLocked },
+        { supportingReceiptAnnotations: after, supportingReceiptAnnotationsLocked: isLocked },
+        `Updated ${annotations.length} receipt highlight(s)${isLocked !== wasLocked ? (isLocked ? ' and locked them' : ' and unlocked them') : ''} on reimbursement "${row.title || ''}" (${requestId})`);
+      row.supportingReceiptAnnotations = after;
+      row.supportingReceiptAnnotationsLocked = isLocked;
+      await loadRequests();
+      refreshOpenDetailsModal(requestId);
     }
 
     function onRequestTypeChange() {
       const type = document.getElementById('req-type').value;
       document.getElementById('receipt-note').textContent = type === 'Reimbursement'
-        ? 'Attach the receipts for the expenses you paid out of pocket.'
+        ? 'Attach the receipts for the expenses you paid out of pocket. After submitting, open the request\'s Details to highlight the key lines on each receipt.'
         : 'Cash advances need no receipt now — you will attach them during liquidation.';
       document.getElementById('receipt-hint').textContent = type === 'Reimbursement' ? '(recommended)' : '(optional)';
     }
@@ -1294,6 +1373,16 @@
           expensePayload.receiptPath = row.receiptPath || '';
           expensePayload.receiptUrl = row.receiptUrl;
           expensePayload.receiptSharedFromLiquidation = true;
+          // Carry over the highlights drawn on that same receipt while the
+          // request was pending; from here on the expense owns them.
+          const firstReceiptId = row.receiptId || row.receiptPath || '';
+          const carried = (row.supportingReceiptAnnotations || [])
+            .filter(a => firstReceiptId && a.receiptId === firstReceiptId)
+            .map(({ receiptId, ...rest }) => rest);
+          if (carried.length) {
+            expensePayload.receiptAnnotations = carried;
+            expensePayload.receiptAnnotationsLocked = !!row.supportingReceiptAnnotationsLocked;
+          }
         }
         const expenseRef = await db.collection('expenses').add(expensePayload);
         await writeAuditLog('expense_created_from_liquidation_request', 'expenses', expenseRef.id, null, expensePayload,
@@ -1441,8 +1530,28 @@
       wrap.innerHTML = stagedReceipts.map(staged => `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; background:#f7f9fb; border:1px solid #edf2f5; border-radius:6px; margin-bottom:4px; font-size:12px;">
           <span>📎 ${escapeHtml(staged.name)} <span class="muted">(${Math.max(1, Math.round(staged.file.size / 1024))} KB)</span></span>
-          <button type="button" class="btn btn-ghost btn-small" onclick="removeLiqReceiptFile('${staged.tempId}')">Remove</button>
+          <span style="display:flex; gap:4px;">
+            ${window.GraceBooksAnnotator.isAnnotatableUrl(staged.name, staged.objectUrl) ? `<button type="button" class="btn btn-secondary btn-small" onclick="highlightPoolReceipt('${staged.tempId}')">🖍 Highlight</button>` : ''}
+            <button type="button" class="btn btn-ghost btn-small" onclick="removeLiqReceiptFile('${staged.tempId}')">Remove</button>
+          </span>
         </div>`).join('');
+    }
+
+    // Highlights belong to the liquidation item a receipt supports, so a
+    // file added through the general Receipts input has nowhere to keep
+    // them until it is linked. Open the first item it is already linked
+    // to; with a single item row, link it there automatically; otherwise
+    // say how to link it.
+    function highlightPoolReceipt(receiptId) {
+      const rows = Array.from(document.querySelectorAll('#liq-items tr')).map(tr => tr.dataset.rowId);
+      const linkedRow = rows.find(rowId => getItemLink(rowId).receiptIds.includes(receiptId));
+      if (linkedRow) return openItemReceiptAnnotator(linkedRow, receiptId);
+      if (rows.length === 1) {
+        getItemLink(rows[0]).receiptIds.push(receiptId);
+        renderItemReceiptsCell(rows[0]);
+        return openItemReceiptAnnotator(rows[0], receiptId);
+      }
+      alert('Highlights are kept per item. Click "🔗 Link Receipt" on the item this receipt supports, tick it, then click "Highlight" beside it.');
     }
 
     function removeLiqReceiptFile(tempId) {
@@ -2304,10 +2413,24 @@
       if (row.receiptUrl && !receipts.some(receipt => receipt.receiptUrl === row.receiptUrl)) {
         receipts.unshift({ receiptName: row.receiptName || 'Receipt', receiptUrl: row.receiptUrl });
       }
+      // Reimbursement receipts can be highlighted from here (see
+      // canEditReimbursementHighlights()); a cash advance's highlights live
+      // on its liquidation items in the table below instead.
+      const reimbHighlights = !isCashAdvance(row) && !isAutoReimbursement(row);
+      const canEditReimb = canEditReimbursementHighlights(row);
+      const reimbAnnotations = row.supportingReceiptAnnotations || [];
       const receiptsHtml = receipts.length
-        ? receipts.map(receipt =>
-            `<div><a class="receipt-link" href="${escapeHtml(receipt.receiptUrl)}" target="_blank" rel="noopener">📎 ${escapeHtml(receipt.receiptName || 'Receipt')}</a></div>`
-          ).join('')
+        ? receipts.map(receipt => {
+            const receiptId = receipt.receiptId || receipt.receiptPath || '';
+            const count = reimbAnnotations.filter(a => a.receiptId === receiptId).length;
+            const isImage = window.GraceBooksAnnotator.isAnnotatableUrl(receipt.receiptName, receipt.receiptUrl);
+            const showButton = reimbHighlights && receiptId && isImage && (canEditReimb || count);
+            return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:3px;">
+              <a class="receipt-link" href="${escapeHtml(receipt.receiptUrl)}" target="_blank" rel="noopener">📎 ${escapeHtml(receipt.receiptName || 'Receipt')}</a>
+              ${reimbHighlights && count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px; font-size:11px;">${row.supportingReceiptAnnotationsLocked ? '🔒' : '🖍'} ${count}</span>` : ''}
+              ${showButton ? `<button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openReimbursementReceiptHighlights('${row.id}', '${escapeHtml(receiptId)}')">${canEditReimb ? '🖍 Highlight' : 'View Highlights'}</button>` : ''}
+            </div>`;
+          }).join('')
         : '<div class="muted">No receipts attached.</div>';
 
       const isClassified = row.status === 'Reconciled' && (row.classifiedExpenseIds || []).length;
@@ -2316,6 +2439,7 @@
       const itemReceiptPool = receiptPoolFromRow(row);
       const hasReceiptLinks = (row.liquidationItems || []).some(item => (item.receiptIds || []).length);
       const extraCols = (isClassified || hasSuggestions ? 1 : 0) + (hasReceiptLinks ? 1 : 0);
+      const canEditItems = isCashAdvance(row) && canSelfManageLiquidation() && canEditItemHighlights(row);
       const itemsHtml = (row.liquidationItems || []).length ? `
         <div class="section-label">Liquidation Items</div>
         <div class="table-wrap">
@@ -2330,7 +2454,7 @@
                     const count = (item.annotations || []).filter(a => a.receiptId === p.receiptId).length;
                     return `<div style="font-size:11px; margin-bottom:3px;">📎 ${escapeHtml(p.name)}
                       ${count ? `<span style="background:#8B0000; color:#fff; border-radius:8px; padding:1px 5px;">${item.annotationsLocked ? '🔒' : '🖍'} ${count}</span>` : ''}
-                      <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', false)">View Highlights</button>
+                      <button type="button" class="btn btn-secondary btn-small" style="padding:2px 6px;" onclick="openItemReceiptHighlights('${row.id}', ${index}, '${escapeHtml(p.receiptId)}', ${canEditItems})">${canEditItems ? '🖍 Highlight' : 'View Highlights'}</button>
                     </div>`;
                   }).join('') : '<span class="muted">-</span>'}</td>`;
                 }
@@ -2396,6 +2520,7 @@
         <div class="section-label">Receipts</div>
         ${receiptsHtml}
         ${row.reconciliationNotes ? `<div class="section-label">Reconciliation Notes</div><div class="muted">${escapeHtml(row.reconciliationNotes)}</div>` : ''}`;
+      detailsRequestId = id;
       document.getElementById('detailsModal').classList.add('open');
     }
 

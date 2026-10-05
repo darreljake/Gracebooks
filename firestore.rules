@@ -120,6 +120,14 @@ service cloud.firestore {
               && request.resource.data.status == 'Liquidation Submitted'
               && request.resource.data.amount == resource.data.amount
               && request.resource.data.type == resource.data.type)
+            // Draw/adjust receipt highlights on a submitted liquidation while
+            // it awaits the Treasurer's review: only liquidationItems (where
+            // the per-item highlights live) and updatedAt may change, the
+            // status stays put and the item count cannot change.
+            || (resource.data.status == 'Liquidation Submitted'
+              && request.resource.data.status == 'Liquidation Submitted'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liquidationItems', 'updatedAt'])
+              && request.resource.data.liquidationItems.size() == resource.data.liquidationItems.size())
           ));
       allow delete: if hasRole(['Treasurer']);
     }
