@@ -3898,11 +3898,14 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       // show every receipt matched to its item, or all of a plain
       // reimbursement's receipts (one expense covers the whole request).
       const ownIsShared = candidates.length && expense.receiptSharedFromLiquidation;
-      if (!candidates.length || ownIsShared) {
+      // A plain reimbursement is paid as ONE expense, so every receipt on the
+      // request supports it - list them all even when the expense also has a
+      // receipt uploaded to it directly (older releases copied none).
+      const isPlainReimbursement = request.type === 'Reimbursement' && !request.sourceLiquidationRequestId
+        && !(itemRequest.liquidationItems || []).length;
+      if (!candidates.length || ownIsShared || isPlainReimbursement) {
         const pool = liquidationReceiptPool(itemRequest);
         const matchedItem = findMatchingLiquidationItem(itemRequest, expense);
-        const isPlainReimbursement = request.type === 'Reimbursement' && !request.sourceLiquidationRequestId
-          && !(itemRequest.liquidationItems || []).length;
         const found = [];
         if (matchedItem && (matchedItem.receiptIds || []).length) {
           matchedItem.receiptIds.forEach(receiptId => {
@@ -3924,9 +3927,10 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
           pool.forEach(p => found.push({ id: p.id, name: p.name, url: p.url, annotations: [], locked: false, source: 'pool' }));
         }
         if (found.length) {
-          // The shared copy is one of these; keep the expense's own copy (its
-          // highlights may have been edited in expenses.html) in its place.
-          const own = ownIsShared ? candidates[0] : null;
+          // Keep the expense's own receipt (its highlights may have been edited
+          // in expenses.html) in place of the request's copy of the same file,
+          // or first when it is a separate upload.
+          const own = candidates.length ? candidates[0] : null;
           candidates.length = 0;
           found.forEach(c => candidates.push(own && c.url === own.url ? own : c));
           if (own && !found.some(c => c.url === own.url)) candidates.unshift(own);
