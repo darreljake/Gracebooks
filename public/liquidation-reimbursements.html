@@ -2719,9 +2719,36 @@
         ${row.liquidationReturnedNotes ? `<div class="section-label">Returned for Correction</div><div class="muted">${escapeHtml(row.liquidationReturnedNotes)} — ${escapeHtml((row.liquidationReturnedAt || '').slice(0, 10))} by ${escapeHtml(row.liquidationReturnedBy || '')}</div>` : ''}
         <div class="section-label">Receipts</div>
         ${receiptsHtml}
+        ${roleIs('Treasurer') && reimbHighlights && row.linkedExpenseId ? '<div class="muted" id="details-receipt-check" style="margin-top:6px;">Checking the linked expense…</div>' : ''}
         ${row.reconciliationNotes ? `<div class="section-label">Reconciliation Notes</div><div class="muted">${escapeHtml(row.reconciliationNotes)}</div>` : ''}`;
       detailsRequestId = id;
       document.getElementById('detailsModal').classList.add('open');
+      if (document.getElementById('details-receipt-check')) checkReimbursementExpenseReceipt(row, receipts.length);
+    }
+
+    // Treasurer-only: says what the reports will show for a released
+    // reimbursement - all of the request's receipts plus any receipt
+    // uploaded straight onto its expense.
+    async function checkReimbursementExpenseReceipt(row, requestReceiptCount) {
+      const box = document.getElementById('details-receipt-check');
+      try {
+        const snap = await db.collection('expenses').doc(row.linkedExpenseId).get();
+        if (detailsRequestId !== row.id || !box.isConnected) return;
+        if (!snap.exists) {
+          box.textContent = 'Linked expense not found (deleted?) - the reports have no expense to show these receipts under.';
+          return;
+        }
+        const e = snap.data();
+        const urls = new Set(receiptPoolFromRow(row).map(p => p.url));
+        let ownNote = 'no receipt of its own';
+        if (e.receiptUrl) {
+          ownNote = urls.has(e.receiptUrl) ? 'a copy of one of these receipts' : `its own uploaded receipt (${escapeHtml(e.receiptName || 'file')})`;
+          if (!urls.has(e.receiptUrl)) urls.add(e.receiptUrl);
+        }
+        box.innerHTML = `Linked expense ${escapeHtml(e.date || '')} · ₱${fmt(e.amount)} has ${ownNote}. Supporting Documents and the review Print Report list <strong>${urls.size}</strong> receipt(s) for it.`;
+      } catch (error) {
+        box.textContent = 'Could not check the linked expense: ' + error.message;
+      }
     }
 
     function closeDetailsModal() {
