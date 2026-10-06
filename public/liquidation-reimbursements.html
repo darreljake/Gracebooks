@@ -437,6 +437,23 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="matchReceiptsModal">
+    <div class="modal-box wide">
+      <h3>Match Receipts to Items</h3>
+      <div class="muted" id="match-context"></div>
+      <div class="section-label">Receipts on this request</div>
+      <div id="match-pool" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      <div class="section-label">Tick the receipt(s) that support each item</div>
+      <div class="table-wrap"><table class="inner-table"><thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th><th>Receipts</th></tr></thead><tbody id="match-items"></tbody></table></div>
+      <div class="muted" id="match-status" style="margin-top:8px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="match-inorder-btn" onclick="matchReceiptsInOrder()">One receipt per item, in order</button>
+        <button class="btn btn-secondary" onclick="closeMatchReceiptsModal()">Cancel</button>
+        <button class="btn" id="match-save-btn" onclick="saveMatchedReceipts()">Save Matches</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="detailsModal">
     <div class="modal-box wide">
       <h3>Request Details</h3>
@@ -813,6 +830,189 @@
       row.supportingReceiptAnnotationsLocked = isLocked;
       await loadRequests();
       refreshOpenDetailsModal(requestId);
+    }
+
+    /* ---------- Match receipts to items (Treasurer, older requests) ----------
+       Requests liquidated before per-item receipt linking existed carry
+       liquidationItems with no receiptIds, so their expenses have no receipt
+       of their own and the reports could only offer "Receipts on liquidation
+       request" (the whole pool). Here the Treasurer ticks which receipt(s)
+       support each item; saving writes liquidationItems[].receiptIds and, for
+       a reconciled request, copies each item's first receipt (and its
+       highlights) onto that item's expense, exactly as a reconcile does today.
+       An expense with its own uploaded receipt (not receiptSharedFromLiquidation)
+       is never touched. */
+
+    let matchTargetId = null;
+
+    function openMatchReceiptsModal(id) {
+      if (!roleIs('Treasurer')) return;
+      const row = requestRows.find(item => item.id === id);
+      if (!row) return;
+      matchTargetId = id;
+      const pool = receiptPoolFromRow(row);
+      const items = row.liquidationItems || [];
+      document.getElementById('match-context').innerHTML =
+        `<strong>${escapeHtml(row.title || '')}</strong> — ${escapeHtml(row.requesterName || row.requesterRole || '')} · ${escapeHtml(row.status || '')} · ${items.length} item(s), ${pool.length} receipt(s)`;
+      document.getElementById('match-pool').innerHTML = pool.map((p, i) => {
+        const isImage = p.url && window.GraceBooksAnnotator.isAnnotatableUrl(p.name, p.url);
+        return `<a class="receipt-link" href="${escapeHtml(p.url || '#')}" target="_blank" rel="noopener" style="display:inline-flex; flex-direction:column; align-items:center; gap:3px; border:1px solid #edf2f5; border-radius:6px; padding:4px; font-size:11px; max-width:120px; text-decoration:none;">
+            ${isImage ? `<img src="${escapeHtml(p.url)}" alt="" loading="lazy" style="width:110px; height:80px; object-fit:cover; border-radius:4px;" />` : '<span style="font-size:28px;">📄</span>'}
+            <span><strong>R${i + 1}</strong> ${escapeHtml(p.name)}</span>
+          </a>`;
+      }).join('');
+      document.getElementById('match-items').innerHTML = items.map((item, index) => `
+        <tr>
+          <td>${escapeHtml(item.date || '')}</td>
+          <td>${escapeHtml(item.description || '')}</td>
+          <td class="amount">₱${fmt(item.amount)}</td>
+          <td>${pool.map((p, i) => `<label style="display:inline-flex; align-items:center; gap:3px; margin:0 8px 3px 0; font-size:12px; text-transform:none; letter-spacing:0;">
+              <input type="checkbox" class="match-chk" data-item="${index}" value="${escapeHtml(p.receiptId)}" ${(item.receiptIds || []).includes(p.receiptId) ? 'checked' : ''} /> R${i + 1}
+            </label>`).join('')}</td>
+        </tr>`).join('');
+      document.getElementById('match-inorder-btn').style.display = items.length === pool.length ? '' : 'none';
+      document.getElementById('match-status').textContent = row.status === 'Reconciled'
+        ? 'Saving also attaches each item\'s first receipt to its expense, so reports show the right receipt per line.'
+        : '';
+      document.getElementById('matchReceiptsModal').classList.add('open');
+    }
+
+    function closeMatchReceiptsModal() {
+      matchTargetId = null;
+      document.getElementById('matchReceiptsModal').classList.remove('open');
+    }
+
+    // Only offered when there are exactly as many receipts as items -
+    // a common shape for older liquidations (one photo per item, uploaded
+    // in the same order). The Treasurer still reviews before saving.
+    function matchReceiptsInOrder() {
+      const row = requestRows.find(item => item.id === matchTargetId);
+      if (!row) return;
+      const pool = receiptPoolFromRow(row);
+      document.querySelectorAll('#match-items .match-chk').forEach(chk => {
+        const index = Number(chk.dataset.item);
+        chk.checked = pool[index] && chk.value === pool[index].receiptId;
+      });
+    }
+
+    // Which liquidation item an expense was generated from: the explicit
+    // liquidationItemIndex (guarded by a description match), else its
+    // position in classifiedExpenseIds when that list covers every item
+    // (reconcile pushes one expense per item, in order), else a unique
+    // description/amount/date match. Null when it can't be told.
+    function itemIndexForExpense(row, expense) {
+      const items = row.liquidationItems || [];
+      const idx = expense.liquidationItemIndex;
+      if (Number.isInteger(idx) && idx >= 0 && idx < items.length
+        && (!expense.sub || !items[idx].description || items[idx].description === expense.sub)) return idx;
+      const ids = row.classifiedExpenseIds || [];
+      const pos = ids.indexOf(expense.id);
+      if (pos >= 0 && ids.length === items.length
+        && (!expense.sub || !items[pos].description || items[pos].description === expense.sub)) return pos;
+      const matches = [];
+      items.forEach((item, i) => {
+        if ((item.description || '') === (expense.sub || '')
+          && Math.abs(Number(item.amount || 0) - Number(expense.amount || 0)) < 0.01
+          && (!item.date || !expense.date || item.date === expense.date)) matches.push(i);
+      });
+      return matches.length === 1 ? matches[0] : null;
+    }
+
+    async function saveMatchedReceipts() {
+      if (!roleIs('Treasurer')) return;
+      const row = requestRows.find(item => item.id === matchTargetId);
+      if (!row) return closeMatchReceiptsModal();
+      const pool = receiptPoolFromRow(row);
+      const fullPool = (row.liquidationReceipts || []).concat(row.supportingReceipts || []);
+      const beforeItems = row.liquidationItems || [];
+      const items = beforeItems.map((item, index) => {
+        const receiptIds = Array.from(document.querySelectorAll(`#match-items .match-chk[data-item="${index}"]:checked`)).map(chk => chk.value);
+        return {
+          ...item,
+          receiptIds,
+          // Highlights only make sense on a receipt still linked to the item.
+          annotations: (item.annotations || []).filter(a => receiptIds.includes(a.receiptId))
+        };
+      });
+      const button = document.getElementById('match-save-btn');
+      button.disabled = true;
+      button.textContent = 'Saving...';
+      const status = document.getElementById('match-status');
+      try {
+        const now = new Date().toISOString();
+        await db.collection('liquidationRequests').doc(row.id).update({ liquidationItems: items, updatedAt: now });
+        await writeAuditLog('liquidation_receipts_matched', 'liquidationRequests', row.id,
+          { liquidationItems: beforeItems }, { liquidationItems: items },
+          `Matched receipts to ${items.filter(i => i.receiptIds.length).length} of ${items.length} item(s) on "${row.title || row.id}"`);
+        row.liquidationItems = items;
+
+        // Expenses generated from this request's items: the reconcile ones
+        // (linkedLiquidationRequestId) and the reimbursed parts of an
+        // overspent advance (sourceLiquidationRequestId). Two single-field
+        // queries - no composite index needed.
+        const [linkedSnap, sourceSnap] = await Promise.all([
+          db.collection('expenses').where('linkedLiquidationRequestId', '==', row.id).get(),
+          db.collection('expenses').where('sourceLiquidationRequestId', '==', row.id).get()
+        ]);
+        const seen = new Set();
+        const expenses = [];
+        linkedSnap.docs.concat(sourceSnap.docs).forEach(doc => {
+          if (seen.has(doc.id)) return;
+          seen.add(doc.id);
+          expenses.push({ id: doc.id, ...doc.data() });
+        });
+        let updated = 0;
+        let skippedOwn = 0;
+        let unmatched = 0;
+        for (const expense of expenses) {
+          if (expense.category === PLACEHOLDER_ADVANCE_CATEGORY) continue; // not itemised yet
+          if (expense.receiptUrl && !expense.receiptSharedFromLiquidation) { skippedOwn++; continue; }
+          const index = itemIndexForExpense(row, expense);
+          if (index === null) { unmatched++; continue; }
+          const item = items[index];
+          const firstId = (item.receiptIds || [])[0];
+          const receipt = firstId ? fullPool.find(r => (r.receiptId || r.receiptPath) === firstId) : null;
+          const patch = { liquidationItemIndex: index, updatedAt: now };
+          if (receipt) {
+            if (expense.receiptUrl === receipt.receiptUrl && expense.liquidationItemIndex === index) continue;
+            patch.receiptName = receipt.receiptName || '';
+            patch.receiptPath = receipt.receiptPath || '';
+            patch.receiptUrl = receipt.receiptUrl || '';
+            patch.receiptSharedFromLiquidation = true;
+            patch.receiptAnnotations = (item.annotations || []).filter(a => a.receiptId === firstId)
+              .map(({ receiptId, ...rest }) => rest);
+            patch.receiptAnnotationsLocked = !!item.annotationsLocked;
+          } else if (expense.receiptSharedFromLiquidation) {
+            // The item no longer has a receipt: drop the shared copy (the
+            // file itself belongs to the request and is never deleted here).
+            const del = firebase.firestore.FieldValue.delete();
+            Object.assign(patch, { receiptName: del, receiptPath: del, receiptUrl: del, receiptSharedFromLiquidation: del,
+              receiptAnnotations: del, receiptAnnotationsLocked: del });
+          } else if (expense.liquidationItemIndex === index) {
+            continue;
+          }
+          await db.collection('expenses').doc(expense.id).update(patch);
+          await writeAuditLog('expense_receipt_matched_from_liquidation', 'expenses', expense.id,
+            { receiptUrl: expense.receiptUrl || null, receiptName: expense.receiptName || null, liquidationItemIndex: expense.liquidationItemIndex ?? null },
+            { receiptUrl: receipt ? receipt.receiptUrl : null, receiptName: receipt ? receipt.receiptName : null, liquidationItemIndex: index },
+            `Matched receipt ${receipt ? `"${receipt.receiptName || ''}"` : '(none)'} to expense "${expense.sub || ''}" from liquidation "${row.title || row.id}"`);
+          updated++;
+        }
+        await loadRequests();
+        const notes = [`Saved. ${updated} expense(s) updated.`];
+        if (skippedOwn) notes.push(`${skippedOwn} kept their own uploaded receipt.`);
+        if (unmatched) notes.push(`${unmatched} could not be tied to a single item - open them in Expenses to attach a receipt.`);
+        if (skippedOwn || unmatched) {
+          status.textContent = notes.join(' ');
+        } else {
+          closeMatchReceiptsModal();
+          alert(notes.join(' '));
+        }
+      } catch (error) {
+        alert(error.message);
+      }
+      button.disabled = false;
+      button.textContent = 'Save Matches';
     }
 
     function onRequestTypeChange() {
@@ -2556,6 +2756,9 @@
         }
         if (row.status === 'Liquidation Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="openReturnModal('${row.id}')">Return for Correction</button>`);
+        }
+        if ((row.liquidationItems || []).length && receiptPoolFromRow(row).length) {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="openMatchReceiptsModal('${row.id}')">🔗 Match Receipts</button>`);
         }
         if (row.releasedAt) {
           const voucherLabel = row.voucherNo ? `🧾 ${row.voucherNo}` : '🧾 Cash Voucher';

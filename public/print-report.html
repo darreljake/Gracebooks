@@ -3893,23 +3893,43 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
       // the SOURCE cash advance request (see report-workflow.html).
       const itemRequest = (expense.liquidationSplit === 'reimburse' && expense.sourceLiquidationRequestId
         && reviewLiquidationMap.get(expense.sourceLiquidationRequestId)) || request;
-      if (!candidates.length) {
+      // An expense whose receipt was COPIED from the request at reconcile/
+      // release (receiptSharedFromLiquidation) only carries the first one -
+      // show every receipt matched to its item, or all of a plain
+      // reimbursement's receipts (one expense covers the whole request).
+      const ownIsShared = candidates.length && expense.receiptSharedFromLiquidation;
+      if (!candidates.length || ownIsShared) {
         const pool = liquidationReceiptPool(itemRequest);
         const matchedItem = findMatchingLiquidationItem(itemRequest, expense);
+        const isPlainReimbursement = request.type === 'Reimbursement' && !request.sourceLiquidationRequestId
+          && !(itemRequest.liquidationItems || []).length;
+        const found = [];
         if (matchedItem && (matchedItem.receiptIds || []).length) {
           matchedItem.receiptIds.forEach(receiptId => {
-            const found = pool.find(p => p.id === receiptId);
-            if (found) {
-              candidates.push({
-                id: found.id, name: found.name, url: found.url,
-                annotations: (matchedItem.annotations || []).filter(a => a.receiptId === receiptId),
-                locked: !!matchedItem.annotationsLocked, source: 'item'
-              });
-            }
+            const p = pool.find(x => x.id === receiptId);
+            if (p) found.push({ id: p.id, name: p.name, url: p.url,
+              annotations: (matchedItem.annotations || []).filter(a => a.receiptId === receiptId),
+              locked: !!matchedItem.annotationsLocked, source: 'item' });
           });
-        } else if (pool.length) {
+        } else if (isPlainReimbursement && pool.length) {
+          const highlights = itemRequest.supportingReceiptAnnotations || [];
+          pool.forEach(p => found.push({ id: p.id, name: p.name, url: p.url,
+            annotations: highlights.filter(a => a.receiptId === p.id),
+            locked: !!itemRequest.supportingReceiptAnnotationsLocked, source: 'request' }));
+        } else if (!candidates.length && pool.length) {
+          // No confident per-item match (a liquidated item we couldn't pin
+          // down conservatively) - show the whole pool rather than silently
+          // dropping it.
           isFallbackPool = true;
-          pool.forEach(p => candidates.push({ id: p.id, name: p.name, url: p.url, annotations: [], locked: false, source: 'pool' }));
+          pool.forEach(p => found.push({ id: p.id, name: p.name, url: p.url, annotations: [], locked: false, source: 'pool' }));
+        }
+        if (found.length) {
+          // The shared copy is one of these; keep the expense's own copy (its
+          // highlights may have been edited in expenses.html) in its place.
+          const own = ownIsShared ? candidates[0] : null;
+          candidates.length = 0;
+          found.forEach(c => candidates.push(own && c.url === own.url ? own : c));
+          if (own && !found.some(c => c.url === own.url)) candidates.unshift(own);
         }
       }
     }
