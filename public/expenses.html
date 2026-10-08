@@ -603,6 +603,12 @@
       return match ? `.${match[1].toLowerCase()}` : '';
   }
 
+  // True only for a path under this expense's own expense-receipts/{id}/
+  // folder - the one place a Storage delete from this page is allowed.
+  function ownsExpenseReceiptPath(expenseId, path) {
+      return !!expenseId && typeof path === 'string' && path.indexOf(`expense-receipts/${expenseId}/`) === 0;
+  }
+
   async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath) {
       if (!receiptFile) return null;
       const contentType = getReceiptContentType(receiptFile);
@@ -619,7 +625,11 @@
               : `Uploaded receipt for expense ${docRef.id}`
       );
       const receiptUrl = await receiptRef.getDownloadURL();
-      if (oldReceiptPath) {
+      // Only ever delete a file this expense owns. A receipt copied from a
+      // liquidation request (receiptSharedFromLiquidation) lives under
+      // liquidation-receipts/... and still belongs to that request's pool -
+      // replacing it here used to delete the request's own evidence file.
+      if (ownsExpenseReceiptPath(docRef.id, oldReceiptPath)) {
           try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }
       }
       const payload = {
@@ -830,7 +840,7 @@
       // expense's receipt was copied over during reconciliation - never
       // delete the underlying Storage object in that case, only clear the
       // Firestore fields on this expense.
-      if (!record.receiptSharedFromLiquidation) {
+      if (!record.receiptSharedFromLiquidation && ownsExpenseReceiptPath(docId, record.receiptPath)) {
           try {
               await storage.ref(record.receiptPath).delete();
           } catch (error) {
@@ -861,7 +871,7 @@
       // from a liquidation reconciliation is still owned by that request's
       // receipt pool - deleting this expense must not destroy that evidence
       // file out from under it.
-      if (record.receiptPath && !record.receiptSharedFromLiquidation) {
+      if (record.receiptPath && !record.receiptSharedFromLiquidation && ownsExpenseReceiptPath(docId, record.receiptPath)) {
           try { await storage.ref(record.receiptPath).delete(); } catch (error) { console.warn(error); }
       }
       await db.collection('expenses').doc(docId).delete();

@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#8B0000"/>
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>Receipt Recovery - GraceBooks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #f0f4f8; min-height: 100vh; color: #263238; overflow-x: hidden; }
+    .topbar { background: #8B0000; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .topbar h2 { font-size: 20px; }
+    .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+    .back-btn:hover { background: rgba(255,255,255,0.3); }
+    .container { max-width: 1180px; margin: 26px auto; padding: 0 20px; visibility: hidden; }
+    .container.ready { visibility: visible; }
+    .card { background: white; border-radius: 10px; padding: 22px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); margin-bottom: 22px; }
+    .card h3 { color: #8B0000; font-size: 18px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 2px solid #f2d7d5; }
+    .sub { font-size: 12px; color: #6b7b86; line-height: 1.5; margin-bottom: 12px; }
+    .rule { background: #fff8e6; border: 1px solid #f0d78c; border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; color: #5d4a0a; margin-bottom: 14px; }
+    .muted { color: #7b8a94; font-size: 12px; }
+    .badge { display: inline-block; border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+    .b-ok { background: #d5f5e3; color: #1e8449; }
+    .b-warn { background: #fcf3cf; color: #9a6a00; }
+    .b-bad { background: #fdedec; color: #a93226; }
+    .b-info { background: #d6eaf8; color: #1a5276; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    input[type=date], input[type=text], select { padding: 9px 10px; border: 1px solid #cfd8dc; border-radius: 6px; background: white; font-size: 13px; max-width: 100%; }
+    .btn { background: #8B0000; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold; }
+    .btn:disabled { background: #c9a9a9; cursor: not-allowed; }
+    .btn-sm { padding: 6px 11px; font-size: 12px; }
+    a.btn { display: inline-block; text-decoration: none; }
+    .btn-light { background: #eef2f5; color: #37474f; border: 1px solid #cfd8dc; }
+    .btn-green { background: #1e8449; }
+    #msg { font-size: 13px; margin: 10px 0; min-height: 18px; line-height: 1.45; }
+    #msg.err { color: #a93226; font-weight: bold; }
+    #msg.good { color: #1e8449; font-weight: bold; }
+    .group { border: 1px solid #e3e9ee; border-radius: 9px; margin-bottom: 14px; overflow: hidden; }
+    .group-head { background: #f7f9fb; padding: 11px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+    .group-head .title { font-weight: bold; font-size: 14px; }
+    .group-head .meta { font-size: 12px; color: #6b7b86; margin-top: 3px; line-height: 1.45; }
+    .file { display: flex; gap: 12px; padding: 11px 14px; border-top: 1px solid #edf2f5; align-items: flex-start; flex-wrap: wrap; }
+    .thumb { width: 72px; height: 72px; border-radius: 6px; border: 1px solid #dfe6eb; background: #f4f6f8; object-fit: cover; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #7b8a94; overflow: hidden; }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .file-body { flex: 1 1 260px; min-width: 0; }
+    .file-name { font-weight: bold; font-size: 13px; word-break: break-word; }
+    .file-meta { font-size: 12px; color: #6b7b86; margin-top: 3px; line-height: 1.45; word-break: break-word; }
+    .file-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .attach-panel { margin-top: 8px; padding: 10px; background: #f7f9fb; border: 1px solid #e3e9ee; border-radius: 7px; display: none; }
+    .attach-panel.show { display: block; }
+    .attach-panel select { width: 100%; margin-top: 6px; }
+    .cause { font-size: 12px; color: #a93226; margin-top: 4px; line-height: 1.45; }
+    .empty { font-size: 13px; color: #1e8449; padding: 6px 0; }
+    .hidden { display: none; }
+    a { color: #1a5276; }
+    @media (max-width: 760px) { .container { padding: 0 12px; } .card { padding: 16px 14px; } }
+    @media screen and (max-width: 600px) {
+      .topbar { padding: 10px 12px; }
+      .topbar h2 { font-size: 17px; min-width: 0; }
+      .back-btn { flex: 0 0 auto; white-space: nowrap; min-height: 40px; }
+      input:not([type=checkbox]):not([type=file]), select { font-size: 16px !important; min-height: 40px; }
+      .btn { min-height: 44px; }
+      .btn-sm { min-height: 38px; }
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-check-compat.js"></script>
+  <script src="auth.js"></script>
+  <script>requireGraceBooksAuth();</script>
+</head>
+<body>
+<div class="topbar">
+  <h2>🧾 Receipt Recovery</h2>
+  <button class="back-btn" onclick="window.location.href='index.html'">Back to Dashboard</button>
+</div>
+
+<div class="container" id="main">
+  <div class="card">
+    <h3>Find lost liquidation receipts</h3>
+    <div class="rule">
+      This page looks for receipt files that are still in storage but no longer linked to a liquidation request or an expense,
+      and for linked receipts whose file is gone. It checks the current requests and expenses, the Audit Log (every
+      receipt upload, deleted request and replaced receipt is recorded there) and the storage folders themselves.
+      <strong>Nothing is ever deleted here.</strong> Every re-link, restore or re-upload is written to the Audit Log.
+    </div>
+    <div class="row">
+      <label for="since" class="muted">Look at activity since</label>
+      <input type="date" id="since" />
+      <button class="btn" id="scan-btn">Scan</button>
+    </div>
+    <div id="msg"></div>
+    <div id="summary" class="row"></div>
+  </div>
+
+  <div class="card hidden" id="card-unlinked">
+    <h3>Files in storage that are not linked anywhere</h3>
+    <div class="sub">These files exist but no request or expense points to them, so they show up nowhere in the app.
+      Re-link one to its request, restore a deleted request, or attach it to an expense.</div>
+    <div id="unlinked-list"></div>
+  </div>
+
+  <div class="card hidden" id="card-missing">
+    <h3>Linked receipts whose file is gone</h3>
+    <div class="sub">A request or expense still points to these, but the file is no longer in storage. If you still have the
+      paper receipt or the photo, upload it again here. The new file takes the old one's place, so links to liquidation
+      items stay intact.</div>
+    <div id="missing-list"></div>
+  </div>
+
+  <div class="card hidden" id="card-unmatched">
+    <h3>Receipts that are there but not shown in reports</h3>
+    <div class="sub">The receipts are still on the request, but some items are not matched to a receipt, so their expenses
+      show "No receipt" in the Print Report and Supporting Documents. Open Liquidation &amp; Reimbursements and use
+      <strong>🔗 Match Receipts</strong> on these requests.</div>
+    <div id="unmatched-list"></div>
+  </div>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCimlS-2_tInj_khQ6KIaeocHYVVK0hwtc",
+    authDomain: "gracebooks-7eebc.firebaseapp.com",
+    projectId: "gracebooks-7eebc",
+    storageBucket: "gracebooks-7eebc.firebasestorage.app",
+    messagingSenderId: "423871889231",
+    appId: "1:423871889231:web:b2053c9df3517e3c210f3a"
+  };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const storage = firebase.storage();
+
+  const PLACEHOLDER_ADVANCE_CATEGORY = 'Non-Budgeted - Staff Cash Advance (Pending Liquidation)';
+  // Audit actions whose before/after can carry a receipt reference. One
+  // single-field 'in' query (max 30 values), filtered by date client-side.
+  const AUDIT_ACTIONS = [
+    'receipt_uploaded', 'receipt_replaced', 'receipt_removed', 'expense_deleted',
+    'liquidation_request_created', 'liquidation_submitted', 'liquidation_request_deleted',
+    'liquidation_returned_for_correction', 'liquidation_request_reconciled', 'liquidation_request_released',
+    'liquidation_request_reviewed', 'liquidation_request_cancelled', 'expense_receipt_matched_from_liquidation',
+    'expense_created_from_liquidation_item', 'expense_created_from_liquidation_request',
+    'liquidation_receipt_relinked', 'expense_receipt_relinked', 'liquidation_request_restored',
+    'receipt_reuploaded_after_loss'
+  ];
+
+  let activeUserProfile = null;
+  let busy = false;
+  let scan = null; // { since, requests: Map, expenses: Map, audits: [], files: Map(path -> rec), storageListOk, ... }
+
+  window.graceBooksAuthReady.then(profile => {
+    activeUserProfile = profile;
+    if (profile.role !== 'Treasurer') { window.location.href = 'index.html'; return; }
+    const d = new Date();
+    const start = new Date(d.getFullYear(), d.getMonth() - 3, 1);
+    document.getElementById('since').value = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`;
+    document.getElementById('main').classList.add('ready');
+    document.getElementById('scan-btn').addEventListener('click', runScan);
+    document.getElementById('main').addEventListener('click', onAction);
+  });
+
+  function isTreasurer() { return !!activeUserProfile && activeUserProfile.role === 'Treasurer'; }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  const peso = n => '₱' + (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const day = iso => String(iso || '').slice(0, 10);
+  function setMsg(text, kind) {
+    const el = document.getElementById('msg');
+    el.textContent = text || '';
+    el.className = kind || '';
+  }
+  function generateStorageToken() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  function safeFileExtension(fileName) {
+    const match = /\.([a-zA-Z0-9]{1,8})$/.exec(fileName || '');
+    return match ? `.${match[1].toLowerCase()}` : '';
+  }
+  function receiptContentType(file) {
+    const type = (file && file.type || '').toLowerCase();
+    const name = (file && file.name || '').toLowerCase();
+    if (type.startsWith('image/') || type === 'application/pdf') return type;
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (/\.(jpe?g|jfif)$/.test(name)) return 'image/jpeg';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (/\.(heic|heif)$/.test(name)) return 'image/heic';
+    return '';
+  }
+
+  async function writeAuditLog(action, collectionName, docId, beforeData, afterData, summary) {
+    const user = firebase.auth().currentUser;
+    await db.collection('auditLogs').add({
+      action,
+      collection: collectionName,
+      docId,
+      summary,
+      before: beforeData || null,
+      after: afterData || null,
+      actorUid: user ? user.uid : '',
+      actorEmail: user ? user.email : '',
+      actorName: activeUserProfile ? activeUserProfile.name : '',
+      actorRole: activeUserProfile ? activeUserProfile.role : '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  async function runLimited(items, limit, fn) {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const item = items[next++];
+        await fn(item);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  // ------------------------------------------------------------ references
+
+  // Storage object path of a receipt reference: its receiptPath, else the
+  // path encoded in a download URL's /o/<path> segment.
+  function pathFromUrl(url) {
+    const match = /\/o\/([^?#]+)/.exec(String(url || ''));
+    if (!match) return '';
+    try { return decodeURIComponent(match[1]); } catch (error) { return ''; }
+  }
+  function refPath(obj) {
+    if (!obj || typeof obj !== 'object') return '';
+    if (typeof obj.receiptPath === 'string' && obj.receiptPath) return obj.receiptPath;
+    return typeof obj.receiptUrl === 'string' ? pathFromUrl(obj.receiptUrl) : '';
+  }
+  // The request or expense a storage path belongs to, from its folder.
+  function ownerOf(path) {
+    let m = /^liquidation-receipts\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path || '');
+    if (m) return { kind: 'request', id: m[1] };
+    m = /^expense-receipts\/([^/]+)\/([^/]+)$/.exec(path || '');
+    if (m) return { kind: 'expense', id: m[1] };
+    return null;
+  }
+  // uploadReceiptForRequest() names each file <receiptId><ext>, so the
+  // token IS the receiptId that liquidationItems[].receiptIds reference.
+  function receiptIdFromPath(path) {
+    const name = String(path || '').split('/').pop() || '';
+    return name.replace(/\.[a-zA-Z0-9]{1,8}$/, '');
+  }
+  function requestPool(request) {
+    return (request.liquidationReceipts || []).concat(request.supportingReceipts || []);
+  }
+
+  function ensureRec(path) {
+    const owner = ownerOf(path);
+    if (!owner) return null;
+    let rec = scan.files.get(path);
+    if (!rec) {
+      rec = { path, owner, name: '', receiptId: '', url: '', links: [], history: [], foundInStorage: false,
+        exists: null, meta: null, error: '', inScope: false };
+      scan.files.set(path, rec);
+    }
+    return rec;
+  }
+  function noteRef(path, info) {
+    const rec = ensureRec(path);
+    if (!rec) return null;
+    if (info.receiptName && !rec.name) rec.name = info.receiptName;
+    if (info.receiptId && !rec.receiptId) rec.receiptId = info.receiptId;
+    if (info.receiptUrl && !rec.url) rec.url = info.receiptUrl;
+    if (info.receiptUploadedAt && !rec.uploadedAt) rec.uploadedAt = info.receiptUploadedAt;
+    return rec;
+  }
+  // Every object with a receiptPath/receiptUrl inside an audit before/after.
+  function walkReceiptRefs(value, cb, depth) {
+    if (!value || typeof value !== 'object' || depth > 6) return;
+    if (Array.isArray(value)) { value.forEach(v => walkReceiptRefs(v, cb, depth + 1)); return; }
+    const path = refPath(value);
+    if (path) cb(path, value);
+    Object.keys(value).forEach(key => {
+      const v = value[key];
+      if (v && typeof v === 'object') walkReceiptRefs(v, cb, depth + 1);
+    });
+  }
+
+  function requestInScope(r) {
+    const since = scan.since;
+    return [r.date, r.createdAt, r.updatedAt, r.liquidationSubmittedAt, r.releasedAt]
+      .some(v => v && day(v) >= since);
+  }
+  function expenseInScope(e) {
+    return [e.date, e.updatedAt, e.createdAt].some(v => v && day(v) >= scan.since);
+  }
+
+  // ------------------------------------------------------------------ scan
+
+  async function runScan() {
+    if (busy || !isTreasurer()) return;
+    const since = document.getElementById('since').value;
+    if (!since) return setMsg('Pick a start date first.', 'err');
+    busy = true;
+    const button = document.getElementById('scan-btn');
+    button.disabled = true;
+    try {
+      scan = { since, requests: new Map(), expenses: new Map(), audits: [], files: new Map(),
+        deletedRequests: new Map(), storageListOk: true, storageListError: '', urls: new Map() };
+
+      setMsg('Reading liquidation requests, expenses and the Audit Log...');
+      const [reqSnap, expSnap, auditSnap] = await Promise.all([
+        db.collection('liquidationRequests').get(),
+        db.collection('expenses').get(),
+        db.collection('auditLogs').where('action', 'in', AUDIT_ACTIONS).get()
+      ]);
+      reqSnap.docs.forEach(doc => scan.requests.set(doc.id, { id: doc.id, ...doc.data() }));
+      expSnap.docs.forEach(doc => scan.expenses.set(doc.id, { id: doc.id, ...doc.data() }));
+      scan.audits = auditSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+
+      // 1. What is linked right now (all records, so a file linked anywhere
+      //    counts as linked even if that record is outside the date range).
+      scan.requests.forEach(r => {
+        const seen = new Set();
+        [['liquidationReceipts', r.liquidationReceipts], ['supportingReceipts', r.supportingReceipts], ['top', [r]]]
+          .forEach(([array, list]) => (list || []).forEach(entry => {
+            const path = refPath(entry);
+            if (!path || seen.has(path)) return;
+            seen.add(path);
+            const rec = noteRef(path, entry);
+            if (!rec) return;
+            rec.links.push({ kind: 'request', id: r.id, array });
+            if (requestInScope(r)) rec.inScope = true;
+          }));
+      });
+      scan.expenses.forEach(e => {
+        const path = refPath(e);
+        if (!path) return;
+        const rec = noteRef(path, e);
+        if (!rec) return;
+        rec.links.push({ kind: 'expense', id: e.id });
+        if (expenseInScope(e)) rec.inScope = true;
+      });
+
+      // 2. Everything the Audit Log ever recorded about a receipt.
+      scan.audits.forEach(entry => {
+        const at = entry.createdAt || '';
+        const inRange = day(at) >= since;
+        if (entry.action === 'liquidation_request_deleted' && entry.before && !scan.requests.has(entry.docId)) {
+          scan.deletedRequests.set(entry.docId, entry); // latest wins (sorted ascending)
+        }
+        ['before', 'after'].forEach(side => walkReceiptRefs(entry[side], (path, obj) => {
+          const rec = noteRef(path, obj);
+          if (!rec) return;
+          rec.history.push({ action: entry.action, side, at, by: entry.actorName || entry.actorEmail || '',
+            collection: entry.collection, docId: entry.docId, summary: entry.summary || '', obj });
+          if (inRange) rec.inScope = true;
+        }, 0));
+      });
+
+      // 3. The storage folders of every request in range (and every deleted
+      //    one), to catch files whose links and audit entries are both gone.
+      const folderIds = new Set();
+      scan.requests.forEach(r => { if (requestInScope(r)) folderIds.add(r.id); });
+      scan.deletedRequests.forEach((entry, id) => { if (day(entry.createdAt) >= since) folderIds.add(id); });
+      scan.files.forEach(rec => { if (rec.inScope && rec.owner.kind === 'request') folderIds.add(rec.owner.id); });
+      const ids = Array.from(folderIds);
+      let listed = 0;
+      setMsg(`Scanning storage folders (0 of ${ids.length})...`);
+      await runLimited(ids, 6, async id => {
+        if (!scan.storageListOk) return;
+        try {
+          const top = await storage.ref(`liquidation-receipts/${id}`).listAll();
+          for (const prefix of top.prefixes) {
+            const res = await prefix.listAll();
+            res.items.forEach(item => {
+              const rec = ensureRec(item.fullPath);
+              if (!rec) return;
+              rec.foundInStorage = true;
+              rec.exists = true;
+              rec.inScope = true;
+            });
+          }
+        } catch (error) {
+          if (error && error.code === 'storage/unauthorized') {
+            scan.storageListOk = false;
+            scan.storageListError = 'Storage folder listing is not allowed yet (deploy storage.rules). The scan used the requests, expenses and Audit Log only.';
+          } else {
+            console.warn('listAll failed for', id, error);
+          }
+        }
+        listed++;
+        setMsg(`Scanning storage folders (${listed} of ${ids.length})...`);
+      });
+
+      // 4. Does each file in range still exist?
+      const toCheck = Array.from(scan.files.values()).filter(rec => rec.inScope);
+      let checked = 0;
+      await runLimited(toCheck, 8, async rec => {
+        try {
+          rec.meta = await storage.ref(rec.path).getMetadata();
+          rec.exists = true;
+        } catch (error) {
+          if (error && error.code === 'storage/object-not-found') rec.exists = false;
+          else { rec.exists = rec.foundInStorage ? true : null; rec.error = (error && (error.code || error.message)) || 'unknown error'; }
+        }
+        checked++;
+        if (checked % 10 === 0) setMsg(`Checking files (${checked} of ${toCheck.length})...`);
+      });
+
+      // 5. Download links for the files that need attention, for preview.
+      const unlinked = classify().unlinked;
+      await runLimited(unlinked, 6, async rec => {
+        try { rec.url = await storage.ref(rec.path).getDownloadURL(); } catch (error) { /* keep any known url */ }
+      });
+
+      render();
+      setMsg(scan.storageListOk ? `Scan complete. Checked ${toCheck.length} receipt file(s).` : scan.storageListError,
+        scan.storageListOk ? 'good' : 'err');
+    } catch (error) {
+      console.error(error);
+      setMsg('Scan failed: ' + (error.message || error), 'err');
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  }
+
+  function isLinkedToOwner(rec) {
+    return rec.links.some(link => link.kind === rec.owner.kind && link.id === rec.owner.id);
+  }
+
+  // Already handled on this page: attached to an expense on purpose, or
+  // replaced by a re-upload. Those stop being listed.
+  function handledHere(rec, action) {
+    return rec.history.some(h => h.action === action
+      && (action === 'receipt_reuploaded_after_loss' ? h.side === 'before' : h.side === 'after'));
+  }
+
+  function classify() {
+    const unlinked = [];
+    const missing = [];
+    scan.files.forEach(rec => {
+      if (!rec.inScope) return;
+      if (rec.exists === true && !isLinkedToOwner(rec)) {
+        const attached = handledHere(rec, 'expense_receipt_relinked') && rec.links.some(link => link.kind === 'expense');
+        if (!attached) unlinked.push(rec);
+      } else if (rec.exists === false && handledHere(rec, 'receipt_reuploaded_after_loss')) {
+        // re-uploaded already
+      }
+      // A missing expense-receipts file that nothing links is just an
+      // expense receipt replaced the normal way - not a loss.
+      else if (rec.exists === false && (rec.links.length || rec.owner.kind === 'request')) missing.push(rec);
+    });
+    const byTime = (a, b) => String(b.uploadedAt || (b.meta && b.meta.timeCreated) || '').localeCompare(String(a.uploadedAt || (a.meta && a.meta.timeCreated) || ''));
+    return { unlinked: unlinked.sort(byTime), missing: missing.sort(byTime) };
+  }
+
+  // Requests whose receipts are fine but some items have none matched.
+  function unmatchedRequests() {
+    const out = [];
+    scan.requests.forEach(r => {
+      if (!requestInScope(r)) return;
+      const items = r.liquidationItems || [];
+      const pool = requestPool(r);
+      if (!items.length || !pool.length) return;
+      const noReceipt = items.filter(item => !(item.receiptIds || []).length).length;
+      const expenses = Array.from(scan.expenses.values()).filter(e =>
+        (e.linkedLiquidationRequestId === r.id || e.sourceLiquidationRequestId === r.id)
+        && e.category !== PLACEHOLDER_ADVANCE_CATEGORY && !e.receiptUrl);
+      if (noReceipt || expenses.length) out.push({ request: r, noReceipt, items: items.length, pool: pool.length, expenses: expenses.length });
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------- render
+
+  function requestLabel(r) {
+    return `${escapeHtml(r.title || '(untitled)')} · ${escapeHtml(r.requesterName || r.requesterRole || '')} · ${peso(r.amount)} · ${escapeHtml(r.type || '')} · ${escapeHtml(r.status || '')}`;
+  }
+  function expenseLabel(e) {
+    return `${escapeHtml(day(e.date))} · ${escapeHtml(e.category || '')}${e.sub ? ' – ' + escapeHtml(e.sub) : ''} · ${escapeHtml(e.payee || '')} · ${peso(e.amount)}`;
+  }
+
+  // What the Audit Log says happened to a file, newest first.
+  function causeText(rec) {
+    const lines = [];
+    rec.history.slice().reverse().forEach(h => {
+      if (h.side !== 'before') return;
+      if ((h.action === 'receipt_replaced' || h.action === 'receipt_removed') && h.collection === 'expenses') {
+        const e = scan.expenses.get(h.docId);
+        lines.push(`${h.action === 'receipt_replaced' ? 'Replaced' : 'Removed'} on expense ${e ? '"' + escapeHtml(e.sub || e.category || h.docId) + '"' : escapeHtml(h.docId)} on ${escapeHtml(day(h.at))}${h.by ? ' by ' + escapeHtml(h.by) : ''}`
+          + (rec.owner.kind === 'request' ? ' - the Expenses page used to delete the liquidation request\'s own file when its copy on an expense was replaced (fixed now).' : '.'));
+      } else if (h.action === 'expense_deleted' && rec.owner.kind === 'expense') {
+        lines.push(`Expense deleted on ${escapeHtml(day(h.at))}${h.by ? ' by ' + escapeHtml(h.by) : ''}.`);
+      } else if (h.action === 'liquidation_request_deleted') {
+        lines.push(`Request deleted on ${escapeHtml(day(h.at))}${h.by ? ' by ' + escapeHtml(h.by) : ''}.`);
+      }
+    });
+    return Array.from(new Set(lines));
+  }
+
+  function fileMeta(rec) {
+    const parts = [];
+    const uploaded = rec.uploadedAt || (rec.meta && rec.meta.timeCreated) || (rec.history.find(h => h.action === 'receipt_uploaded') || {}).at;
+    if (uploaded) parts.push('Uploaded ' + escapeHtml(day(uploaded)));
+    if (rec.meta && rec.meta.size) parts.push(Math.round(rec.meta.size / 1024) + ' KB');
+    const otherLinks = rec.links.filter(link => !(link.kind === rec.owner.kind && link.id === rec.owner.id));
+    otherLinks.forEach(link => {
+      if (link.kind === 'expense') {
+        const e = scan.expenses.get(link.id);
+        parts.push('Still shown on expense: ' + (e ? expenseLabel(e) : escapeHtml(link.id)));
+      } else {
+        parts.push('Linked on request ' + escapeHtml(link.id));
+      }
+    });
+    if (!rec.history.length && rec.foundInStorage) parts.push('Found only in storage (no Audit Log entry)');
+    parts.push(`<span class="muted">${escapeHtml(rec.path)}</span>`);
+    return parts.join('<br>');
+  }
+
+  function thumbHtml(rec) {
+    const type = (rec.meta && rec.meta.contentType) || '';
+    if (rec.url && (type.startsWith('image/') || (!type && /\.(jpe?g|png|webp|gif)$/i.test(rec.path)))) {
+      return `<div class="thumb"><img src="${escapeHtml(rec.url)}" alt="" loading="lazy"></div>`;
+    }
+    return `<div class="thumb">${type === 'application/pdf' || /\.pdf$/i.test(rec.path) ? 'PDF' : 'file'}</div>`;
+  }
+
+  function attachOptions(rec) {
+    const ownerId = rec.owner.id;
+    const linked = [];
+    const others = [];
+    scan.expenses.forEach(e => {
+      if (e.category === PLACEHOLDER_ADVANCE_CATEGORY) return;
+      if (e.id === ownerId || e.linkedLiquidationRequestId === ownerId || e.sourceLiquidationRequestId === ownerId) linked.push(e);
+      else if (!e.receiptUrl && day(e.date) >= scan.since) others.push(e);
+    });
+    const byDate = (a, b) => String(b.date || '').localeCompare(String(a.date || ''));
+    const opt = e => `<option value="${escapeHtml(e.id)}">${expenseLabel(e)}${e.receiptUrl ? ' (has a receipt)' : ''}</option>`;
+    return `<option value="">Choose an expense...</option>`
+      + (linked.length ? `<optgroup label="Linked to this request">${linked.sort(byDate).map(opt).join('')}</optgroup>` : '')
+      + (others.length ? `<optgroup label="Expenses without a receipt (since ${escapeHtml(scan.since)})">${others.sort(byDate).map(opt).join('')}</optgroup>` : '');
+  }
+
+  function fileRowHtml(rec, mode) {
+    const key = escapeHtml(rec.path);
+    const name = escapeHtml(rec.name || rec.path.split('/').pop());
+    const actions = [];
+    const causes = causeText(rec);
+    if (mode === 'unlinked') {
+      if (rec.url) actions.push(`<a class="btn btn-sm btn-light" href="${escapeHtml(rec.url)}" target="_blank" rel="noopener">View</a>`);
+      if (rec.owner.kind === 'request' && scan.requests.has(rec.owner.id)) {
+        actions.push(`<button class="btn btn-sm btn-green" data-act="relink-request" data-path="${key}">Re-link to its request</button>`);
+      }
+      if (rec.owner.kind === 'expense' && scan.expenses.has(rec.owner.id) && !scan.expenses.get(rec.owner.id).receiptUrl) {
+        actions.push(`<button class="btn btn-sm btn-green" data-act="attach-expense-direct" data-path="${key}" data-expense="${escapeHtml(rec.owner.id)}">Re-link to its expense</button>`);
+      }
+      actions.push(`<button class="btn btn-sm btn-light" data-act="toggle-attach" data-path="${key}">Attach to an expense...</button>`);
+    } else {
+      const hasRequestLink = rec.links.some(link => link.kind === 'request');
+      const hasExpenseLink = rec.links.some(link => link.kind === 'expense');
+      if (hasRequestLink || hasExpenseLink) {
+        actions.push(`<button class="btn btn-sm btn-green" data-act="reupload" data-path="${key}">Upload the receipt again...</button>`);
+      }
+    }
+    const linkedText = mode === 'missing' ? rec.links.map(link => {
+      if (link.kind === 'request') {
+        const r = scan.requests.get(link.id);
+        return 'Request: ' + (r ? requestLabel(r) : escapeHtml(link.id));
+      }
+      const e = scan.expenses.get(link.id);
+      return 'Expense: ' + (e ? expenseLabel(e) : escapeHtml(link.id));
+    }).join('<br>') : '';
+    return `<div class="file">
+      ${mode === 'unlinked' ? thumbHtml(rec) : '<div class="thumb">missing</div>'}
+      <div class="file-body">
+        <div class="file-name">${name}</div>
+        <div class="file-meta">${linkedText ? linkedText + '<br>' : ''}${fileMeta(rec)}</div>
+        ${causes.map(c => `<div class="cause">${c}</div>`).join('')}
+        ${mode === 'missing' ? softDeleteHint(rec) : ''}
+        <div class="file-actions">${actions.join('')}</div>
+        ${mode === 'unlinked' ? `<div class="attach-panel" data-panel="${key}">
+          <div class="muted">The file is linked as this expense's receipt. Nothing is deleted - if the expense already has a receipt, that one stays in storage.</div>
+          <select data-select="${key}">${attachOptions(rec)}</select>
+          <div class="file-actions"><button class="btn btn-sm btn-green" data-act="attach-expense" data-path="${key}">Attach</button></div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // Google Cloud keeps a deleted object for 7 days when the bucket's soft
+  // delete is on (the default for new buckets), restorable from the console.
+  function softDeleteHint(rec) {
+    const deletedAt = (rec.history.slice().reverse().find(h => h.side === 'before'
+      && ['receipt_replaced', 'receipt_removed', 'expense_deleted'].includes(h.action)) || {}).at;
+    if (!deletedAt) return '';
+    const ageDays = (Date.now() - new Date(deletedAt).getTime()) / 86400000;
+    if (!(ageDays >= 0 && ageDays < 7)) return '';
+    const until = new Date(new Date(deletedAt).getTime() + 7 * 86400000).toISOString().slice(0, 10);
+    return `<div class="muted" style="margin-top:4px;">Deleted less than 7 days ago: if soft delete is on for the storage bucket, it can still be restored in the Google Cloud console (Cloud Storage → bucket → "Show deleted data") until about ${escapeHtml(until)}.</div>`;
+  }
+
+  function groupHead(rec) {
+    if (rec.owner.kind === 'request') {
+      const r = scan.requests.get(rec.owner.id);
+      if (r) return `<div><div class="title">Liquidation request</div><div class="meta">${requestLabel(r)}${r.date ? ' · ' + escapeHtml(r.date) : ''}</div></div>`;
+      const del = scan.deletedRequests.get(rec.owner.id);
+      if (del) {
+        const b = del.before || {};
+        return `<div><div class="title">Deleted liquidation request <span class="badge b-bad">deleted</span></div>
+          <div class="meta">${requestLabel(b)}${b.date ? ' · ' + escapeHtml(b.date) : ''}<br>Deleted ${escapeHtml(day(del.createdAt))}${del.actorName ? ' by ' + escapeHtml(del.actorName) : ''}</div></div>
+          <button class="btn btn-sm" data-act="restore-request" data-request="${escapeHtml(rec.owner.id)}">Restore this request</button>`;
+      }
+      return `<div><div class="title">Request ${escapeHtml(rec.owner.id)} <span class="badge b-warn">not found</span></div>
+        <div class="meta">No request record and no deletion entry in the Audit Log. Attach the file to an expense instead.</div></div>`;
+    }
+    const e = scan.expenses.get(rec.owner.id);
+    if (e) return `<div><div class="title">Expense</div><div class="meta">${expenseLabel(e)}</div></div>`;
+    const del = scan.audits.slice().reverse().find(a => a.action === 'expense_deleted' && a.docId === rec.owner.id);
+    return `<div><div class="title">Deleted expense <span class="badge b-bad">deleted</span></div>
+      <div class="meta">${del && del.before ? expenseLabel(del.before) + '<br>' : ''}${del ? 'Deleted ' + escapeHtml(day(del.createdAt)) + (del.actorName ? ' by ' + escapeHtml(del.actorName) : '') : escapeHtml(rec.owner.id)}</div></div>`;
+  }
+
+  function groupedHtml(list, mode) {
+    const groups = new Map();
+    list.forEach(rec => {
+      const key = rec.owner.kind + ':' + rec.owner.id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(rec);
+    });
+    return Array.from(groups.values()).map(recs => `<div class="group">
+      <div class="group-head">${groupHead(recs[0])}</div>
+      ${recs.map(rec => fileRowHtml(rec, mode)).join('')}
+    </div>`).join('');
+  }
+
+  function render() {
+    const { unlinked, missing } = classify();
+    const unmatched = unmatchedRequests();
+    document.getElementById('summary').innerHTML = [
+      `<span class="badge ${unlinked.length ? 'b-warn' : 'b-ok'}">${unlinked.length} unlinked file(s)</span>`,
+      `<span class="badge ${missing.length ? 'b-bad' : 'b-ok'}">${missing.length} missing file(s)</span>`,
+      `<span class="badge ${unmatched.length ? 'b-info' : 'b-ok'}">${unmatched.length} request(s) to match</span>`,
+      scan.storageListOk ? '' : '<span class="badge b-warn">storage folders not scanned</span>'
+    ].join('');
+
+    ['unlinked', 'missing', 'unmatched'].forEach(id => document.getElementById('card-' + id).classList.remove('hidden'));
+    document.getElementById('unlinked-list').innerHTML = unlinked.length
+      ? groupedHtml(unlinked, 'unlinked') : '<div class="empty">✓ No unlinked receipt files found.</div>';
+    document.getElementById('missing-list').innerHTML = missing.length
+      ? groupedHtml(missing, 'missing') : '<div class="empty">✓ Every linked receipt file is still in storage.</div>';
+    document.getElementById('unmatched-list').innerHTML = unmatched.length
+      ? unmatched.map(u => `<div class="group"><div class="group-head"><div>
+          <div class="title">${escapeHtml(u.request.title || '(untitled)')}</div>
+          <div class="meta">${requestLabel(u.request)}<br>${u.pool} receipt(s) on the request · ${u.noReceipt} of ${u.items} item(s) with no receipt matched · ${u.expenses} expense(s) without a receipt</div>
+        </div><a class="btn btn-sm btn-light" href="liquidation-reimbursements.html">Open Liquidation &amp; Reimbursements</a></div></div>`).join('')
+      : '<div class="empty">✓ Every liquidation item in range has its receipts matched.</div>';
+  }
+
+  // --------------------------------------------------------------- actions
+
+  function onAction(event) {
+    const el = event.target.closest('[data-act]');
+    if (!el || !isTreasurer()) return;
+    const act = el.getAttribute('data-act');
+    const path = el.getAttribute('data-path');
+    if (act === 'toggle-attach') {
+      const panel = Array.from(document.querySelectorAll('[data-panel]')).find(p => p.getAttribute('data-panel') === path);
+      if (panel) panel.classList.toggle('show');
+      return;
+    }
+    if (busy) return;
+    if (act === 'relink-request') relinkToRequest(path);
+    else if (act === 'attach-expense') {
+      const select = Array.from(document.querySelectorAll('[data-select]')).find(s => s.getAttribute('data-select') === path);
+      if (!select || !select.value) return alert('Choose an expense first.');
+      attachToExpense(path, select.value);
+    } else if (act === 'attach-expense-direct') attachToExpense(path, el.getAttribute('data-expense'));
+    else if (act === 'restore-request') restoreRequest(el.getAttribute('data-request'));
+    else if (act === 'reupload') reuploadMissing(path);
+  }
+
+  async function withBusy(label, fn) {
+    busy = true;
+    setMsg(label);
+    try {
+      await fn();
+    } catch (error) {
+      console.error(error);
+      setMsg((error && error.message) || String(error), 'err');
+      busy = false;
+      return;
+    }
+    busy = false;
+    await runScan();
+  }
+
+  async function relinkToRequest(path) {
+    const rec = scan.files.get(path);
+    if (!rec || rec.owner.kind !== 'request') return;
+    const requestId = rec.owner.id;
+    await withBusy('Re-linking receipt...', async () => {
+      const url = rec.url || await storage.ref(path).getDownloadURL();
+      const ref = db.collection('liquidationRequests').doc(requestId);
+      const result = await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('That request no longer exists.');
+        const data = snap.data();
+        if (requestPool(data).concat([data]).some(entry => refPath(entry) === path)) throw new Error('This receipt is already linked to the request.');
+        // A cash advance keeps its receipts in liquidationReceipts; a plain
+        // reimbursement in supportingReceipts (both are read everywhere).
+        const array = ((data.liquidationItems || []).length || (data.liquidationReceipts || []).length || data.type !== 'Reimbursement')
+          ? 'liquidationReceipts' : 'supportingReceipts';
+        const now = new Date().toISOString();
+        const entry = {
+          receiptId: rec.receiptId || receiptIdFromPath(path),
+          receiptName: rec.name || path.split('/').pop(),
+          receiptPath: path,
+          receiptUrl: url,
+          receiptUploadedAt: rec.uploadedAt || (rec.meta && rec.meta.timeCreated) || now,
+          recoveredAt: now,
+          recoveredBy: activeUserProfile.name || 'Treasurer'
+        };
+        const patch = { [array]: (data[array] || []).concat([entry]), updatedAt: now };
+        if (array === 'supportingReceipts' && !data.receiptUrl) {
+          Object.assign(patch, { receiptId: entry.receiptId, receiptName: entry.receiptName, receiptPath: path, receiptUrl: url, receiptUploadedAt: entry.receiptUploadedAt });
+        }
+        tx.update(ref, patch);
+        return { array, entry, count: (data[array] || []).length, title: data.title || requestId };
+      });
+      await writeAuditLog('liquidation_receipt_relinked', 'liquidationRequests', requestId,
+        { [result.array + 'Count']: result.count }, { array: result.array, receipt: result.entry },
+        `Re-linked lost receipt "${result.entry.receiptName}" to liquidation request "${result.title}" (Receipt Recovery)`);
+      alert(`Re-linked to "${result.title}". If its liquidation items still show no receipt, use 🔗 Match Receipts on that request.`);
+    });
+  }
+
+  async function attachToExpense(path, expenseId) {
+    const rec = scan.files.get(path);
+    const expense = scan.expenses.get(expenseId);
+    if (!rec || !expense) return;
+    if (expense.receiptUrl && refPath(expense) !== path
+      && !confirm(`This expense already has a receipt ("${expense.receiptName || 'Receipt'}"). Link this file instead? The current file is not deleted - it will show up here as unlinked.`)) return;
+    await withBusy('Attaching receipt to the expense...', async () => {
+      const url = rec.url || await storage.ref(path).getDownloadURL();
+      const ref = db.collection('expenses').doc(expenseId);
+      const before = await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error('That expense no longer exists.');
+        const data = snap.data();
+        const now = new Date().toISOString();
+        const replacing = !!data.receiptUrl && refPath(data) !== path;
+        const patch = {
+          receiptName: rec.name || path.split('/').pop(),
+          receiptPath: path,
+          receiptUrl: url,
+          receiptUploadedAt: rec.uploadedAt || (rec.meta && rec.meta.timeCreated) || now,
+          updatedAt: now
+        };
+        // A file from a liquidation request's folder stays owned by that
+        // request - the flag stops Expenses from ever deleting it.
+        patch.receiptSharedFromLiquidation = rec.owner.kind === 'request'
+          ? true : firebase.firestore.FieldValue.delete();
+        if (replacing) {
+          patch.receiptAnnotations = [];
+          patch.receiptAnnotationsLocked = false;
+        }
+        tx.update(ref, patch);
+        return { receiptName: data.receiptName || null, receiptPath: data.receiptPath || null, receiptUrl: data.receiptUrl || null };
+      });
+      await writeAuditLog('expense_receipt_relinked', 'expenses', expenseId, before,
+        { receiptName: rec.name || '', receiptPath: path, receiptUrl: url },
+        `Linked recovered receipt "${rec.name || path.split('/').pop()}" to expense "${expense.sub || expense.category || expenseId}" (Receipt Recovery)`);
+    });
+  }
+
+  async function restoreRequest(requestId) {
+    const entry = scan.deletedRequests.get(requestId);
+    if (!entry || !entry.before) return;
+    const b = entry.before;
+    if (!confirm(`Restore the deleted request "${b.title || requestId}" (${b.requesterName || ''}, ${peso(b.amount)}) exactly as it was when it was deleted on ${day(entry.createdAt)}?\n\nThis only brings back the request record and its receipts. Expenses or income recorded from it are not changed.`)) return;
+    await withBusy('Restoring request...', async () => {
+      const data = {};
+      Object.keys(b).forEach(key => { if (key !== 'id' && key.charAt(0) !== '_') data[key] = b[key]; });
+      const now = new Date().toISOString();
+      data.restoredAt = now;
+      data.restoredBy = activeUserProfile.name || 'Treasurer';
+      const ref = db.collection('liquidationRequests').doc(requestId);
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (snap.exists) throw new Error('A request with this id already exists - nothing was changed.');
+        tx.set(ref, data);
+      });
+      await writeAuditLog('liquidation_request_restored', 'liquidationRequests', requestId, null, data,
+        `Restored deleted liquidation request "${b.title || requestId}" from the Audit Log (Receipt Recovery)`);
+    });
+  }
+
+  function pickFile() {
+    return new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,application/pdf';
+      input.addEventListener('change', () => resolve(input.files && input.files[0] ? input.files[0] : null), { once: true });
+      input.click();
+    });
+  }
+
+  // Replace a lost file in place: the request's pool entry keeps its
+  // receiptId (so item links and highlights still point at it) and every
+  // expense showing the old file is pointed at the new one.
+  async function reuploadMissing(path) {
+    const rec = scan.files.get(path);
+    if (!rec) return;
+    const file = await pickFile();
+    if (!file) return;
+    const contentType = receiptContentType(file);
+    if (!(contentType.startsWith('image/') || contentType === 'application/pdf')) return alert('Receipt must be an image or PDF file.');
+    if (file.size > 5 * 1024 * 1024) return alert('Receipt must be 5 MB or smaller.');
+    await withBusy('Uploading receipt...', async () => {
+      const uid = firebase.auth().currentUser.uid;
+      const token = generateStorageToken();
+      const newPath = rec.owner.kind === 'request'
+        ? `liquidation-receipts/${rec.owner.id}/${uid}/${token}${safeFileExtension(file.name)}`
+        : `expense-receipts/${rec.owner.id}/${token}${safeFileExtension(file.name)}`;
+      const newRef = storage.ref(newPath);
+      await newRef.put(file, { contentType });
+      const newUrl = await newRef.getDownloadURL();
+      const now = new Date().toISOString();
+      const by = activeUserProfile.name || 'Treasurer';
+      const updated = [];
+      try {
+        for (const link of rec.links) {
+          if (link.kind === 'request') {
+            const ref = db.collection('liquidationRequests').doc(link.id);
+            await db.runTransaction(async tx => {
+              const snap = await tx.get(ref);
+              if (!snap.exists) return;
+              const data = snap.data();
+              const patch = { updatedAt: now };
+              ['liquidationReceipts', 'supportingReceipts'].forEach(array => {
+                const list = data[array] || [];
+                if (!list.some(entry => refPath(entry) === path)) return;
+                patch[array] = list.map(entry => refPath(entry) !== path ? entry : {
+                  ...entry,
+                  receiptId: entry.receiptId || entry.receiptPath || path,
+                  receiptName: file.name, receiptPath: newPath, receiptUrl: newUrl, receiptUploadedAt: now,
+                  reuploadedAfterLossAt: now, reuploadedAfterLossBy: by
+                });
+              });
+              if (refPath(data) === path) Object.assign(patch, { receiptName: file.name, receiptPath: newPath, receiptUrl: newUrl, receiptUploadedAt: now });
+              tx.update(ref, patch);
+            });
+          } else {
+            const ref = db.collection('expenses').doc(link.id);
+            await db.runTransaction(async tx => {
+              const snap = await tx.get(ref);
+              if (!snap.exists || refPath(snap.data()) !== path) return;
+              tx.update(ref, { receiptName: file.name, receiptPath: newPath, receiptUrl: newUrl, receiptUploadedAt: now, updatedAt: now });
+            });
+          }
+          updated.push(link.kind + ':' + link.id);
+        }
+      } catch (error) {
+        if (!updated.length) {
+          try { await newRef.delete(); } catch (delError) { console.warn('Could not delete the orphaned upload.', newPath, delError); }
+        }
+        throw error;
+      }
+      await writeAuditLog('receipt_reuploaded_after_loss', rec.owner.kind === 'request' ? 'liquidationRequests' : 'expenses', rec.owner.id,
+        { receiptPath: path, receiptName: rec.name || '' },
+        { receiptPath: newPath, receiptName: file.name, fileSize: file.size, fileType: file.type, updated },
+        `Re-uploaded lost receipt "${rec.name || path.split('/').pop()}" as "${file.name}" (${updated.length} record(s) updated, Receipt Recovery)`);
+    });
+  }
+</script>
+</body>
+</html>
