@@ -106,6 +106,8 @@
     .history-item { border-top: 1px solid #eef1f4; padding: 10px 0; }
     .history-item:first-child { border-top: none; }
     .docs-summary { font-size: 12px; color: #667085; margin-bottom: 10px; }
+    .pending-overspend { background: #fdedec; border-left: 4px solid #a93226; color: #7b241c; border-radius: 6px; padding: 9px 12px; margin: 6px 0 10px; font-size: 13px; line-height: 1.45; }
+    .pending-overspend ul { margin: 6px 0 0 18px; }
     .docs-section-title { font-size: 13px; font-weight: 700; color: #8B0000; margin: 14px 0 8px; }
     .docs-section-title:first-child { margin-top: 0; }
     .doc-table-wrap { overflow-x: auto; }
@@ -1124,7 +1126,29 @@
         const monthSheets = await loadMonthlySheetsForPeriod();
         if (requestId !== supportingDocsRequestId) return;
 
-        renderSupportingDocuments(reportableRows, liquidationMap);
+        // Overspent cash advances whose excess is still waiting for release:
+        // the excess reaches the books only when the Treasurer releases the
+        // auto-created reimbursement, so flag any whose items fall in this
+        // period. Single-field query; a failure never blocks the card.
+        let pendingOverspend = [];
+        try {
+          const pendingSnap = await db.collection('liquidationRequests').where('status', '==', 'Approved').get();
+          if (requestId !== supportingDocsRequestId) return;
+          pendingOverspend = pendingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(r => r.type === 'Reimbursement' && r.sourceLiquidationRequestId)
+            .map(r => {
+              const items = Array.isArray(r.reimbursementItems) ? r.reimbursementItems : [];
+              const inPeriod = items.filter(it => { const dt = String(it.date || '').slice(0, 10); return dt >= start && dt <= end; });
+              const amount = items.length ? inPeriod.reduce((sum, it) => sum + Number(it.amount || 0), 0)
+                : (String(r.date || '') >= start && String(r.date || '') <= end ? Number(r.amount || 0) : 0);
+              return { row: r, amount, dates: [...new Set(inPeriod.map(it => String(it.date || '').slice(0, 10)))].sort() };
+            })
+            .filter(p => p.amount > 0.004);
+        } catch (error) {
+          console.warn('Unable to check unreleased overspend reimbursements', error);
+        }
+
+        renderSupportingDocuments(reportableRows, liquidationMap, pendingOverspend);
         renderIncomeSection(incomeRows, sheetMap, monthSheets);
       } catch (error) {
         if (requestId !== supportingDocsRequestId) return;
@@ -1263,7 +1287,7 @@
       return { candidates, isFallbackPool, awaitingLiquidation, voucherId, voucherNo, requestId: request ? request.id : null };
     }
 
-    function renderSupportingDocuments(rows, liquidationMap) {
+    function renderSupportingDocuments(rows, liquidationMap, pendingOverspend) {
       supportingDocsExpenseMap = new Map(rows.map(r => [r.id, r]));
       supportingDocsReceiptMap = new Map();
       supportingDocsLiquidationMap = liquidationMap;
@@ -1345,8 +1369,19 @@
           <td><a href="payslips.html?period=monthly&month=${encodeURIComponent(group.month)}&role=${encodeURIComponent(group.role)}" target="_blank" rel="noopener noreferrer" class="btn-ledger">View Payslip</a></td>
         </tr>`).join('');
 
+      const pending = pendingOverspend || [];
+      const pendingTotal = pending.reduce((sum, p) => sum + p.amount, 0);
+      const pendingHtml = pending.length ? `
+        <div class="pending-overspend">
+          <strong>⚠ Overspent cash advance not yet released: ₱${peso(pendingTotal)} is missing from this report.</strong>
+          The excess spent beyond the advance is recorded only when the Treasurer releases its "Additional reimbursement"
+          in <a href="liquidation-reimbursements.html" target="_blank" rel="noopener">Liquidation &amp; Reimbursements</a>.
+          <ul>${pending.map(p => `<li>${escapeHtml(p.row.requesterName || p.row.requesterRole || '')} - ${escapeHtml(p.row.title || '')}: ₱${peso(p.amount)}${p.dates.length ? ` (items dated ${escapeHtml(p.dates.join(', '))})` : ''}</li>`).join('')}</ul>
+        </div>` : '';
+
       const expenseSection = `
         <div class="docs-section-title">Expenses</div>
+        ${pendingHtml}
         <div class="docs-summary">${expenseRows.length} expense${expenseRows.length === 1 ? '' : 's'} · ${missingReceipts} missing receipt${missingReceipts === 1 ? '' : 's'} · ${missingVouchers} missing voucher${missingVouchers === 1 ? '' : 's'}${awaitingLiquidationCount ? ` · ${awaitingLiquidationCount} awaiting liquidation` : ''}</div>
         <div class="doc-table-wrap">
           <table class="doc-table">
