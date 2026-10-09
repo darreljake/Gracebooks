@@ -253,6 +253,21 @@
       </div>
     </div>
 
+    <div class="card" id="pending-overspend-card" style="display:none; border-left: 5px solid #a93226;">
+      <div class="card-header">
+        <div>
+          <h3 id="pending-overspend-title">Overspent amounts not yet released</h3>
+          <div class="muted">When a cash advance is overspent, only the part covered by the advance is recorded at reconciliation. The excess becomes an "Additional reimbursement" and is recorded as an expense, dated on each item's own receipt date, <strong>only when you release it</strong>. Until then it is missing from the Print Report and Budget vs Actual.</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="inner-table">
+          <thead><tr><th>Reconciled</th><th>Requester</th><th>Cash advance</th><th>Item dates</th><th style="text-align:right;">Excess</th><th></th></tr></thead>
+          <tbody id="pending-overspend-body"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="card" id="legacy-return-card" style="display:none;">
       <div class="card-header">
         <div>
@@ -2817,8 +2832,37 @@
       document.getElementById('sum-done').textContent = String(done);
     }
 
+    // Treasurer: auto-created overspend reimbursements still awaiting
+    // release. Their excess reaches the books only on release, so a
+    // forgotten one silently leaves the overspent amount out of the reports.
+    function renderPendingOverspend() {
+      const card = document.getElementById('pending-overspend-card');
+      if (!card) return;
+      const pending = roleIs('Treasurer')
+        ? requestRows.filter(row => isAutoReimbursement(row) && row.status === 'Approved')
+        : [];
+      if (!pending.length) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+      const total = pending.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      document.getElementById('pending-overspend-title').textContent =
+        `Overspent amounts not yet released (${pending.length}) - ₱${fmt(total)} not in the reports yet`;
+      document.getElementById('pending-overspend-body').innerHTML = pending.map(row => {
+        const source = requestRows.find(r => r.id === row.sourceLiquidationRequestId);
+        const dates = [...new Set((row.reimbursementItems || []).map(it => String(it.date || '').slice(0, 10)).filter(Boolean))].sort();
+        return `<tr>
+          <td>${escapeHtml(row.date || '')}</td>
+          <td>${escapeHtml(row.requesterName || row.requesterRole || '')}</td>
+          <td>${escapeHtml((source && source.title) || row.title || '')}</td>
+          <td>${escapeHtml(dates.join(', ') || '-')}</td>
+          <td class="amount">₱${fmt(row.amount)}</td>
+          <td><button class="btn btn-small" onclick="openReleaseModal('${escapeHtml(row.id)}')">Release Payment</button></td>
+        </tr>`;
+      }).join('');
+    }
+
     function renderRequests() {
       renderSummary();
+      renderPendingOverspend();
       const statusFilter = document.getElementById('status-filter').value;
       const rows = requestRows.filter(row => !statusFilter || row.status === statusFilter);
       document.getElementById('requests-body').innerHTML = rows.map(row => {

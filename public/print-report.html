@@ -1107,6 +1107,57 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
         return { label, amt: r.amt };
       });
   }
+  // Monthly only: what each budget line was actually spent on. One "- " row
+  // per particulars/payee (spelling variants merged, dated "5, 19 Sep"),
+  // in col-sub like the income member rows, so exportToExcel()'s member-row
+  // branch exports them. Presentation only - no amount or total comes from
+  // here, and the budget line itself stays one line (the sub-category key
+  // is never fragmented by free text, see buildExpGroups()).
+  function isPayrollJunkSub(text) {
+    return /\(wk\s*\d/i.test(text) || /week\s*\d/i.test(text) || /\d{4}-\d{2}$/.test(text);
+  }
+  function buildExpenseDetailRows(entries, subLabel) {
+    const rows = {}, order = [];
+    const subNorm = normalizeGroupKey(subLabel);
+    let payroll = null;
+    entries.forEach(d => {
+      const amt = parseFloat(d.amount || 0);
+      if (d.isPayrollGenerated) {
+        if (!payroll) payroll = { text: 'Payroll', amt: 0, entries: [] };
+        payroll.amt += amt; payroll.entries.push(d);
+        return;
+      }
+      const pick = t => {
+        const raw = String(t || '').trim();
+        if (!raw || isPayrollJunkSub(raw)) return '';
+        const c = cleanMiscLabel(raw);
+        return c && normalizeGroupKey(c) !== subNorm ? c : '';
+      };
+      let what = pick(d.sub) || pick(d.notes);
+      if (what.length > 90) what = what.slice(0, 87).trim() + '...';
+      const payee = String(d.payee || '').trim();
+      let text = what;
+      if (what && payee && !normalizeGroupKey(what).includes(normalizeGroupKey(payee))) text = `${what} (${payee})`;
+      else if (!what) text = payee || 'Others';
+      const key = normalizeGroupKey(text);
+      if (!rows[key]) { rows[key] = { text, amt: 0, entries: [] }; order.push(key); }
+      rows[key].amt += amt;
+      rows[key].entries.push(d);
+    });
+    let list = order.map(k => rows[k]);
+    // Nothing specific to say: a lone "Others" row, or a payroll-only line.
+    if (!list.length || (list.length === 1 && list[0].text === 'Others' && !payroll)) return [];
+    if (payroll) list.push(payroll);
+    const firstDate = r => r.entries.map(e => String(e.date || '')).sort()[0] || '';
+    return list
+      .sort((a, b) => firstDate(a).localeCompare(firstDate(b)) || a.text.localeCompare(b.text))
+      .map(r => {
+        const when = miscWhen(r.entries, false);
+        let label = r.text + (when ? ` — ${when}` : '');
+        if (r.entries.length > 1) label += ` (${r.entries.length} entries)`;
+        return { label, amt: r.amt };
+      });
+  }
   // Annual: up to 8 detail rows (by total, biggest first) for a payer-less,
   // non-Sunday line whose entries carry specific details, the rest under Others.
   function buildAnnualGeneralRows(entries, subLabel) {
@@ -2660,7 +2711,22 @@ try { if (window.self !== window.top && /[?&]review=1/.test(location.search)) do
             ${budgetCellsHtml(isMiscExp ? 0 : (expBudgetSubTotals[main] || {})[group.subCategory], expActualForSubCategory(ytdExpGroups, main, group.subCategory), true, isMiscExp)}
           </tr>`;
 
-        if (!hasDetails) { return; }
+        if (!hasDetails) {
+          // Monthly only: list what the line was spent on (annual stays one
+          // line per budget item; a Miscellaneous line is already named after it).
+          if (!isAnnual && !isMiscExp) {
+            buildExpenseDetailRows(group.entries, group.subCategory).forEach(r => {
+              expRows += `
+          <tr>
+            <td class="col-desc" style="padding-left:54px; font-size:11.5px; color:#888;">- ${escapeHtml(r.label)}</td>
+            <td class="col-sub" style="font-size:11.5px; color:#888;">₱ ${fmt(r.amt)}</td>
+            <td class="col-main"></td>
+            ${emptyBudgetCells}
+          </tr>`;
+            });
+          }
+          return;
+        }
 
         group.rows.forEach(row => {
           expRows += `
