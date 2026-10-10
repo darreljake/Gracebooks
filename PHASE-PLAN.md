@@ -903,3 +903,11 @@ Status: Done (code side); deploys with the push to main. No rules change.
 
 - `print-report.html` monthly statement lists what each budgeted expense line was spent on again (owner request: annual stays one line per budget item, monthly shows the details). `buildExpenseDetailRows()` - particulars/payee rows with dates, in the Detail column, totals unchanged. Verified with a stubbed Firestore: monthly shows the rows, annual is unchanged, totals and the reconciliation are identical.
 - Overspent cash advances: the excess reaches the books only when the auto-created "Additional reimbursement" is released, so forgotten ones dropped the overspend from the reports. `liquidation-reimbursements.html` now shows the Treasurer an "Overspent amounts not yet released" card with Release Payment, and `report-workflow.html` Supporting Documents warns when an unreleased one has items in the period.
+
+## Receipt Recovery: pre-July-10 receipts and "use the replacement" (2026-10-10)
+
+Status: Done (code side); deploys with the push to main (hosting + storage rules).
+
+- Liquidation receipts uploaded before 2026-07-10 live at `liquidation-receipts/{requestId}/{file}` (no uid folder); Receipt Recovery now finds, checks and re-links them, and `storage.rules` regained a read-only rule for that shape.
+- A July receipt deleted by the old Expenses replace bug (its copy on an expense was replaced after Match Receipts) can be restored from the replacement uploaded onto that expense ("Use the replacement on ..."), keeping the item links. `expenses.html` never deletes a file flagged `receiptSharedFromLiquidation`.
+- Verified with a stubbed Firestore/Storage: a legacy unlinked file and a replaced-and-deleted legacy file were found and restored, items still resolve, nothing deleted.

@@ -52,6 +52,13 @@ service firebase.storage {
       allow delete: if isTreasurer() || (signedIn() && request.auth.uid == uid);
     }
 
+    // Receipts saved before 2026-07-10 have no uid folder
+    // (liquidation-receipts/{requestId}/{fileName}). Read only, so the app
+    // can still open and check them; nothing is ever written here again.
+    match /liquidation-receipts/{requestId}/{fileName} {
+      allow read: if signedIn();
+    }
+
     // Receipt Recovery (receipt-recovery.html) lists these folders to find
     // receipt files no longer linked to any request or expense. List only,
     // Treasurer only - reads of individual files are covered above and
