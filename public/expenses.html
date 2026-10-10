@@ -609,7 +609,7 @@
       return !!expenseId && typeof path === 'string' && path.indexOf(`expense-receipts/${expenseId}/`) === 0;
   }
 
-  async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath) {
+  async function uploadReceiptForExpense(docRef, receiptFile, oldReceiptPath, oldIsShared) {
       if (!receiptFile) return null;
       const contentType = getReceiptContentType(receiptFile);
       const receiptPath = `expense-receipts/${docRef.id}/${generateStorageToken()}${safeFileExtension(receiptFile.name)}`;
@@ -629,7 +629,10 @@
       // liquidation request (receiptSharedFromLiquidation) lives under
       // liquidation-receipts/... and still belongs to that request's pool -
       // replacing it here used to delete the request's own evidence file.
-      if (ownsExpenseReceiptPath(docRef.id, oldReceiptPath)) {
+      // A file flagged receiptSharedFromLiquidation also backs a liquidation
+      // request's receipt (Receipt Recovery can put an expense's own upload
+      // back into a request), so it is never deleted here either.
+      if (!oldIsShared && ownsExpenseReceiptPath(docRef.id, oldReceiptPath)) {
           try { await storage.ref(oldReceiptPath).delete(); } catch (error) { console.warn(error); }
       }
       const payload = {
@@ -1006,7 +1009,7 @@
       if (editingExpenseId) {
           if (!canManageExpenses()) throw new Error('Only the Treasurer can edit expenses.');
           const docRef = db.collection('expenses').doc(editingExpenseId);
-          const receiptData = await uploadReceiptForExpense(docRef, receiptFile, editingExpenseOriginal?.receiptPath);
+          const receiptData = await uploadReceiptForExpense(docRef, receiptFile, editingExpenseOriginal?.receiptPath, !!editingExpenseOriginal?.receiptSharedFromLiquidation);
           const updatePayload = receiptData ? { ...dbPayload, ...receiptData, updatedAt: new Date().toISOString() } : { ...dbPayload, updatedAt: new Date().toISOString() };
           await docRef.update(updatePayload);
           await writeAuditLog('expense_updated', editingExpenseId, editingExpenseOriginal, updatePayload, `Updated ${dbPayload.category || 'expense'} for ${dbPayload.date || ''}`);
