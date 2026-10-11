@@ -390,7 +390,7 @@
   let recentAttendanceRecords = [];
   let members = [];
   let selectedMemberIds = new Set();
-  let trackingStartDate = new Date().toISOString().slice(0, 10);
+  let trackingStartDate = null; // null = never set by the Treasurer/Secretary (see effectiveTrackingStart())
   let canEdit = false;
 
   document.getElementById('service-date').value = new Date().toISOString().slice(0, 10);
@@ -407,6 +407,7 @@
     document.getElementById('tracking-start-input').disabled = !canEdit;
     document.getElementById('tracking-start-save').style.display = canEdit ? '' : 'none';
     await Promise.all([loadMembers(), loadAttendance(), loadTrackingSettings()]);
+    syncTrackingStartInput();
     populateWeekDetailSelect();
     renderVisitationList();
     populateCalendarYearSelect();
@@ -512,6 +513,7 @@
       renderMemberRoster();
       await loadAttendance();
       populateWeekDetailSelect();
+      syncTrackingStartInput();
       renderVisitationList();
       populateCalendarYearSelect();
       renderAttendanceSheet();
@@ -547,8 +549,26 @@
   // Treasurer/Membership Secretary) with no firestore.rules change needed.
   async function loadTrackingSettings() {
     const doc = await db.collection('attendance').doc('_settings').get();
-    trackingStartDate = (doc.exists && doc.data().trackingStartDate) || new Date().toISOString().slice(0, 10);
-    document.getElementById('tracking-start-input').value = trackingStartDate;
+    trackingStartDate = (doc.exists && doc.data().trackingStartDate) || null;
+  }
+
+  // With no saved start date the cutoff used to default to TODAY, which hid
+  // every week already recorded (all dated before today) - so the visitation
+  // list, Attendance Sheet and Present/Absent picker stayed empty until the
+  // next Sunday's date arrived. When unset, start from the earliest week that
+  // actually carries a per-member checklist (presentMemberIds saved by this
+  // page); older headcount-only weeks have no such field.
+  function effectiveTrackingStart() {
+    if (trackingStartDate) return trackingStartDate;
+    const dates = attendanceRecords
+      .filter(row => row.serviceDate && Array.isArray(row.presentMemberIds))
+      .map(row => row.serviceDate)
+      .sort();
+    return dates[0] || null;
+  }
+
+  function syncTrackingStartInput() {
+    document.getElementById('tracking-start-input').value = effectiveTrackingStart() || '';
   }
 
   window.saveTrackingStartDate = async function() {
@@ -557,7 +577,7 @@
     if (!value) return alert('Select a date.');
     const statusEl = document.getElementById('tracking-start-status');
     try {
-      const before = trackingStartDate;
+      const before = trackingStartDate || null;
       await db.collection('attendance').doc('_settings').set({ trackingStartDate: value }, { merge: true });
       await writeAuditLog('attendance_tracking_start_updated', '_settings', { trackingStartDate: before }, { trackingStartDate: value }, `Set per-member attendance tracking start date to ${value}`);
       trackingStartDate = value;
@@ -576,7 +596,9 @@
   // the old tither roster's member IDs), so treating them as absences would
   // misreport everyone as absent for a habit that only just started.
   function trackedWeeks() {
-    return attendanceRecords.filter(row => row.serviceDate && row.serviceDate >= trackingStartDate);
+    const start = effectiveTrackingStart();
+    if (!start) return [];
+    return attendanceRecords.filter(row => row.serviceDate && row.serviceDate >= start);
   }
 
   function renderMemberRoster() {
@@ -859,7 +881,7 @@
     const body = document.getElementById('visitation-body');
     const threshold = parseInt(document.getElementById('visitation-threshold').value, 10) || 3;
     const streaks = computeAbsenceStreaks()
-      .filter(row => row.totalWeeks > 0 && (row.member.status || 'Active') === 'Active' && row.streak >= threshold)
+      .filter(row => row.totalWeeks > 0 && String(row.member.status || 'Active').trim().toLowerCase() === 'active' && row.streak >= threshold)
       .sort((a, b) => b.streak - a.streak);
 
     if (!streaks.length) {
