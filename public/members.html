@@ -636,10 +636,13 @@
       db.collection('attendance').get(),
       db.collection('attendance').doc('_settings').get()
     ]);
-    const trackingStartDate = (settingsDoc.exists && settingsDoc.data().trackingStartDate) || new Date().toISOString().slice(0, 10);
-    attendanceRecordsCache = snap.docs
-      .map(doc => doc.data())
-      .filter(row => row.serviceDate && row.serviceDate >= trackingStartDate)
+    const all = snap.docs.map(doc => doc.data()).filter(row => row.serviceDate);
+    // Unset = earliest week with a per-member checklist (not "today", which hid every recorded week).
+    const trackingStartDate = (settingsDoc.exists && settingsDoc.data().trackingStartDate)
+      || all.filter(row => Array.isArray(row.presentMemberIds)).map(row => row.serviceDate).sort()[0]
+      || '9999-12-31';
+    attendanceRecordsCache = all
+      .filter(row => row.serviceDate >= trackingStartDate)
       .sort((a, b) => String(a.serviceDate).localeCompare(String(b.serviceDate)));
     return attendanceRecordsCache;
   }

@@ -551,6 +551,8 @@ Status: Done (code side); deploy pending. Two pieces of owner feedback on the wo
   - A new shared `trackedWeeks()` helper (`membership-attendance.html`) filters to `serviceDate >= trackingStartDate` and is now what feeds the Attendance Sheet, the Present/Absent-for-a-Sunday date picker, and `computeAbsenceStreaks()`. `members.html`'s `loadAttendanceRecordsOnce()` reads the same `attendance/_settings` doc and applies the identical cutoff to its "Weeks Attended"/"Last Attended" profile stat.
   - Deliberately **not** applied to Monthly/Yearly Summary, Recent Weekly Records, or the Weekly Attendance Trend chart - those are plain headcount totals that were always meaningful, with or without per-member tracking, so hiding pre-cutoff data there would throw away real historical information the per-member views can't safely use.
 
+- **Fix (2026-10-11): Members Needing Visitation showed nobody.** With no saved `trackingStartDate` the cutoff defaulted to *today*, so every already-recorded week (all dated before today) was filtered out by `trackedWeeks()` and the visitation list, Attendance Sheet and Present/Absent picker stayed empty. An unset start date now means "the earliest week that carries a `presentMemberIds` checklist" (`effectiveTrackingStart()`; same rule in `members.html`'s `loadAttendanceRecordsOnce()`); an explicitly saved date still wins. The input shows the effective date. The Active-status test is now case/whitespace-insensitive.
+
 ## Membership List: Auto-Generated Member ID + New-Row Visibility Fix (2026-09-05)
 
 Status: Done (code side); deploy pending.
