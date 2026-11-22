@@ -650,11 +650,26 @@
     .member-suggestion-item:last-child { border-bottom: none; }
     .member-suggestion-item:hover, .member-suggestion-item.active { background: #fdf2f2; }
     .member-suggestion-item .ms-code { color: #999; font-size: 11px; margin-left: 6px; }
+    /* Add New Tither dialog */
+    .tither-btn { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; margin-left: auto; margin-right: 8px; }
+    .tither-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 3000; padding: 16px; }
+    .tither-overlay.open { display: flex; }
+    .tither-dialog { background: white; border-radius: 14px; width: 100%; max-width: 420px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+    .tither-dialog h3 { color: #8B0000; margin: 0 0 4px; }
+    .tither-dialog .hint { font-size: 12px; color: #777; margin-bottom: 14px; }
+    .tither-dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tither-dialog .dup-warn { display: none; background: #fef5e7; border: 1px solid #f5cba7; color: #935116; border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+    .tither-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+    .tither-dialog .actions button { border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+    .tither-dialog .save { background: #8B0000; color: white; }
+    .tither-dialog .cancel { background: #eee; color: #333; }
+    .tither-dialog .done { display: none; background: #eafaf1; border: 1px solid #a9dfbf; color: #1e8449; border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 <div class="topbar">
     <h2>💰 Contribution Entry</h2>
+    <button class="tither-btn" type="button" onclick="openAddTither()">➕ Add New Tither</button>
     <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
   
   </div>
@@ -862,6 +877,24 @@
   </div>
 
   <div class="confirm-toast" id="confirm-toast"></div>
+
+  <div class="tither-overlay" id="tither-overlay" role="dialog" aria-modal="true" aria-labelledby="tither-title">
+    <div class="tither-dialog">
+      <h3 id="tither-title">➕ Add New Tither</h3>
+      <div class="hint">Adds the person to the tithers list right away with the next Member ID, even before they give. You can then pick them as an Existing Member.</div>
+      <div class="done" id="tither-done"></div>
+      <div class="grid2">
+        <div class="form-group"><label>First Name</label><input type="text" id="tither-first" maxlength="60" placeholder="Juan" autocomplete="off" /></div>
+        <div class="form-group"><label>Last Name</label><input type="text" id="tither-last" maxlength="60" placeholder="Dela Cruz" autocomplete="off" /></div>
+      </div>
+      <div class="form-group"><label>Contact No. (optional)</label><input type="tel" id="tither-contact" maxlength="40" placeholder="09XX XXX XXXX" /></div>
+      <div class="dup-warn" id="tither-dup"></div>
+      <div class="actions">
+        <button type="button" class="cancel" onclick="closeAddTither()">Close</button>
+        <button type="button" class="save" id="tither-save" onclick="saveNewTither()">Save Tither</button>
+      </div>
+    </div>
+  </div>
 
 <script type="module">
   // Escape user-entered text (member names, notes, budget details) before it
@@ -1807,6 +1840,93 @@
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
+
+  // ── ADD NEW TITHER (no income entry needed) ─────────────────────────────
+  // Lets a Money Counter (or the Treasurer) put a new giver on the tithers
+  // list straight away. Uses createNewMemberDoc(), so the write is always a
+  // *create* on a free ID - Money Counter has no update right on `members`.
+  function normName(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  let titherDupConfirmed = '';
+
+  function findSameNameTithers(first, last) {
+    const f = normName(first), l = normName(last);
+    if (!f || !l) return [];
+    return allMembersCache.filter(({ data }) => {
+      const df = normName(data.first || data.firstName), dl = normName(data.last || data.lastName);
+      return dl === l && (df === f || df.split(' ')[0] === f.split(' ')[0]);
+    });
+  }
+
+  window.openAddTither = async function() {
+    ['tither-first', 'tither-last', 'tither-contact'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('tither-dup').style.display = 'none';
+    document.getElementById('tither-done').style.display = 'none';
+    titherDupConfirmed = '';
+    document.getElementById('tither-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('tither-first').focus(), 50);
+    if (!allMembersCacheLoaded) await loadAllMembersCache();
+  };
+
+  window.closeAddTither = function() {
+    document.getElementById('tither-overlay').classList.remove('open');
+  };
+
+  window.saveNewTither = async function() {
+    const first = document.getElementById('tither-first').value.trim().replace(/\s+/g, ' ');
+    const last = document.getElementById('tither-last').value.trim().replace(/\s+/g, ' ');
+    const contact = document.getElementById('tither-contact').value.trim();
+    if (!first || !last) { alert('Please enter both the first and last name.'); return; }
+    if (!allMembersCacheLoaded) await loadAllMembersCache();
+
+    const dupKey = normName(last) + '|' + normName(first);
+    const dups = findSameNameTithers(first, last);
+    if (dups.length && titherDupConfirmed !== dupKey) {
+      const box = document.getElementById('tither-dup');
+      box.innerHTML = '⚠️ Already on the list: ' + dups.slice(0, 3).map(({ id, data }) =>
+        escHtml(getMemberDisplayName(data)) + ' (#' + escHtml(data.memberId || id) + ')').join(', ') +
+        '.<br>If this is a different person, tap <b>Save Tither</b> again.';
+      box.style.display = 'block';
+      titherDupConfirmed = dupKey;
+      return;
+    }
+
+    const btn = document.getElementById('tither-save');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+      const nextId = await allocateNewMemberId();
+      const data = {
+        memberId: nextId, first, last,
+        type: 'Professing', status: 'Active',
+        contact, email: '', address: '',
+        joinedDate: new Date().toISOString(),
+        addedBy: { uid: auth.currentUser ? auth.currentUser.uid : '', name: activeUserProfile?.name || '', role: activeUserProfile?.role || '' }
+      };
+      const savedId = await createNewMemberDoc(data);
+      data.memberId = savedId;
+      allMembersCache.push({ id: savedId, data });
+      try {
+        await writeAuditLog('tither_added', 'members', savedId, null, data, `Added new tither ${last}, ${first} (#${savedId})`);
+      } catch (e) { console.warn('Audit log failed', e); }
+      const done = document.getElementById('tither-done');
+      done.innerHTML = '✅ Added <b>' + escHtml(last + ', ' + first) + '</b> as Member ID <b>#' + escHtml(savedId) + '</b>. You can add another.';
+      done.style.display = 'block';
+      ['tither-first', 'tither-last', 'tither-contact'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('tither-dup').style.display = 'none';
+      titherDupConfirmed = '';
+      document.getElementById('tither-first').focus();
+      showToast(`Added ${last}, ${first} (#${savedId})`);
+    } catch (e) {
+      console.error(e);
+      alert('Could not add the tither: ' + (e.message || e));
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Tither';
+    }
+  };
+
+  document.getElementById('tither-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'tither-overlay') closeAddTither();
+  });
+  if (new URLSearchParams(window.location.search).get('addTither') === '1') openAddTither();
 
   // ── 6. UPDATE UI TABLE ───────────────────────────────────────────────────
   function updateUI() {

@@ -2,12 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function testingAccessOpen() {
-      return request.time < timestamp.date(2027, 1, 1);
-    }
-
     function signedIn() {
-      return request.auth != null && testingAccessOpen();
+      return request.auth != null;
     }
 
     function role() {
@@ -56,7 +52,14 @@ service cloud.firestore {
 
     match /members/{docId} {
       allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Money Counter', 'Membership Secretary', 'Finance Committee']);
-      allow create: if hasRole(['Treasurer', 'Money Counter', 'Membership Secretary']);
+      // Money Counter may add a new tither (tithe-entry.html "Add New Tither"
+      // or a new member during income entry) but only as a plain roster
+      // record: a short first/last name, filed under its own Member ID.
+      allow create: if hasRole(['Treasurer', 'Membership Secretary'])
+        || (hasRole(['Money Counter'])
+          && request.resource.data.memberId == docId
+          && request.resource.data.first is string && request.resource.data.first.size() > 0 && request.resource.data.first.size() <= 100
+          && request.resource.data.last is string && request.resource.data.last.size() > 0 && request.resource.data.last.size() <= 100);
       allow update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
     }
 

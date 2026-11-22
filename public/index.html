@@ -359,10 +359,6 @@
       </div>
       <p>Tagaytay United Methodist Church</p>
 
-      <div class="warning" id="expiry-notice" style="display:none;">
-        Testing access expires in <span id="days-left"></span> days
-      </div>
-
       <input type="text" id="username" placeholder="Username" autocomplete="username" />
       <input type="password" id="password" placeholder="Password" autocomplete="off" />
       <button class="btn" id="login-btn" onclick="login()">Login</button>
@@ -420,19 +416,6 @@
   </div>
 
   <script>
-    const TESTING_END_DATE = new Date('2027-01-01T00:00:00+08:00').getTime();
-
-    function isTestingExpired() {
-      const now = new Date().getTime();
-      return now >= TESTING_END_DATE;
-    }
-
-    function getDaysRemaining() {
-      const now = new Date().getTime();
-      const remaining = Math.ceil((TESTING_END_DATE - now) / (1000 * 60 * 60 * 24));
-      return Math.max(0, remaining);
-    }
-
     const menus = {
       'Treasurer': [
         { iconClass: 'fa-chart-pie', label: 'Council Dashboard', link: 'council-dashboard.html' },
@@ -526,7 +509,8 @@
         { iconClass: 'fa-folder-open', label: 'Report Archive', link: 'report-archive.html' }
       ],
       'Money Counter': [
-        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' }
+        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' },
+        { iconClass: 'fa-user-plus', label: 'Add New Tither', link: 'tithe-entry.html?addTither=1' }
       ],
       'Finance Committee': [
         { iconClass: 'fa-chart-pie', label: 'Council Dashboard', link: 'council-dashboard.html' },
@@ -567,12 +551,6 @@
 
     // INITIALIZATION
     window.onload = function() {
-      const daysLeft = getDaysRemaining();
-      if (daysLeft <= 7 && daysLeft > 0) {
-        document.getElementById('expiry-notice').style.display = 'block';
-        document.getElementById('days-left').textContent = daysLeft;
-      }
-
       firebase.auth().onAuthStateChanged(async (user) => {
         if (!user) {
           document.body.classList.remove('authenticated');
@@ -594,11 +572,6 @@
     };
 
     async function login() {
-      if (isTestingExpired()) {
-        alert('Testing period has expired. Contact administrator.');
-        return;
-      }
-
       const username = document.getElementById('username').value.trim().toLowerCase();
       const email = username.includes('@') ? username : `${username}@gracebooks.local`;
       const password = document.getElementById('password').value;

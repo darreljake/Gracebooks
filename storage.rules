@@ -2,12 +2,8 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function testingAccessOpen() {
-      return request.time < timestamp.date(2027, 1, 1);
-    }
-
     function signedIn() {
-      return request.auth != null && testingAccessOpen();
+      return request.auth != null;
     }
 
     function isTreasurer() {
