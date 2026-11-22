@@ -33,6 +33,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Temporary passwords written by scripts/provision-user.js (Admin SDK)
+    // for the Treasurer to hand out from the dashboard, then erase.
+    match /pendingPasswords/{uid} {
+      allow read, delete: if hasRole(['Treasurer']);
+      allow create, update: if false;
+    }
+
     match /userSignatures/{uid} {
       allow read: if hasRole(['Treasurer', 'Pastor', 'Auditor', 'District', 'Finance Chair', 'Chairperson']);
       allow create, update: if signedIn() && request.auth.uid == uid;
@@ -64,7 +71,10 @@ service cloud.firestore {
     }
 
     match /attendance/{docId} {
-      allow read: if signedIn();
+      // Weekly records now carry guest names (membership-attendance.html), so
+      // only the roles whose pages show attendance can read it.
+      allow read: if hasRole(['Treasurer', 'Membership Secretary', 'Pastor', 'Deaconess', 'Auditor',
+        'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create, update, delete: if hasRole(['Treasurer', 'Membership Secretary']);
     }
 
@@ -85,10 +95,56 @@ service cloud.firestore {
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
+    // reportReviews helpers (see the update rule below).
+    function sigOf(data, k) {
+      return data.get('signatures', {}).get(k, null);
+    }
+    function sigsKept(keys) {
+      return keys.size() == 0
+        || (sigOf(request.resource.data, keys[0]) == sigOf(resource.data, keys[0])
+          && (keys.size() < 2 || sigOf(request.resource.data, keys[1]) == sigOf(resource.data, keys[1]))
+          && (keys.size() < 3 || sigOf(request.resource.data, keys[2]) == sigOf(resource.data, keys[2]))
+          && (keys.size() < 4 || sigOf(request.resource.data, keys[3]) == sigOf(resource.data, keys[3])));
+    }
+    function ownSig(k) {
+      return sigOf(request.resource.data, k) != null
+        && sigOf(request.resource.data, k).uid == request.auth.uid;
+    }
+    // A signer's step changes only the routing/state fields, and appends
+    // exactly one history entry written in their own name.
+    function reviewStepOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'routeTo', 'signatures', 'returnNotes', 'finalizedAt', 'finalizedBy',
+          'lastAction', 'lastActionBy', 'lastActionRole', 'history', 'updatedAt'])
+        && request.resource.data.history.size() == resource.data.get('history', []).size() + 1
+        && request.resource.data.history[request.resource.data.history.size() - 1].actorUid == request.auth.uid;
+    }
+
     match /reportReviews/{docId} {
       allow read: if hasRole(['Treasurer', 'Pastor', 'Deaconess', 'Auditor', 'District', 'Finance Chair', 'Chairperson', 'Finance Committee']);
       allow create: if hasRole(['Treasurer']);
-      allow update: if hasRole(['Treasurer', 'Auditor', 'Finance Chair', 'Chairperson', 'Pastor']);
+      // The Treasurer runs the workflow. Every other signer may only take
+      // the ONE step that is theirs (report-workflow.html), add only their
+      // OWN signature, and leave every earlier signer's signature exactly as
+      // it was - so nobody can approve or sign in someone else's name.
+      allow update: if hasRole(['Treasurer'])
+        || (reviewStepOnly()
+          && (
+            (role() == 'Auditor' && resource.data.status == 'submitted_to_auditor'
+              && sigsKept(['treasurer'])
+              && ((request.resource.data.status == 'submitted_to_finance' && ownSig('auditor'))
+                || request.resource.data.status == 'returned_by_auditor'))
+            || (role() == 'Finance Chair' && resource.data.status == 'submitted_to_finance'
+              && sigsKept(['treasurer', 'auditor'])
+              && ((request.resource.data.status == 'routed_to_chairperson' && ownSig('financeChair'))
+                || request.resource.data.status == 'returned_by_finance'))
+            || (role() == 'Chairperson' && resource.data.status == 'routed_to_chairperson'
+              && sigsKept(['treasurer', 'auditor', 'financeChair'])
+              && request.resource.data.status == 'routed_to_pastor' && ownSig('chairperson'))
+            || (role() == 'Pastor' && resource.data.status == 'routed_to_pastor'
+              && sigsKept(['treasurer', 'auditor', 'financeChair', 'chairperson'])
+              && request.resource.data.status == 'finalized' && ownSig('pastor'))
+          ));
       allow delete: if hasRole(['Treasurer']);
     }
 
@@ -171,19 +227,33 @@ service cloud.firestore {
     }
 
     match /settings/{docId} {
-      allow read: if notMembershipSecretary();
+      // Money Counter only needs the year list for tithe-entry.html's year
+      // picker - not opening balances, payroll, vouchers or council notes.
+      allow read: if notMembershipSecretary()
+        && (role() != 'Money Counter' || docId == 'yearsConfig');
       allow create, update, delete: if hasRole(['Treasurer']);
     }
 
     match /certificates/{docId} {
-      // Certificate IDs are unguessable Firestore auto-IDs; a single-document
-      // get lets the public verify page confirm authenticity without exposing
-      // the collection to enumeration (list stays role-gated).
-      allow get: if true;
-      allow list: if hasRole(['Treasurer', 'Pastor']);
+      // Full certificate (section totals, signatures, issuer) - Treasurer and
+      // Pastor only. The public verify page reads certificateVerifications.
+      allow read: if hasRole(['Treasurer', 'Pastor']);
       allow create: if hasRole(['Treasurer']);
       allow update: if hasRole(['Treasurer', 'Pastor']);
       allow delete: if hasRole(['Treasurer']);
+    }
+
+    match /certificateVerifications/{docId} {
+      // The public QR check (verify-certificate.html) reads only this small
+      // copy - number, name, period, total, issue date, status, fully-signed.
+      // A single get by the unguessable certificate id; never listable by
+      // the public. The Pastor's step may only flip `fullySigned`.
+      allow get: if true;
+      allow list: if hasRole(['Treasurer']);
+      allow create, delete: if hasRole(['Treasurer']);
+      allow update: if hasRole(['Treasurer'])
+        || (hasRole(['Pastor'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullySigned', 'updatedAt']));
     }
 
     match /equipment/{docId} {

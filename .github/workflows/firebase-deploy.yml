@@ -28,5 +28,16 @@ jobs:
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
+      # Must run BEFORE the rules deploy: storage.rules reads each user's role
+      # claim and verify-certificate.html reads certificateVerifications.
+      # Idempotent; prints counts only (this repository's logs are public).
+      - name: Install firebase-admin
+        run: npm install --no-save firebase-admin
+
+      - name: Security migration (role claims, certificate verification copies)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/security-migration.js
+
       - name: Deploy Hosting, Firestore rules, and Storage rules
         run: npx firebase-tools@latest deploy --only hosting,firestore:rules,storage --project gracebooks-7eebc --non-interactive

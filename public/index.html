@@ -193,6 +193,13 @@
 
     .logout-btn:hover { background: rgba(255,255,255,0.3); }
 
+    .pending-pw { margin: 14px 24px 0; padding: 14px 16px; background: #fffaf0; border: 1px solid #f5cba7; border-radius: 12px; }
+    .pending-pw-title { font-weight: 700; color: #935116; margin-bottom: 4px; }
+    .pending-pw-note { font-size: 12px; color: #7e5109; margin-bottom: 10px; }
+    .pending-pw-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 0; border-top: 1px dashed #f5cba7; font-size: 13px; }
+    .pending-pw-row code { background: #fff; border: 1px solid #eee; border-radius: 6px; padding: 3px 8px; font-size: 14px; user-select: all; }
+    .pending-pw-row button { margin-left: auto; background: #1e8449; color: #fff; border: none; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; }
+    @media (max-width: 600px) { .pending-pw { margin: 12px 12px 0; } }
     .welcome-bar {
       background: #fdf2f2;
       padding: 16px 24px;
@@ -393,6 +400,12 @@
 
     <div class="welcome-bar">
       Good day, <strong id="welcome-name"></strong>! Welcome to GraceBooks - TUMC Finance System.
+    </div>
+
+    <div class="pending-pw" id="pending-pw" style="display:none;">
+      <div class="pending-pw-title"><i class="fa-solid fa-key"></i> New account passwords to hand out</div>
+      <div class="pending-pw-note">Created by the "Provision GraceBooks User" workflow. Give each person their temporary password privately (not by group chat), ask them to change it with the key icon after signing in, then tap <b>Handed out</b> to erase it here.</div>
+      <div id="pending-pw-list"></div>
     </div>
 
     <div class="menu-grid" id="menu-grid"></div>
@@ -632,7 +645,44 @@
       });
 
       loadNotifications();
+      if (currentUser.role === 'Treasurer') loadPendingPasswords();
     }
+
+    // Temporary passwords from scripts/provision-user.js. They are kept in
+    // pendingPasswords/{uid} (Treasurer read/delete only) instead of being
+    // printed into the public GitHub Actions log.
+    async function loadPendingPasswords() {
+      const box = document.getElementById('pending-pw');
+      const list = document.getElementById('pending-pw-list');
+      try {
+        const snap = await firebase.firestore().collection('pendingPasswords').get();
+        if (snap.empty) { box.style.display = 'none'; return; }
+        list.innerHTML = snap.docs.map(d => {
+          const p = d.data();
+          return '<div class="pending-pw-row">' +
+            '<span><b>' + safeHtml(p.name || '') + '</b> (' + safeHtml(p.role || '') + ')</span>' +
+            '<span>Username: <code>' + safeHtml(p.username || '') + '</code></span>' +
+            '<span>Password: <code>' + safeHtml(p.password || '') + '</code></span>' +
+            '<button type="button" data-pw-done="' + safeHtml(d.id) + '">Handed out</button>' +
+            '</div>';
+        }).join('');
+        box.style.display = 'block';
+      } catch (e) {
+        box.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('click', async (e) => {
+      const id = e.target && e.target.dataset && e.target.dataset.pwDone;
+      if (!id) return;
+      if (!confirm('Erase this temporary password from GraceBooks? Make sure the person has it.')) return;
+      try {
+        await firebase.firestore().collection('pendingPasswords').doc(id).delete();
+        loadPendingPasswords();
+      } catch (err) {
+        alert('Could not erase it: ' + (err.message || err));
+      }
+    });
 
     async function logout() {
       if (confirm('Are you sure you want to logout?')) {

@@ -122,7 +122,7 @@
 
     function showValid(cert) {
       const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
-      const signed = cert.signatures && cert.signatures.treasurer && cert.signatures.pastor ? 'Fully signed' : 'Signature pending';
+      const signed = cert.fullySigned ? 'Fully signed' : 'Signature pending';
       document.getElementById('result-area').innerHTML = `
         <div class="status-icon valid"><i class="fas fa-circle-check"></i></div>
         <div class="status-label valid">VALID CERTIFICATE</div>
@@ -144,7 +144,9 @@
       const id = (params.get('id') || '').trim();
       if (!id) { showInvalid('No certificate ID provided.'); return; }
       try {
-        const doc = await db.collection('certificates').doc(id).get();
+        // Only the public verification copy is readable without signing in;
+        // the full certificate is restricted to the Treasurer and Pastor.
+        const doc = await db.collection('certificateVerifications').doc(id).get();
         if (!doc.exists) { showInvalid(); return; }
         const cert = doc.data();
         if (cert.status === 'void') { showVoid(cert); return; }

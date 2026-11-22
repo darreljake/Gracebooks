@@ -544,6 +544,66 @@
   function isSpecialOfferingRecord(d) { return (d.type || '') === 'Special Offering' || recordText(d).includes('special offering'); }
 
   // ── AUDIT LOG ───────────────────────────────────────────────────────────
+  // ── Public verification copy ─────────────────────────────────────────────
+  // verify-certificate.html (public, no sign-in) reads ONLY
+  // certificateVerifications/{id}: the few fields it shows. The full
+  // certificate (section totals, signatures, issuer) stays role-gated in
+  // `certificates`. Keep this in step whenever a certificate is issued,
+  // regenerated, voided, signed or deleted. scripts/security-migration.js
+  // builds the same shape for older certificates - keep the two in step.
+  function verificationCopy(cert) {
+    const sig = cert.signatures || {};
+    return {
+      certNo: cert.certNo || '',
+      memberName: cert.memberName || '',
+      periodLabel: cert.periodLabel || '',
+      grandTotal: Number(cert.grandTotal || 0),
+      issuedAt: cert.issuedAt || '',
+      status: cert.status || 'issued',
+      fullySigned: !!(sig.treasurer && sig.pastor),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async function syncVerification(certId, cert) {
+    try {
+      if (!cert) { await db.collection('certificateVerifications').doc(certId).delete(); return; }
+      if (profile.role === 'Pastor') {
+        await db.collection('certificateVerifications').doc(certId)
+          .update({ fullySigned: verificationCopy(cert).fullySigned, updatedAt: new Date().toISOString() });
+      } else {
+        await db.collection('certificateVerifications').doc(certId).set(verificationCopy(cert));
+      }
+    } catch (err) {
+      console.warn('Could not update the public verification copy', err);
+    }
+  }
+
+  // Treasurer only: create/refresh any missing or stale verification copies
+  // (e.g. certificates issued before this collection existed).
+  async function backfillVerifications() {
+    if (profile.role !== 'Treasurer') return;
+    try {
+      const [certSnap, verSnap] = await Promise.all([
+        db.collection('certificates').get(),
+        db.collection('certificateVerifications').get()
+      ]);
+      const have = new Map(verSnap.docs.map(d => [d.id, d.data()]));
+      const keys = ['certNo', 'memberName', 'periodLabel', 'grandTotal', 'issuedAt', 'status', 'fullySigned'];
+      let batch = db.batch(), n = 0;
+      for (const d of certSnap.docs) {
+        const want = verificationCopy(d.data());
+        const cur = have.get(d.id);
+        if (cur && keys.every(k => cur[k] === want[k])) continue;
+        batch.set(db.collection('certificateVerifications').doc(d.id), want);
+        if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+      }
+      if (n % 400) await batch.commit();
+    } catch (err) {
+      console.warn('Verification backfill skipped', err);
+    }
+  }
+
   async function writeAuditLog(action, docId, beforeData, afterData, summary) {
     const user = firebase.auth().currentUser;
     await db.collection('auditLogs').add({
@@ -610,6 +670,7 @@
 
     if (isTreasurer) {
       await loadTreasurerCertList();
+      backfillVerifications();
     } else if (isPastor) {
       await loadPastorCertList();
     }
@@ -1036,10 +1097,12 @@
       if (existing) {
         await db.collection('certificates').doc(existing.id).set(docData, { merge: true });
         docId = existing.id;
+        await syncVerification(docId, { ...existing, ...docData });
         await writeAuditLog('certificate_regenerated', docId, existing, docData, `Regenerated ${certNo} for ${selectedMember.name} (${period.periodLabel})`);
       } else {
         const ref = await db.collection('certificates').add(docData);
         docId = ref.id;
+        await syncVerification(docId, docData);
         await writeAuditLog('certificate_issued', docId, null, docData, `Issued ${certNo} for ${selectedMember.name} (${period.periodLabel})`);
       }
 
@@ -1111,6 +1174,7 @@
     try {
       const update = { status: 'void', voidedAt: new Date().toISOString(), voidedBy: profile.name, voidReason: reason || '' };
       await db.collection('certificates').doc(certId).update(update);
+      await syncVerification(certId, { ...before, ...update });
       await writeAuditLog('certificate_voided', certId, before, { ...before, ...update }, `Voided ${before.certNo} for ${before.memberName}${reason ? ' — ' + reason : ''}`);
       await loadTreasurerCertList();
       if (currentCertDoc && currentCertDoc.id === certId) await viewCertificate(certId);
@@ -1131,6 +1195,7 @@
     try {
       await writeAuditLog('certificate_deleted', certId, before, null, `Deleted ${before.certNo} for ${before.memberName}`);
       await db.collection('certificates').doc(certId).delete();
+      await syncVerification(certId, null);
       await loadTreasurerCertList();
       if (currentCertDoc && currentCertDoc.id === certId) {
         currentCertDoc = null;
@@ -1223,6 +1288,7 @@
       const signature = await makeMySignature(sigMode || 'electronic');
       const signatures = { ...(before.signatures || {}), pastor: signature };
       await db.collection('certificates').doc(certId).update({ signatures, updatedAt: new Date().toISOString() });
+      await syncVerification(certId, { ...before, signatures });
       await writeAuditLog('certificate_pastor_signed', certId, before, { ...before, signatures }, `Pastor signed ${before.certNo}`);
       await loadPastorCertList();
       await viewCertificate(certId);
