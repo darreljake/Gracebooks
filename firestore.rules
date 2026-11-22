@@ -104,8 +104,11 @@ service cloud.firestore {
       // still recorded at creation and can't be reassigned on update, so the
       // audit trail of who originally requested the funds is unaffected.
       allow read: if hasRole(['Treasurer', 'Auditor', 'Pastor', 'Deaconess', 'Admin Assistant']);
+      // Staff may only file a new request awaiting review - never one that
+      // already reads Approved/Released/Completed.
       allow create: if (hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
-          && request.resource.data.requesterUid == request.auth.uid)
+          && request.resource.data.requesterUid == request.auth.uid
+          && request.resource.data.status == 'Submitted')
         || hasRole(['Treasurer']);
       allow update: if hasRole(['Treasurer'])
         || (hasRole(['Pastor', 'Deaconess', 'Admin Assistant'])
@@ -148,9 +151,15 @@ service cloud.firestore {
     }
 
     match /auditLogs/{docId} {
+      // Append-only. The log exists so the Auditor can check the Treasurer's
+      // work, so no role - the Treasurer included - may edit or delete an
+      // entry after it is written, and an entry must name its real writer
+      // (actorUid == the signed-in uid) so nobody can log an action under
+      // someone else's name. Maintenance scripts use the Admin SDK, which
+      // bypasses these rules.
       allow read: if hasRole(['Treasurer', 'Auditor']);
-      allow create: if signedIn();
-      allow update, delete: if hasRole(['Treasurer']);
+      allow create: if signedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
     }
 
     match /budgets/{docId} {

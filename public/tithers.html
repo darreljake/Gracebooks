@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -178,6 +205,11 @@
 </div>
 
 <script type="module">
+  // Roster names are free text (a Money Counter can add a tither from income
+  // entry), so escape them before they reach innerHTML.
+  function escHtml(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import { getFirestore, collection, doc, setDoc, getDoc, getDocs, query, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -278,11 +310,11 @@
     tbody.innerHTML = list.length === 0 ? '<tr><td colspan="7" style="text-align:center; padding:20px;">No tithers found.</td></tr>' :
       list.map(m => `
         <tr>
-          <td><strong>${m.memberId}</strong></td>
-          <td>${m.last}</td><td>${m.first}</td><td>${m.contact || '—'}</td>
-          <td><span class="badge badge-${m.type.toLowerCase()}">${m.type}</span></td>
-          <td><span class="badge badge-${m.status.toLowerCase()}">${m.status}</span></td>
-          <td><button class="action-btn btn-edit" onclick="editMember('${m.memberId}')">✏️ Edit</button></td>
+          <td><strong>${escHtml(m.memberId)}</strong></td>
+          <td>${escHtml(m.last)}</td><td>${escHtml(m.first)}</td><td>${escHtml(m.contact || '—')}</td>
+          <td><span class="badge badge-${escHtml(String(m.type || '').toLowerCase())}">${escHtml(m.type)}</span></td>
+          <td><span class="badge badge-${escHtml(String(m.status || '').toLowerCase())}">${escHtml(m.status)}</span></td>
+          <td><button class="action-btn btn-edit" onclick="editMember(${escHtml(JSON.stringify(String(m.memberId)))})">✏️ Edit</button></td>
         </tr>`).join('');
     updateStats();
   };

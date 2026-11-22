@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -378,6 +405,12 @@
         db.collection('income').get()
       ]);
 
+      // auditLogs is append-only (firestore.rules), so a re-run must skip
+      // records that were already backfilled instead of overwriting them.
+      const existingSnap = await db.collection('auditLogs')
+        .where('action', 'in', ['expense_backfilled', 'income_backfilled']).get();
+      const alreadyBackfilled = new Set(existingSnap.docs.map(d => d.id));
+
       let count = 0;
       const batchLimit = 400;
       let batch = db.batch();
@@ -391,6 +424,7 @@
         const summary = collectionName === 'expenses'
           ? `Existing expense: ${data.category || data.sub || 'expense'}`
           : `Existing income: ${data.type || 'income'}${data.member ? ' - ' + data.member : ''}`;
+        if (alreadyBackfilled.has(auditId)) return;
         const auditRef = db.collection('auditLogs').doc(auditId);
         batch.set(auditRef, {
           action,

@@ -913,3 +913,12 @@ Status: Done (code side); deploys with the push to main (hosting + storage rules
 - Liquidation receipts uploaded before 2026-07-10 live at `liquidation-receipts/{requestId}/{file}` (no uid folder); Receipt Recovery now finds, checks and re-links them, and `storage.rules` regained a read-only rule for that shape.
 - A July receipt deleted by the old Expenses replace bug (its copy on an expense was replaced after Match Receipts) can be restored from the replacement uploaded onto that expense ("Use the replacement on ..."), keeping the item links. `expenses.html` never deletes a file flagged `receiptSharedFromLiquidation`.
 - Verified with a stubbed Firestore/Storage: a legacy unlinked file and a replaced-and-deleted legacy file were found and restored, items still resolve, nothing deleted.
+
+## Security & UX audit fixes (2026-11-22)
+- **Stored XSS closed** in `tithers.html` (roster table + `editMember()` onclick) and `tithe-entry.html` (member suggestions, draft table, review cards, budget-line options, bulk grid): member names/notes/details are free text a Money Counter can create and were rendered raw to the Treasurer.
+- **`auditLogs` append-only**: `actorUid` must equal the writer's uid; no update/delete for any role. `audit-log.html`'s backfill now skips already-backfilled ids instead of overwriting them.
+- **`liquidationRequests`**: staff can only create a request with `status == 'Submitted'` (Treasurer unchanged).
+- Rules verified on the Firestore emulator (10 cases: own/forged/missing-actor audit entries, Treasurer edit/delete denied, Auditor read, Submitted vs pre-Released staff requests, Treasurer Approved advance, Money Counter roster create).
+- **Hosting headers** (`firebase.json`): anti-clickjacking (`X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`), `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `no-cache` for HTML/JS/JSON.
+- **No zoom in the installed app** (owner request): pinch / double-tap zoom and iOS focus-zoom disabled only in the installed PWA / Android app; browser tabs and `print-report.html` keep zoom. Checked in Chromium: tab unchanged, Capacitor + standalone locked, the annotator's own `touch-action: none` area unaffected.
+- **Open owner actions (not code):** the `testingAccessOpen()` cutoff (2027-01-01, rules + `index.html` `TESTING_END_DATE`) must be extended or removed before then or every login fails; the repository is public, so Actions logs and committed data are public (see the audit notes delivered in the session).
