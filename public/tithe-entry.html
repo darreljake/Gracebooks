@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -623,11 +650,26 @@
     .member-suggestion-item:last-child { border-bottom: none; }
     .member-suggestion-item:hover, .member-suggestion-item.active { background: #fdf2f2; }
     .member-suggestion-item .ms-code { color: #999; font-size: 11px; margin-left: 6px; }
+    /* Add New Tither dialog */
+    .tither-btn { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; margin-left: auto; margin-right: 8px; }
+    .tither-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 3000; padding: 16px; }
+    .tither-overlay.open { display: flex; }
+    .tither-dialog { background: white; border-radius: 14px; width: 100%; max-width: 420px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+    .tither-dialog h3 { color: #8B0000; margin: 0 0 4px; }
+    .tither-dialog .hint { font-size: 12px; color: #777; margin-bottom: 14px; }
+    .tither-dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tither-dialog .dup-warn { display: none; background: #fef5e7; border: 1px solid #f5cba7; color: #935116; border-radius: 8px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+    .tither-dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+    .tither-dialog .actions button { border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+    .tither-dialog .save { background: #8B0000; color: white; }
+    .tither-dialog .cancel { background: #eee; color: #333; }
+    .tither-dialog .done { display: none; background: #eafaf1; border: 1px solid #a9dfbf; color: #1e8449; border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 <div class="topbar">
     <h2>💰 Contribution Entry</h2>
+    <button class="tither-btn" type="button" onclick="openAddTither()">➕ Add New Tither</button>
     <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
   
   </div>
@@ -836,7 +878,31 @@
 
   <div class="confirm-toast" id="confirm-toast"></div>
 
+  <div class="tither-overlay" id="tither-overlay" role="dialog" aria-modal="true" aria-labelledby="tither-title">
+    <div class="tither-dialog">
+      <h3 id="tither-title">➕ Add New Tither</h3>
+      <div class="hint">Adds the person to the tithers list right away with the next Member ID, even before they give. You can then pick them as an Existing Member.</div>
+      <div class="done" id="tither-done"></div>
+      <div class="grid2">
+        <div class="form-group"><label>First Name</label><input type="text" id="tither-first" maxlength="60" placeholder="Juan" autocomplete="off" /></div>
+        <div class="form-group"><label>Last Name</label><input type="text" id="tither-last" maxlength="60" placeholder="Dela Cruz" autocomplete="off" /></div>
+      </div>
+      <div class="form-group"><label>Contact No. (optional)</label><input type="tel" id="tither-contact" maxlength="40" placeholder="09XX XXX XXXX" /></div>
+      <div class="dup-warn" id="tither-dup"></div>
+      <div class="actions">
+        <button type="button" class="cancel" onclick="closeAddTither()">Close</button>
+        <button type="button" class="save" id="tither-save" onclick="saveNewTither()">Save Tither</button>
+      </div>
+    </div>
+  </div>
+
 <script type="module">
+  // Escape user-entered text (member names, notes, budget details) before it
+  // goes into innerHTML - the members roster and draft entries are free text
+  // that a Money Counter can create, so they must never render as markup.
+  function escHtml(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
   import {
     getFirestore, collection, addDoc, doc, getDoc, setDoc,
@@ -1195,7 +1261,7 @@
         };
 
         incomeKeys.sort((a, b) => pinnedOrder(a) - pinnedOrder(b)).forEach(key => {
-          optionsHtml += `<option value="${key}">${key}</option>`;
+          optionsHtml += `<option value="${escHtml(key)}">${escHtml(key)}</option>`;
         });
       }
 
@@ -1582,7 +1648,7 @@
     box.innerHTML = matches.map((m, i) => {
       const code = m.data.memberId || m.data.memberID || m.data.memberCode || m.id;
       return `<div class="member-suggestion-item" data-idx="${i}" onclick="selectMemberSuggestion(${i})">
-        ${getMemberDisplayName(m.data) || '(no name)'}<span class="ms-code">#${code}</span>
+        ${escHtml(getMemberDisplayName(m.data) || '(no name)')}<span class="ms-code">#${escHtml(code)}</span>
       </div>`;
     }).join('');
     box.dataset.matches = JSON.stringify(matches.map(m => ({ id: m.id, data: m.data })));
@@ -1775,6 +1841,93 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
+  // ── ADD NEW TITHER (no income entry needed) ─────────────────────────────
+  // Lets a Money Counter (or the Treasurer) put a new giver on the tithers
+  // list straight away. Uses createNewMemberDoc(), so the write is always a
+  // *create* on a free ID - Money Counter has no update right on `members`.
+  function normName(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  let titherDupConfirmed = '';
+
+  function findSameNameTithers(first, last) {
+    const f = normName(first), l = normName(last);
+    if (!f || !l) return [];
+    return allMembersCache.filter(({ data }) => {
+      const df = normName(data.first || data.firstName), dl = normName(data.last || data.lastName);
+      return dl === l && (df === f || df.split(' ')[0] === f.split(' ')[0]);
+    });
+  }
+
+  window.openAddTither = async function() {
+    ['tither-first', 'tither-last', 'tither-contact'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('tither-dup').style.display = 'none';
+    document.getElementById('tither-done').style.display = 'none';
+    titherDupConfirmed = '';
+    document.getElementById('tither-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('tither-first').focus(), 50);
+    if (!allMembersCacheLoaded) await loadAllMembersCache();
+  };
+
+  window.closeAddTither = function() {
+    document.getElementById('tither-overlay').classList.remove('open');
+  };
+
+  window.saveNewTither = async function() {
+    const first = document.getElementById('tither-first').value.trim().replace(/\s+/g, ' ');
+    const last = document.getElementById('tither-last').value.trim().replace(/\s+/g, ' ');
+    const contact = document.getElementById('tither-contact').value.trim();
+    if (!first || !last) { alert('Please enter both the first and last name.'); return; }
+    if (!allMembersCacheLoaded) await loadAllMembersCache();
+
+    const dupKey = normName(last) + '|' + normName(first);
+    const dups = findSameNameTithers(first, last);
+    if (dups.length && titherDupConfirmed !== dupKey) {
+      const box = document.getElementById('tither-dup');
+      box.innerHTML = '⚠️ Already on the list: ' + dups.slice(0, 3).map(({ id, data }) =>
+        escHtml(getMemberDisplayName(data)) + ' (#' + escHtml(data.memberId || id) + ')').join(', ') +
+        '.<br>If this is a different person, tap <b>Save Tither</b> again.';
+      box.style.display = 'block';
+      titherDupConfirmed = dupKey;
+      return;
+    }
+
+    const btn = document.getElementById('tither-save');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+      const nextId = await allocateNewMemberId();
+      const data = {
+        memberId: nextId, first, last,
+        type: 'Professing', status: 'Active',
+        contact, email: '', address: '',
+        joinedDate: new Date().toISOString(),
+        addedBy: { uid: auth.currentUser ? auth.currentUser.uid : '', name: activeUserProfile?.name || '', role: activeUserProfile?.role || '' }
+      };
+      const savedId = await createNewMemberDoc(data);
+      data.memberId = savedId;
+      allMembersCache.push({ id: savedId, data });
+      try {
+        await writeAuditLog('tither_added', 'members', savedId, null, data, `Added new tither ${last}, ${first} (#${savedId})`);
+      } catch (e) { console.warn('Audit log failed', e); }
+      const done = document.getElementById('tither-done');
+      done.innerHTML = '✅ Added <b>' + escHtml(last + ', ' + first) + '</b> as Member ID <b>#' + escHtml(savedId) + '</b>. You can add another.';
+      done.style.display = 'block';
+      ['tither-first', 'tither-last', 'tither-contact'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('tither-dup').style.display = 'none';
+      titherDupConfirmed = '';
+      document.getElementById('tither-first').focus();
+      showToast(`Added ${last}, ${first} (#${savedId})`);
+    } catch (e) {
+      console.error(e);
+      alert('Could not add the tither: ' + (e.message || e));
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Tither';
+    }
+  };
+
+  document.getElementById('tither-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'tither-overlay') closeAddTither();
+  });
+  if (new URLSearchParams(window.location.search).get('addTither') === '1') openAddTither();
+
   // ── 6. UPDATE UI TABLE ───────────────────────────────────────────────────
   function updateUI() {
     saveDraftsToStorage();
@@ -1803,10 +1956,10 @@
     const sorted = [...draftRecords].sort((a,b) => a.member.localeCompare(b.member));
     tbody.innerHTML = sorted.map(r => `
       <tr>
-        <td>${r.member}${r.isNewMember
+        <td>${escHtml(r.member)}${r.isNewMember
           ? ' <b style="color:green;font-size:10px;">(NEW)</b>' : ''}</td>
-        <td><span class="badge badge-${r.type.replace(/\s+/g, '')}">${r.type}</span></td>
-        <td>${r.payment}</td>
+        <td><span class="badge badge-${escHtml(r.type.replace(/\s+/g, ''))}">${escHtml(r.type)}</span></td>
+        <td>${escHtml(r.payment)}</td>
         <td>₱${r.amount.toFixed(2)}</td>
       </tr>`).join('');
   }
@@ -1854,20 +2007,20 @@
       return `
         <div class="re-item ${reviewEditingId === r.id ? 'editing' : ''}" id="re-item-${r.id}">
           <div class="re-top">
-            <div class="re-name">${r.member}${r.isNewMember
+            <div class="re-name">${escHtml(r.member)}${r.isNewMember
               ? ' <b style="color:green;font-size:10px;">(NEW)</b>' : ''}</div>
             <div class="re-amount">₱${fmt(r.amount)}</div>
           </div>
           <div class="re-meta">
-            <span class="re-badge type">${r.type}</span>
-            <span class="re-badge payment">${r.payment}</span>
-            <span class="re-badge budget">📁 ${r.budgetCategory === 'Not in the budget' ? 'Unbudgeted' : r.budgetCategory}</span>
+            <span class="re-badge type">${escHtml(r.type)}</span>
+            <span class="re-badge payment">${escHtml(r.payment)}</span>
+            <span class="re-badge budget">📁 ${escHtml(r.budgetCategory === 'Not in the budget' ? 'Unbudgeted' : r.budgetCategory)}</span>
           </div>
           ${r.budgetDetails
-            ? `<div style="font-size:11px;color:#0e6251;margin-bottom:2px;">↳ Details: ${r.budgetDetails}</div>`
+            ? `<div style="font-size:11px;color:#0e6251;margin-bottom:2px;">↳ Details: ${escHtml(r.budgetDetails)}</div>`
             : ''}
           ${r.notes
-            ? `<div style="font-size:11px;color:#999;margin-bottom:6px;">📝 ${r.notes}</div>`
+            ? `<div style="font-size:11px;color:#999;margin-bottom:6px;">📝 ${escHtml(r.notes)}</div>`
             : ''}
           <div class="re-actions" style="margin-top:8px;">
             <button class="re-edit"   onclick="toggleReviewEdit(${r.id})">✏️ Edit</button>
@@ -1892,7 +2045,7 @@
               <div class="re-edit-row">
                 <div class="fg">
                   <label>Notes</label>
-                  <input type="text" id="re-notes-${r.id}" value="${r.notes||''}" placeholder="Optional" />
+                  <input type="text" id="re-notes-${r.id}" value="${escHtml(r.notes||'')}" placeholder="Optional" />
                 </div>
               </div>
               <div class="re-edit-btns">
@@ -1932,7 +2085,7 @@
               <div class="rg-sub-header" onclick="toggleReviewGroup('${subSafeId}')">
                 <div class="rg-sub-header-left">
                   <span class="rg-sub-icon ${isEditingHere ? 'open' : ''}" id="${subSafeId}-icon">▶</span>
-                  <span class="rg-sub-title">📁 ${subLabel}</span>
+                  <span class="rg-sub-title">📁 ${escHtml(subLabel)}</span>
                   <span class="rg-sub-count">${subItems.length}</span>
                 </div>
                 <span class="rg-sub-total">₱${fmt(subTotal)}</span>
@@ -1954,7 +2107,7 @@
           <div class="rg-header" onclick="toggleReviewGroup('${safeId}')">
             <div class="rg-header-left">
               <span class="rg-icon ${isEditingInGroup ? 'open' : ''}" id="${safeId}-icon">▶</span>
-              <span class="rg-title">${icon} ${type}</span>
+              <span class="rg-title">${icon} ${escHtml(type)}</span>
               <span class="rg-count">${typeItems.length}</span>
             </div>
             <span class="rg-total">₱${fmt(groupTotal)}</span>
@@ -2374,8 +2527,8 @@
     h += `</tr></thead><tbody>`;
 
     globalMembers.forEach(m => {
-        h += `<tr data-mid="${m.memberId}" data-mname="${m.lastName}, ${m.firstName}">
-                <td style="font-size:11px;"><b>${m.memberId}</b> ${m.lastName}</td>`;
+        h += `<tr data-mid="${escHtml(m.memberId)}" data-mname="${escHtml(m.lastName)}, ${escHtml(m.firstName)}">
+                <td style="font-size:11px;"><b>${escHtml(m.memberId)}</b> ${escHtml(m.lastName)}</td>`;
         sundays.forEach(s => h += `<td><input type="number" class="bulk-amt" data-date="${s}" style="width:60px;"></td>`);
         h += `</tr>`;
     });

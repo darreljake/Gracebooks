@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -141,6 +168,27 @@
   .member-toolbar select { min-width: 0; }
     }
     /* /PHONE LAYOUT */
+    /* Guests with visit number */
+    .guest-box { border: 1px dashed #d7b5b2; border-radius: 10px; padding: 12px; margin: 4px 0 14px; background: #fffafa; }
+    .guest-box-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .guest-box-head strong { color: #8B0000; font-size: 14px; }
+    .guest-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) auto; gap: 8px; align-items: start; margin-bottom: 8px; }
+    .guest-row input, .guest-row select { width: 100%; }
+    .guest-row .guest-hint { grid-column: 1 / -1; margin-top: -4px; font-size: 11px; color: #777; }
+    .guest-remove { background: #fdecea; color: #a93226; border: none; border-radius: 8px; padding: 0 12px; min-height: 38px; cursor: pointer; font-weight: 700; }
+    .visit-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: #eaf2f8; color: #1a5276; white-space: nowrap; }
+    .visit-badge.v1 { background: #eafaf1; color: #1e8449; }
+    .visit-badge.v2 { background: #fef9e7; color: #9a7d0a; }
+    .visit-badge.v3 { background: #fdf2e9; color: #a04000; }
+    .guest-row select { border: 1px solid #ddd; border-radius: 8px; padding: 9px 10px; background: white; font: inherit; min-height: 38px; }
+    @media screen and (max-width: 600px) {
+      .guest-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "name name remove" "visit contact contact" "hint hint hint"; }
+      .guest-row .guest-name { grid-area: name; }
+      .guest-row .guest-visit { grid-area: visit; }
+      .guest-row .guest-contact { grid-area: contact; }
+      .guest-row .guest-remove { grid-area: remove; }
+      .guest-row .guest-hint { grid-area: hint; }
+    }
 </style>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -172,7 +220,7 @@
         <input type="number" id="attendance-count" min="0" step="1" placeholder="0" />
       </div>
       <div>
-        <label>First-Time Guests</label>
+        <label>Guests (total)</label>
         <input type="number" id="guest-count" min="0" step="1" placeholder="0" oninput="syncMinimumAttendance()" />
       </div>
       <div>
@@ -182,6 +230,15 @@
         <label>Notes</label>
         <textarea id="attendance-notes" placeholder="Optional notes"></textarea>
       </div>
+    </div>
+    <div class="guest-box">
+      <div class="guest-box-head">
+        <strong>Guests &amp; Visit Number</strong>
+        <button class="btn-light" type="button" onclick="addGuestRow()">+ Add Guest</button>
+      </div>
+      <div class="muted" style="margin-bottom:8px;">List each guest to mark their 1st, 2nd, 3rd... visit. The visit number is filled in from earlier Sundays when the same name was recorded - change it if you know better. The name is optional (a guest who would rather not give one can still be counted by visit).</div>
+      <div id="guest-rows"></div>
+      <div class="muted" id="guest-summary"></div>
     </div>
     <div class="member-toolbar">
       <input type="text" id="member-search" placeholder="Search member name or ID..." oninput="renderMemberRoster()" />
@@ -218,12 +275,13 @@
             <th>Attendance</th>
             <th>Members Present</th>
             <th>Guests</th>
+            <th>First-Time</th>
             <th>Notes</th>
             <th>Updated</th>
           </tr>
         </thead>
         <tbody id="attendance-body">
-          <tr><td colspan="5" class="empty">Loading attendance records...</td></tr>
+          <tr><td colspan="7" class="empty">Loading attendance records...</td></tr>
         </tbody>
       </table>
     </div>
@@ -255,10 +313,11 @@
             <th>Total Attendance</th>
             <th>Avg Attendance / Week</th>
             <th>Total Guests</th>
+            <th>First-Time Guests</th>
           </tr>
         </thead>
         <tbody id="monthly-summary-body">
-          <tr><td colspan="5" class="empty">Loading monthly summary...</td></tr>
+          <tr><td colspan="6" class="empty">Loading monthly summary...</td></tr>
         </tbody>
       </table>
     </div>
@@ -278,10 +337,11 @@
             <th>Total Attendance</th>
             <th>Avg Attendance / Week</th>
             <th>Total Guests</th>
+            <th>First-Time Guests</th>
           </tr>
         </thead>
         <tbody id="yearly-summary-body">
-          <tr><td colspan="5" class="empty">Loading yearly summary...</td></tr>
+          <tr><td colspan="6" class="empty">Loading yearly summary...</td></tr>
         </tbody>
       </table>
     </div>
@@ -372,6 +432,35 @@
       </table>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Guest Follow-up</h3>
+      <select id="guest-followup-range" onchange="renderGuestFollowup()">
+        <option value="4">Seen in the last 4 Sundays</option>
+        <option value="8" selected>Seen in the last 8 Sundays</option>
+        <option value="13">Seen in the last 13 Sundays</option>
+        <option value="0">All named guests</option>
+      </select>
+    </div>
+    <div class="muted" style="margin-bottom:8px;">Named guests, newest first - for welcoming and visiting them. Visits = the highest visit number recorded for that name.</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Guest</th>
+            <th>Visits</th>
+            <th>First Recorded</th>
+            <th>Last Visit</th>
+            <th>Contact / Notes</th>
+          </tr>
+        </thead>
+        <tbody id="guest-followup-body">
+          <tr><td colspan="5" class="empty">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -407,6 +496,8 @@
     document.getElementById('tracking-start-input').disabled = !canEdit;
     document.getElementById('tracking-start-save').style.display = canEdit ? '' : 'none';
     await Promise.all([loadMembers(), loadAttendance(), loadTrackingSettings()]);
+    renderGuestRows();
+    renderGuestFollowup();
     syncTrackingStartInput();
     populateWeekDetailSelect();
     renderVisitationList();
@@ -414,17 +505,20 @@
     renderAttendanceSheet();
   });
 
-  // "Last, First M." - the same name format members.html and the exported
-  // membership roll use, so a middle initial recorded on the roll shows up
-  // wherever the roster is listed (it is there precisely to tell two
-  // same-named members apart).
-  function middleInitialLabel(member) {
+  // "Last, First Middle" - the same name format members.html and the exported
+  // membership roll use (copied from members.html - keep in step), so the
+  // middle name recorded on the roll shows up wherever the roster is listed
+  // (it is there precisely to tell two same-named members apart). Older
+  // records that only carry `middleInitial` show the initial ("B.").
+  function middleNameLabel(member) {
+    const full = String(member.middleName || '').trim().replace(/\s+/g, ' ');
+    if (full) return full;
     const letter = String(member.middleInitial || '').replace(/[^A-Za-z]/g, '').charAt(0);
     return letter ? letter.toUpperCase() + '.' : '';
   }
 
   function memberFullName(member) {
-    const first = [String(member.firstName || '').trim(), middleInitialLabel(member)].filter(Boolean).join(' ');
+    const first = [String(member.firstName || '').trim(), middleNameLabel(member)].filter(Boolean).join(' ');
     const last = String(member.lastName || '').trim();
     if (last && first) return `${last}, ${first}`;
     return last || first || member.memberId || '';
@@ -476,6 +570,7 @@
       .map(member => ({
         memberId: member.memberId,
         firstName: member.firstName || '',
+        middleName: member.middleName || '',
         middleInitial: member.middleInitial || '',
         lastName: member.lastName || '',
         layOrg: member.layOrg || '',
@@ -483,6 +578,10 @@
       }));
     if (!serviceDate) return alert('Select a service date.');
     if (attendance <= 0) return alert('Enter total attendance.');
+    const guestList = collectGuestList();
+    if (guestList.length > guests) {
+      return alert(`You listed ${guestList.length} guest(s) but Guests (total) says ${guests}. Raise the total or remove a row.`);
+    }
 
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -495,6 +594,9 @@
         serviceDate,
         attendance,
         guests,
+        guestList,
+        guestsByVisit: guestsByVisit(guestList),
+        firstTimeGuests: guestList.filter(g => g.visitNumber === 1).length,
         presentMemberIds: presentMembers.map(member => member.memberId),
         presentMembers,
         presentMemberCount: presentMembers.length,
@@ -509,6 +611,8 @@
       document.getElementById('attendance-count').value = '';
       document.getElementById('guest-count').value = '';
       document.getElementById('attendance-notes').value = '';
+      guestRows = [];
+      renderGuestRows();
       selectedMemberIds.clear();
       renderMemberRoster();
       await loadAttendance();
@@ -535,6 +639,245 @@
     renderAttendance();
     renderMonthlySummary();
     renderYearlySummary();
+    if (document.getElementById('guest-followup-body')) renderGuestFollowup();
+  }
+
+  // ── Guests with visit number ────────────────────────────────────────────
+  // Each Sunday's record may carry guestList: [{name, visitNumber, contact,
+  // notes, visitAuto}] (plus guestsByVisit / firstTimeGuests for quick
+  // reporting). `guests` stays the total headcount of guests - a list can be
+  // shorter when not every guest was written down. Older records have no
+  // guestList and show "-" in the first-time columns rather than a false 0.
+  let guestRows = [];
+  let guestRowSeq = 0;
+
+  function guestKey(name) {
+    return String(name || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function ordinal(n) {
+    const v = n % 100;
+    const suf = (v >= 11 && v <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+    return n + suf;
+  }
+
+  function visitLabel(n) {
+    return n === 1 ? '1st (first time)' : `${ordinal(n)} visit`;
+  }
+
+  // Earlier visits of a named guest strictly before `serviceDate`.
+  function priorGuestVisits(name, serviceDate) {
+    const key = guestKey(name);
+    if (!key) return [];
+    const out = [];
+    attendanceRecords.forEach(row => {
+      if (!row.serviceDate || !Array.isArray(row.guestList)) return;
+      if (serviceDate && row.serviceDate >= serviceDate) return;
+      const hit = row.guestList.find(g => guestKey(g.name) === key);
+      if (hit) out.push({ date: row.serviceDate, visitNumber: Number(hit.visitNumber) || 1 });
+    });
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function suggestedVisitNumber(name, serviceDate) {
+    const prior = priorGuestVisits(name, serviceDate);
+    if (!prior.length) return 1;
+    // Continue from the latest recorded visit number, which may have been set
+    // by hand (e.g. a guest already on their 3rd visit when records began).
+    return Math.max(prior[prior.length - 1].visitNumber, prior.length) + 1;
+  }
+
+  function addGuestRow(data) {
+    guestRows.push({
+      id: ++guestRowSeq,
+      name: data?.name || '',
+      visitNumber: Number(data?.visitNumber) || 1,
+      visitAuto: data ? data.visitAuto !== false : true,
+      contact: data?.contact || '',
+      notes: data?.notes || ''
+    });
+    renderGuestRows();
+    if (!data) {
+      const inputs = document.querySelectorAll('#guest-rows .guest-name input');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    }
+    syncMinimumAttendance();
+  }
+
+  function removeGuestRow(id) {
+    guestRows = guestRows.filter(r => r.id !== id);
+    renderGuestRows();
+  }
+
+  function guestHint(row) {
+    const prior = priorGuestVisits(row.name, document.getElementById('service-date').value);
+    if (!guestKey(row.name)) return '';
+    if (!prior.length) return 'No earlier visit recorded under this name.';
+    const dates = prior.slice(-4).map(p => shortDate(p.date)).join(', ');
+    return `Seen before: ${dates}${prior.length > 4 ? ` (+${prior.length - 4} more)` : ''}`;
+  }
+
+  function renderGuestRows() {
+    const wrap = document.getElementById('guest-rows');
+    if (!wrap) return;
+    if (!guestRows.length) {
+      wrap.innerHTML = '';
+    } else {
+      wrap.innerHTML = guestRows.map(row => {
+        const max = Math.max(12, row.visitNumber);
+        const opts = Array.from({ length: max }, (_, i) => i + 1)
+          .map(n => `<option value="${n}" ${n === row.visitNumber ? 'selected' : ''}>${visitLabel(n)}</option>`).join('');
+        return `<div class="guest-row" data-gid="${row.id}">
+          <div class="guest-name"><input type="text" maxlength="80" placeholder="Guest name (optional)" value="${escapeHtml(row.name)}" data-gfield="name" /></div>
+          <div class="guest-visit"><select data-gfield="visitNumber" aria-label="Visit number">${opts}</select></div>
+          <div class="guest-contact"><input type="text" maxlength="120" placeholder="Contact / invited by (optional)" value="${escapeHtml(row.contact)}" data-gfield="contact" /></div>
+          <button type="button" class="guest-remove" data-gremove="${row.id}" aria-label="Remove guest">&times;</button>
+          <div class="guest-hint" data-ghint>${escapeHtml(guestHint(row))}</div>
+        </div>`;
+      }).join('');
+    }
+    renderGuestSummary();
+  }
+
+  function renderGuestSummary() {
+    const el = document.getElementById('guest-summary');
+    if (!el) return;
+    const list = collectGuestList();
+    if (!list.length) { el.textContent = 'No guests listed for this Sunday.'; return; }
+    const by = guestsByVisit(list);
+    const parts = [`${by.first} first-time`, `${by.second} second`, `${by.third} third`];
+    if (by.fourthPlus) parts.push(`${by.fourthPlus} fourth or more`);
+    el.textContent = `${list.length} guest(s) listed: ${parts.join(', ')}.`;
+  }
+
+  function collectGuestList() {
+    return guestRows.map(r => ({
+      name: String(r.name || '').trim().replace(/\s+/g, ' '),
+      visitNumber: Math.max(1, Number(r.visitNumber) || 1),
+      visitAuto: !!r.visitAuto,
+      contact: String(r.contact || '').trim(),
+      notes: String(r.notes || '').trim()
+    }));
+  }
+
+  function guestsByVisit(list) {
+    const by = { first: 0, second: 0, third: 0, fourthPlus: 0 };
+    (list || []).forEach(g => {
+      const n = Number(g.visitNumber) || 1;
+      if (n === 1) by.first++; else if (n === 2) by.second++; else if (n === 3) by.third++; else by.fourthPlus++;
+    });
+    return by;
+  }
+
+  function firstTimeCount(row) {
+    return (row.guestList || []).filter(g => (Number(g.visitNumber) || 1) === 1).length;
+  }
+
+  function guestVisitBreakdown(row) {
+    if (!Array.isArray(row.guestList) || !row.guestList.length) return '';
+    const by = guestsByVisit(row.guestList);
+    const bits = [];
+    if (by.first) bits.push(`${by.first}×1st`);
+    if (by.second) bits.push(`${by.second}×2nd`);
+    if (by.third) bits.push(`${by.third}×3rd`);
+    if (by.fourthPlus) bits.push(`${by.fourthPlus}×4th+`);
+    return ` <span class="muted">(${bits.join(', ')})</span>`;
+  }
+
+  document.getElementById('guest-rows').addEventListener('input', (e) => {
+    const rowEl = e.target.closest('.guest-row');
+    const field = e.target.dataset.gfield;
+    if (!rowEl || !field) return;
+    const row = guestRows.find(r => r.id === Number(rowEl.dataset.gid));
+    if (!row) return;
+    if (field === 'name') {
+      row.name = e.target.value;
+      if (row.visitAuto) {
+        row.visitNumber = suggestedVisitNumber(row.name, document.getElementById('service-date').value);
+        const sel = rowEl.querySelector('select[data-gfield="visitNumber"]');
+        if (sel) {
+          if (!sel.querySelector(`option[value="${row.visitNumber}"]`)) { renderGuestRows(); return; }
+          sel.value = String(row.visitNumber);
+        }
+      }
+      const hint = rowEl.querySelector('[data-ghint]');
+      if (hint) hint.textContent = guestHint(row);
+    } else if (field === 'contact') {
+      row.contact = e.target.value;
+    }
+    renderGuestSummary();
+  });
+
+  document.getElementById('guest-rows').addEventListener('change', (e) => {
+    if (e.target.dataset.gfield !== 'visitNumber') return;
+    const rowEl = e.target.closest('.guest-row');
+    const row = guestRows.find(r => r.id === Number(rowEl.dataset.gid));
+    if (!row) return;
+    row.visitNumber = Number(e.target.value) || 1;
+    row.visitAuto = false; // chosen by hand - stop overwriting it
+    renderGuestSummary();
+  });
+
+  document.getElementById('guest-rows').addEventListener('click', (e) => {
+    const id = e.target.dataset && e.target.dataset.gremove;
+    if (id) { removeGuestRow(Number(id)); syncMinimumAttendance(); }
+  });
+
+  // Re-saving a Sunday replaces its guest list, so when a date that already
+  // has one is picked and nothing has been typed yet, load it for editing.
+  // Auto visit numbers are recomputed against the newly chosen date.
+  document.getElementById('service-date').addEventListener('change', () => {
+    const date = document.getElementById('service-date').value;
+    const typed = guestRows.some(r => guestKey(r.name) || r.contact);
+    const existing = attendanceRecords.find(r => r.serviceDate === date);
+    if (!typed && existing && Array.isArray(existing.guestList) && existing.guestList.length) {
+      guestRows = [];
+      existing.guestList.forEach(g => guestRows.push({
+        id: ++guestRowSeq, name: g.name || '', visitNumber: Number(g.visitNumber) || 1,
+        visitAuto: g.visitAuto !== false, contact: g.contact || '', notes: g.notes || ''
+      }));
+    } else {
+      guestRows.forEach(r => { if (r.visitAuto) r.visitNumber = suggestedVisitNumber(r.name, date); });
+    }
+    renderGuestRows();
+  });
+
+  function renderGuestFollowup() {
+    const body = document.getElementById('guest-followup-body');
+    if (!body) return;
+    const weeks = Number(document.getElementById('guest-followup-range').value) || 0;
+    const sundays = attendanceRecords.filter(r => r.serviceDate).map(r => r.serviceDate).sort().reverse();
+    const since = weeks && sundays.length ? (sundays[Math.min(weeks, sundays.length) - 1] || '') : '';
+    const people = new Map();
+    attendanceRecords.forEach(row => {
+      if (!row.serviceDate || !Array.isArray(row.guestList)) return;
+      row.guestList.forEach(g => {
+        const key = guestKey(g.name);
+        if (!key) return;
+        if (!people.has(key)) people.set(key, { name: g.name, first: row.serviceDate, last: row.serviceDate, visits: 0, contact: '', notes: '' });
+        const p = people.get(key);
+        if (row.serviceDate < p.first) p.first = row.serviceDate;
+        if (row.serviceDate >= p.last) { p.last = row.serviceDate; p.name = g.name || p.name; if (g.contact) p.contact = g.contact; if (g.notes) p.notes = g.notes; }
+        p.visits = Math.max(p.visits, Number(g.visitNumber) || 1);
+      });
+    });
+    const rows = Array.from(people.values())
+      .filter(p => !since || p.last >= since)
+      .sort((a, b) => b.last.localeCompare(a.last) || a.name.localeCompare(b.name));
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No named guests recorded in this range yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(p => {
+      const cls = p.visits <= 3 ? ` v${p.visits}` : '';
+      return `<tr>
+        <td><strong>${escapeHtml(p.name)}</strong></td>
+        <td><span class="visit-badge${cls}">${escapeHtml(visitLabel(p.visits))}</span></td>
+        <td>${escapeHtml(shortDate(p.first))}</td>
+        <td>${escapeHtml(shortDate(p.last))}</td>
+        <td>${escapeHtml([p.contact, p.notes].filter(Boolean).join(' · ') || '-')}</td>
+      </tr>`;
+    }).join('');
   }
 
   async function loadMembers() {
@@ -609,7 +952,7 @@
 
     let filtered = members.filter(member => {
       if (orgFilter && member.layOrg !== orgFilter) return false;
-      const haystack = `${member.memberId || ''} ${member.firstName || ''} ${member.middleInitial || ''} ${member.lastName || ''} ${member.status || ''} ${member.layOrg || ''} ${member.membershipType || ''}`.toLowerCase();
+      const haystack = `${member.memberId || ''} ${member.firstName || ''} ${middleNameLabel(member)} ${member.lastName || ''} ${member.status || ''} ${member.layOrg || ''} ${member.membershipType || ''}`.toLowerCase();
       return !search || haystack.includes(search);
     });
 
@@ -665,7 +1008,10 @@
 
   function syncMinimumAttendance() {
     const attendanceInput = document.getElementById('attendance-count');
-    const guests = parseInt(document.getElementById('guest-count').value, 10) || 0;
+    const guestInput = document.getElementById('guest-count');
+    const listed = collectGuestList().length;
+    if (listed > (parseInt(guestInput.value, 10) || 0)) guestInput.value = listed;
+    const guests = parseInt(guestInput.value, 10) || 0;
     const minimum = selectedMemberIds.size + guests;
     const current = parseInt(attendanceInput.value, 10) || 0;
     if (minimum > current) attendanceInput.value = minimum;
@@ -740,7 +1086,7 @@
   function renderAttendance() {
     const body = document.getElementById('attendance-body');
     if (!recentAttendanceRecords.length) {
-      body.innerHTML = '<tr><td colspan="6" class="empty">No weekly attendance records yet.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="empty">No weekly attendance records yet.</td></tr>';
       return;
     }
     body.innerHTML = recentAttendanceRecords.map(row => `
@@ -748,7 +1094,8 @@
         <td>${escapeHtml(row.serviceDate || row.monthKey || '-')}</td>
         <td><strong>${Number(row.attendance || 0).toLocaleString('en-PH')}</strong></td>
         <td>${Number(row.presentMemberCount || (row.presentMemberIds || []).length || 0).toLocaleString('en-PH')}</td>
-        <td>${Number(row.guests || 0).toLocaleString('en-PH')}</td>
+        <td>${Number(row.guests || 0).toLocaleString('en-PH')}${guestVisitBreakdown(row)}</td>
+        <td>${Array.isArray(row.guestList) ? firstTimeCount(row).toLocaleString('en-PH') : '<span class="muted">-</span>'}</td>
         <td>${escapeHtml(row.notes || '-')}</td>
         <td class="muted">${escapeHtml(row.updatedAt ? new Date(row.updatedAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '-')}</td>
       </tr>
@@ -768,11 +1115,12 @@
     attendanceRecords.filter(row => row.serviceDate).forEach(row => {
       const key = keyFn(row);
       if (!key) return;
-      if (!groups.has(key)) groups.set(key, { key, weeks: 0, totalAttendance: 0, totalGuests: 0 });
+      if (!groups.has(key)) groups.set(key, { key, weeks: 0, totalAttendance: 0, totalGuests: 0, firstTime: 0, guestListWeeks: 0 });
       const group = groups.get(key);
       group.weeks += 1;
       group.totalAttendance += Number(row.attendance || 0);
       group.totalGuests += Number(row.guests || 0);
+      if (Array.isArray(row.guestList)) { group.firstTime += firstTimeCount(row); group.guestListWeeks += 1; }
     });
     return Array.from(groups.values())
       .map(group => ({ ...group, label: labelFn(group.key), avgAttendance: group.weeks ? Math.round(group.totalAttendance / group.weeks) : 0 }))
@@ -783,7 +1131,7 @@
     const body = document.getElementById('monthly-summary-body');
     const rows = summarizeBy(row => row.monthKey, monthLabel);
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="empty">No weekly attendance records yet.</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="empty">No weekly attendance records yet.</td></tr>';
       return;
     }
     body.innerHTML = rows.map(row => `
@@ -793,6 +1141,7 @@
         <td>${row.totalAttendance.toLocaleString('en-PH')}</td>
         <td>${row.avgAttendance.toLocaleString('en-PH')}</td>
         <td>${row.totalGuests.toLocaleString('en-PH')}</td>
+        <td>${row.guestListWeeks ? row.firstTime.toLocaleString('en-PH') : '<span class="muted">-</span>'}</td>
       </tr>
     `).join('');
   }
@@ -801,7 +1150,7 @@
     const body = document.getElementById('yearly-summary-body');
     const rows = summarizeBy(row => (row.year ? String(row.year) : ''), key => key || '-');
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="empty">No weekly attendance records yet.</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="empty">No weekly attendance records yet.</td></tr>';
       return;
     }
     body.innerHTML = rows.map(row => `
@@ -811,6 +1160,7 @@
         <td>${row.totalAttendance.toLocaleString('en-PH')}</td>
         <td>${row.avgAttendance.toLocaleString('en-PH')}</td>
         <td>${row.totalGuests.toLocaleString('en-PH')}</td>
+        <td>${row.guestListWeeks ? row.firstTime.toLocaleString('en-PH') : '<span class="muted">-</span>'}</td>
       </tr>
     `).join('');
   }

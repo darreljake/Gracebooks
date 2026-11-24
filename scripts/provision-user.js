@@ -14,12 +14,16 @@
 //   GB_NAME                  - display name stored on the profile doc
 //   GB_ROLE                  - must exactly match one of VALID_ROLES
 // Optional:
-//   GB_PASSWORD               - explicit password. For a brand-new account
-//                                it's used as the initial password (a random
-//                                one is generated if omitted). For an
-//                                existing account, supplying this RESETS
-//                                that account's password; omitting it leaves
-//                                an existing account's password untouched.
+//   GB_RESET_PASSWORD         - 'true' to give an EXISTING account a new
+//                                temporary password. New accounts always
+//                                get one.
+//
+// PASSWORDS NEVER GO INTO THE LOG OR THE WORKFLOW INPUTS. This repository
+// and its Actions logs are public, and GitHub prints a step's inputs in the
+// log, so the temporary password is generated here and stored in
+// pendingPasswords/{uid}, which only the Treasurer can read - the GraceBooks
+// dashboard shows it to the Treasurer to hand out, then erase. The log only
+// says which role was provisioned.
 
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
@@ -56,7 +60,7 @@ async function main() {
   const rawUsername = process.env.GB_USERNAME;
   const name = (process.env.GB_NAME || '').trim();
   const role = (process.env.GB_ROLE || '').trim();
-  const explicitPassword = process.env.GB_PASSWORD;
+  const resetPassword = String(process.env.GB_RESET_PASSWORD || '').toLowerCase() === 'true';
 
   if (!serviceAccountJson) throw new Error('FIREBASE_SERVICE_ACCOUNT is not set.');
   if (!rawUsername) throw new Error('GB_USERNAME is required.');
@@ -77,21 +81,17 @@ async function main() {
 
   let userRecord;
   let created = false;
-  let passwordChanged = false;
   let tempPassword = null;
 
   try {
     userRecord = await auth.getUserByEmail(email);
-    if (explicitPassword) {
-      await auth.updateUser(userRecord.uid, { password: explicitPassword });
-      passwordChanged = true;
-      console.log(`Existing Auth user found for ${email} (uid: ${userRecord.uid}). Password reset to the supplied value.`);
-    } else {
-      console.log(`Existing Auth user found for ${email} (uid: ${userRecord.uid}). Password left unchanged.`);
+    if (resetPassword) {
+      tempPassword = generatePassword();
+      await auth.updateUser(userRecord.uid, { password: tempPassword });
     }
   } catch (err) {
     if (err.code !== 'auth/user-not-found') throw err;
-    tempPassword = explicitPassword || generatePassword();
+    tempPassword = generatePassword();
     userRecord = await auth.createUser({
       email,
       password: tempPassword,
@@ -99,40 +99,35 @@ async function main() {
       emailVerified: false
     });
     created = true;
-    console.log(`Created new Auth user for ${email} (uid: ${userRecord.uid}).`);
   }
 
   await db.collection('userProfiles').doc(userRecord.uid).set({ name, role }, { merge: true });
-  console.log(`Wrote userProfiles/${userRecord.uid} -> { name: "${name}", role: "${role}" }`);
+  // storage.rules reads the role from this custom claim (see
+  // scripts/security-migration.js); keep it in step with the profile.
+  await auth.setCustomUserClaims(userRecord.uid, { ...(userRecord.customClaims || {}), role });
 
-  const summaryLines = [
+  if (tempPassword) {
+    await db.collection('pendingPasswords').doc(userRecord.uid).set({
+      username: email.endsWith('@gracebooks.local') ? email.replace('@gracebooks.local', '') : email,
+      name, role, password: tempPassword,
+      reason: created ? 'new account' : 'password reset',
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  const outcome = created
+    ? 'New account created'
+    : tempPassword ? 'Existing account - password reset' : 'Existing account - profile/role updated, password unchanged';
+  const summary = [
     '## GraceBooks user provisioned',
     '',
-    `- Email/username: \`${email}\``,
-    `- UID: \`${userRecord.uid}\``,
-    `- Name: ${name}`,
     `- Role: ${role}`,
-    `- Auth account: ${created ? 'newly created' : passwordChanged ? 'already existed (password reset)' : 'already existed (password unchanged)'}`
-  ];
-  if (created) {
-    summaryLines.push(
-      '',
-      `**Temporary password:** \`${tempPassword}\``,
-      '',
-      '⚠️ This appears once, here, in this workflow run\'s summary/log. Sign in with it and ' +
-      'immediately use the "Change Password" button (key icon) on the GraceBooks dashboard to set a permanent one.'
-    );
-  } else if (passwordChanged) {
-    summaryLines.push(
-      '',
-      `**Password reset to:** \`${explicitPassword}\``,
-      '',
-      '⚠️ This appears once, here, in this workflow run\'s summary/log. Sign in with it and ' +
-      'immediately use the "Change Password" button (key icon) on the GraceBooks dashboard to set a permanent one.'
-    );
-  }
-  const summary = summaryLines.join('\n') + '\n';
-  console.log('\n' + summary);
+    `- Result: ${outcome}`,
+    tempPassword
+      ? '- The temporary password is waiting on the Treasurer\'s GraceBooks dashboard ("New account passwords to hand out"). It is not shown here because this log is public.'
+      : ''
+  ].filter(Boolean).join('\n') + '\n';
+  console.log(summary);
   if (process.env.GITHUB_STEP_SUMMARY) {
     require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
   }

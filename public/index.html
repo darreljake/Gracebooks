@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -166,6 +193,13 @@
 
     .logout-btn:hover { background: rgba(255,255,255,0.3); }
 
+    .pending-pw { margin: 14px 24px 0; padding: 14px 16px; background: #fffaf0; border: 1px solid #f5cba7; border-radius: 12px; }
+    .pending-pw-title { font-weight: 700; color: #935116; margin-bottom: 4px; }
+    .pending-pw-note { font-size: 12px; color: #7e5109; margin-bottom: 10px; }
+    .pending-pw-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 8px 0; border-top: 1px dashed #f5cba7; font-size: 13px; }
+    .pending-pw-row code { background: #fff; border: 1px solid #eee; border-radius: 6px; padding: 3px 8px; font-size: 14px; user-select: all; }
+    .pending-pw-row button { margin-left: auto; background: #1e8449; color: #fff; border: none; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; }
+    @media (max-width: 600px) { .pending-pw { margin: 12px 12px 0; } }
     .welcome-bar {
       background: #fdf2f2;
       padding: 16px 24px;
@@ -332,10 +366,6 @@
       </div>
       <p>Tagaytay United Methodist Church</p>
 
-      <div class="warning" id="expiry-notice" style="display:none;">
-        Testing access expires in <span id="days-left"></span> days
-      </div>
-
       <input type="text" id="username" placeholder="Username" autocomplete="username" />
       <input type="password" id="password" placeholder="Password" autocomplete="off" />
       <button class="btn" id="login-btn" onclick="login()">Login</button>
@@ -372,6 +402,12 @@
       Good day, <strong id="welcome-name"></strong>! Welcome to GraceBooks - TUMC Finance System.
     </div>
 
+    <div class="pending-pw" id="pending-pw" style="display:none;">
+      <div class="pending-pw-title"><i class="fa-solid fa-key"></i> New account passwords to hand out</div>
+      <div class="pending-pw-note">Created by the "Provision GraceBooks User" workflow. Give each person their temporary password privately (not by group chat), ask them to change it with the key icon after signing in, then tap <b>Handed out</b> to erase it here.</div>
+      <div id="pending-pw-list"></div>
+    </div>
+
     <div class="menu-grid" id="menu-grid"></div>
 
     <div class="footer">
@@ -393,19 +429,6 @@
   </div>
 
   <script>
-    const TESTING_END_DATE = new Date('2027-01-01T00:00:00+08:00').getTime();
-
-    function isTestingExpired() {
-      const now = new Date().getTime();
-      return now >= TESTING_END_DATE;
-    }
-
-    function getDaysRemaining() {
-      const now = new Date().getTime();
-      const remaining = Math.ceil((TESTING_END_DATE - now) / (1000 * 60 * 60 * 24));
-      return Math.max(0, remaining);
-    }
-
     const menus = {
       'Treasurer': [
         { iconClass: 'fa-chart-pie', label: 'Council Dashboard', link: 'council-dashboard.html' },
@@ -499,7 +522,8 @@
         { iconClass: 'fa-folder-open', label: 'Report Archive', link: 'report-archive.html' }
       ],
       'Money Counter': [
-        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' }
+        { iconClass: 'fa-hand-holding-dollar', label: 'Income Entry Log', link: 'tithe-entry.html' },
+        { iconClass: 'fa-user-plus', label: 'Add New Tither', link: 'tithe-entry.html?addTither=1' }
       ],
       'Finance Committee': [
         { iconClass: 'fa-chart-pie', label: 'Council Dashboard', link: 'council-dashboard.html' },
@@ -540,12 +564,6 @@
 
     // INITIALIZATION
     window.onload = function() {
-      const daysLeft = getDaysRemaining();
-      if (daysLeft <= 7 && daysLeft > 0) {
-        document.getElementById('expiry-notice').style.display = 'block';
-        document.getElementById('days-left').textContent = daysLeft;
-      }
-
       firebase.auth().onAuthStateChanged(async (user) => {
         if (!user) {
           document.body.classList.remove('authenticated');
@@ -567,11 +585,6 @@
     };
 
     async function login() {
-      if (isTestingExpired()) {
-        alert('Testing period has expired. Contact administrator.');
-        return;
-      }
-
       const username = document.getElementById('username').value.trim().toLowerCase();
       const email = username.includes('@') ? username : `${username}@gracebooks.local`;
       const password = document.getElementById('password').value;
@@ -632,7 +645,44 @@
       });
 
       loadNotifications();
+      if (currentUser.role === 'Treasurer') loadPendingPasswords();
     }
+
+    // Temporary passwords from scripts/provision-user.js. They are kept in
+    // pendingPasswords/{uid} (Treasurer read/delete only) instead of being
+    // printed into the public GitHub Actions log.
+    async function loadPendingPasswords() {
+      const box = document.getElementById('pending-pw');
+      const list = document.getElementById('pending-pw-list');
+      try {
+        const snap = await firebase.firestore().collection('pendingPasswords').get();
+        if (snap.empty) { box.style.display = 'none'; return; }
+        list.innerHTML = snap.docs.map(d => {
+          const p = d.data();
+          return '<div class="pending-pw-row">' +
+            '<span><b>' + safeHtml(p.name || '') + '</b> (' + safeHtml(p.role || '') + ')</span>' +
+            '<span>Username: <code>' + safeHtml(p.username || '') + '</code></span>' +
+            '<span>Password: <code>' + safeHtml(p.password || '') + '</code></span>' +
+            '<button type="button" data-pw-done="' + safeHtml(d.id) + '">Handed out</button>' +
+            '</div>';
+        }).join('');
+        box.style.display = 'block';
+      } catch (e) {
+        box.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('click', async (e) => {
+      const id = e.target && e.target.dataset && e.target.dataset.pwDone;
+      if (!id) return;
+      if (!confirm('Erase this temporary password from GraceBooks? Make sure the person has it.')) return;
+      try {
+        await firebase.firestore().collection('pendingPasswords').doc(id).delete();
+        loadPendingPasswords();
+      } catch (err) {
+        alert('Could not erase it: ' + (err.message || err));
+      }
+    });
 
     async function logout() {
       if (confirm('Are you sure you want to logout?')) {

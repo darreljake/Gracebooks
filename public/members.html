@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -212,7 +239,7 @@
               <th class="sortable" data-field="memberId" onclick="sortByColumn('memberId')">Member ID<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="lastName" onclick="sortByColumn('lastName')">Last Name<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="firstName" onclick="sortByColumn('firstName')">First Name<span class="sort-arrow"></span></th>
-              <th class="sortable" data-field="middleInitial" onclick="sortByColumn('middleInitial')">M.I.<span class="sort-arrow"></span></th>
+              <th class="sortable" data-field="middleName" onclick="sortByColumn('middleName')">Middle Name<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="layOrg" onclick="sortByColumn('layOrg')">Lay Org<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="membershipType" onclick="sortByColumn('membershipType')">Membership Type<span class="sort-arrow"></span></th>
               <th class="sortable" data-field="ageLevel" onclick="sortByColumn('ageLevel')">Age-Level<span class="sort-arrow"></span></th>
@@ -237,7 +264,7 @@
     <div style="display:flex; gap:10px;">
       <div class="form-group" style="flex:2;"><label>Last Name</label><input type="text" id="m-lastname" /></div>
       <div class="form-group" style="flex:2;"><label>First Name</label><input type="text" id="m-firstname" /></div>
-      <div class="form-group" style="flex:1;"><label>Middle Initial</label><input type="text" id="m-middleinitial" maxlength="1" placeholder="M" /></div>
+      <div class="form-group" style="flex:1;"><label>Middle Name</label><input type="text" id="m-middlename" maxlength="60" placeholder="Santos" /></div>
     </div>
     <div style="display:flex; gap:10px;">
       <div class="form-group" style="flex:1;">
@@ -379,23 +406,30 @@
     return String(value || '').toLowerCase().replace(/\s+/g, '-');
   }
 
-  // The field is a single initial, so anything longer (a full middle name
-  // typed in, or pasted through the CSV import) is reduced to its first
-  // letter rather than stored as-is.
+  // The roll stores the full middle name (`middleName`). `middleInitial` is
+  // still written alongside it (its first letter) for older readers, and a
+  // record saved before the change - which only has `middleInitial` - keeps
+  // showing that initial ("B.") until someone types the full middle name.
   function normalizeMiddleInitial(value) {
     const letter = String(value || '').replace(/[^A-Za-z]/g, '').charAt(0);
     return letter ? letter.toUpperCase() : '';
   }
 
-  function middleInitialLabel(member) {
+  function normalizeMiddleName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function middleNameLabel(member) {
+    const full = normalizeMiddleName(member.middleName);
+    if (full) return full;
     const letter = normalizeMiddleInitial(member.middleInitial);
     return letter ? letter + '.' : '';
   }
 
-  // "Last, First M." - the roll's own name format, used on screen and in the
-  // exported workbook so a printed roll matches what the page shows.
+  // "Last, First Middle" - the roll's own name format, used on screen and in
+  // the exported workbook so a printed roll matches what the page shows.
   function memberFullName(member) {
-    const first = [String(member.firstName || '').trim(), middleInitialLabel(member)].filter(Boolean).join(' ');
+    const first = [String(member.firstName || '').trim(), middleNameLabel(member)].filter(Boolean).join(' ');
     const last = String(member.lastName || '').trim();
     if (last && first) return `${last}, ${first}`;
     return last || first || member.memberId || '';
@@ -505,7 +539,7 @@
       (m.memberId || '').toLowerCase().includes(q) ||
       (m.lastName || '').toLowerCase().includes(q) ||
       (m.firstName || '').toLowerCase().includes(q) ||
-      (m.middleInitial || '').toLowerCase().includes(q) ||
+      middleNameLabel(m).toLowerCase().includes(q) ||
       memberFullName(m).toLowerCase().includes(q)
     );
 
@@ -519,8 +553,8 @@
           || memberFullName(a).localeCompare(memberFullName(b));
         return dir === 'asc' ? cmp : -cmp;
       }
-      let valA = (a[field] || '').toLowerCase();
-      let valB = (b[field] || '').toLowerCase();
+      let valA = (field === 'middleName' ? middleNameLabel(a) : (a[field] || '')).toLowerCase();
+      let valB = (field === 'middleName' ? middleNameLabel(b) : (b[field] || '')).toLowerCase();
       const cmp = valA.localeCompare(valB);
       return dir === 'asc' ? cmp : -cmp;
     });
@@ -538,7 +572,7 @@
           <td class="select-col"><input type="checkbox" ${selectedProfileIds.has(m.memberId) ? 'checked' : ''} onchange="toggleMemberSelection('${escapeHtml(m.memberId)}', this.checked)" /></td>
           <td><strong>${escapeHtml(m.memberId)}</strong></td>
           <td>${escapeHtml(m.lastName)}</td><td>${escapeHtml(m.firstName)}</td>
-          <td>${escapeHtml(middleInitialLabel(m) || '—')}</td>
+          <td>${escapeHtml(middleNameLabel(m) || '—')}</td>
           <td>${escapeHtml(m.layOrg || '—')}</td>
           <td><span class="badge badge-${badgeClass(m.membershipType)}">${escapeHtml(m.membershipType)}</span></td>
           <td>${escapeHtml(m.ageLevel)}</td>
@@ -768,7 +802,7 @@
     document.getElementById('btn-delete-member').style.display = 'none';
     document.getElementById('m-id').value = nextMemberId();
     document.getElementById('m-id').disabled = true;
-    ['m-lastname', 'm-firstname', 'm-middleinitial', 'm-birthday', 'm-remarks'].forEach(id => document.getElementById(id).value = '');
+    ['m-lastname', 'm-firstname', 'm-middlename', 'm-birthday', 'm-remarks'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('m-gender').value = '';
     document.getElementById('m-mis').checked = false;
     document.getElementById('m-layorg').value = '';
@@ -791,7 +825,7 @@
     document.getElementById('m-id').disabled = true;
     document.getElementById('m-lastname').value = m.lastName || '';
     document.getElementById('m-firstname').value = m.firstName || '';
-    document.getElementById('m-middleinitial').value = normalizeMiddleInitial(m.middleInitial);
+    document.getElementById('m-middlename').value = normalizeMiddleName(m.middleName) || normalizeMiddleInitial(m.middleInitial);
     document.getElementById('m-gender').value = normalizeGender(m.gender);
     document.getElementById('m-birthday').value = normalizeBirthdayInput(m.birthday);
     document.getElementById('m-remarks').value = m.remarks || '';
@@ -815,7 +849,8 @@
       memberId: id,
       lastName: document.getElementById('m-lastname').value.trim(),
       firstName: document.getElementById('m-firstname').value.trim(),
-      middleInitial: normalizeMiddleInitial(document.getElementById('m-middleinitial').value),
+      middleName: normalizeMiddleName(document.getElementById('m-middlename').value),
+      middleInitial: normalizeMiddleInitial(document.getElementById('m-middlename').value),
       layOrg: document.getElementById('m-layorg').value,
       membershipType: document.getElementById('m-type').value,
       ageLevel: document.getElementById('m-agelevel').value,
@@ -875,13 +910,16 @@
   };
 
   // Columns are matched by header name, not position, so the template's new
-  // MiddleInitial / Gender / Birthday / Remarks columns can sit anywhere and
+  // MiddleName / Gender / Birthday / Remarks columns can sit anywhere and
   // a file saved from the older 7-column template still imports correctly.
   const CSV_HEADER_FIELDS = {
     memberid: 'memberId', id: 'memberId',
     lastname: 'lastName', surname: 'lastName',
     firstname: 'firstName', givenname: 'firstName',
-    middleinitial: 'middleInitial', mi: 'middleInitial', middlename: 'middleInitial',
+    middlename: 'middleName', middle: 'middleName',
+    // An older file's MiddleInitial column fills the same field (an initial
+    // is just a short middle name until someone types the full one).
+    middleinitial: 'middleName', mi: 'middleName',
     layorg: 'layOrg', layorganization: 'layOrg',
     membershiptype: 'membershipType', membershipcategory: 'membershipType',
     agelevel: 'ageLevel',
@@ -946,7 +984,8 @@
           memberId: raw.memberId || `M${Date.now()}${i}`,
           lastName: raw.lastName || '',
           firstName: raw.firstName || '',
-          middleInitial: normalizeMiddleInitial(raw.middleInitial),
+          middleName: normalizeMiddleName(raw.middleName),
+          middleInitial: normalizeMiddleInitial(raw.middleName),
           layOrg: raw.layOrg || '',
           membershipType: raw.membershipType || 'Professing Member',
           ageLevel: raw.ageLevel || 'Adult',
@@ -986,9 +1025,9 @@
 
   window.downloadTemplate = () => {
     const csv = [
-      'MemberID,LastName,FirstName,MiddleInitial,LayOrg,MembershipType,AgeLevel,Gender,Birthday,Status,Remarks,MISImported',
-      'M0001,Delacruz,Juan,P,UMM,Professing Member,Adult,Male,1985-03-14,Active,"Received 2018",yes',
-      'M0002,Delacruz,Ana,B,WSCS,Affiliate,Young Adult,Female,1998-11-02,Active,,no'
+      'MemberID,LastName,FirstName,MiddleName,LayOrg,MembershipType,AgeLevel,Gender,Birthday,Status,Remarks,MISImported',
+      'M0001,Delacruz,Juan,Perez,UMM,Professing Member,Adult,Male,1985-03-14,Active,"Received 2018",yes',
+      'M0002,Delacruz,Ana,Bautista,WSCS,Affiliate,Young Adult,Female,1998-11-02,Active,,no'
     ].join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));

@@ -25,9 +25,14 @@ on:
           - Money Counter
           - Membership Secretary
           - Finance Committee
-      password:
-        description: 'Optional explicit password (only used if the account does not already exist). Leave blank to auto-generate a temporary one.'
-        required: false
+      reset_password:
+        description: 'For an EXISTING account: give it a new temporary password? (New accounts always get one.) The password is never shown in this public log - it appears on the Treasurer''s GraceBooks dashboard.'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+          - 'no'
+          - 'yes'
 
 jobs:
   provision:
@@ -48,5 +53,5 @@ jobs:
           GB_USERNAME: ${{ inputs.username }}
           GB_NAME: ${{ inputs.name }}
           GB_ROLE: ${{ inputs.role }}
-          GB_PASSWORD: ${{ inputs.password }}
+          GB_RESET_PASSWORD: ${{ inputs.reset_password == 'yes' && 'true' || 'false' }}
         run: node scripts/provision-user.js

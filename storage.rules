@@ -2,78 +2,109 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function testingAccessOpen() {
-      return request.time < timestamp.date(2027, 1, 1);
+    function signedIn() {
+      return request.auth != null;
     }
 
-    function signedIn() {
-      return request.auth != null && testingAccessOpen();
+    // Roles come from the `role` custom claim on the sign-in token, which
+    // scripts/security-migration.js copies from userProfiles/{uid} on every
+    // deploy (and scripts/provision-user.js sets for new accounts). Storage
+    // rules do not read Firestore here - a firestore.get() in these rules
+    // previously broke non-Treasurer uploads.
+    function claimRole() {
+      return request.auth.token.get('role', '');
+    }
+
+    // A token minted before its role claim existed has none; until it
+    // refreshes (within an hour of the claim being set) it keeps the old
+    // signed-in-only behaviour instead of being locked out.
+    function legacyToken() {
+      return claimRole() == '';
+    }
+
+    function roleIn(roles) {
+      return signedIn() && (claimRole() in roles || legacyToken());
     }
 
     function isTreasurer() {
-      return signedIn() && request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3';
+      return signedIn() && (claimRole() == 'Treasurer'
+        || (legacyToken() && request.auth.uid == 'CrJfm5bwpEhH3DCaKXgMntD0LHI3'));
+    }
+
+    // Everyone who works with receipts, reports and vouchers - i.e. every
+    // role except the two that never see financial documents.
+    function financeReader() {
+      return roleIn(['Treasurer', 'Pastor', 'Deaconess', 'Admin Assistant', 'Auditor', 'District',
+        'Finance Chair', 'Chairperson', 'Finance Committee']);
+    }
+
+    function isSigner() {
+      return roleIn(['Treasurer', 'Pastor', 'Auditor', 'Finance Chair', 'Chairperson', 'District']);
+    }
+
+    function isStaff() {
+      return roleIn(['Pastor', 'Deaconess', 'Admin Assistant']);
     }
 
     function validReceiptFile() {
       return request.resource.size <= 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*|application/pdf');
+        && request.resource.contentType.matches('image/(png|jpe?g|gif|webp|heic|heif)|application/pdf');
     }
 
     function validSignatureFile() {
       return request.resource.size <= 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/(png|jpe?g|webp)');
     }
 
     match /expense-receipts/{expenseId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if financeReader();
       allow create, update: if isTreasurer() && validReceiptFile();
       allow delete: if isTreasurer();
     }
 
     match /project-proofs/{entryId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if financeReader();
       allow create, update: if isTreasurer() && validReceiptFile();
       allow delete: if isTreasurer();
     }
 
+    // Signature images can be used to forge a signature, so only the roles
+    // that display signed reports/vouchers/certificates can open them, and
+    // only a signer can save their own.
     match /signatures/{uid}/{fileName} {
-      allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid && validSignatureFile();
+      allow read: if financeReader();
+      allow create, update: if isSigner() && request.auth.uid == uid && validSignatureFile();
       allow delete: if signedIn() && request.auth.uid == uid;
     }
 
-    // Ownership is verified from the storage path itself (uid segment),
-    // not a firestore.get() lookup - the same firestore.get() pattern in
-    // this liquidation-receipts rule previously caused every non-Treasurer
-    // upload here to fail with storage/unauthorized.
+    // Ownership is verified from the storage path itself (uid segment).
+    // Staff (Pastor/Deaconess/Admin Assistant) upload receipts for their own
+    // cash advances and reimbursements; the Treasurer for anyone.
     match /liquidation-receipts/{requestId}/{uid}/{fileName} {
-      allow read: if signedIn();
-      allow create, update: if (isTreasurer() || (signedIn() && request.auth.uid == uid)) && validReceiptFile();
-      allow delete: if isTreasurer() || (signedIn() && request.auth.uid == uid);
+      allow read: if financeReader();
+      allow create, update: if (isTreasurer() || (isStaff() && request.auth.uid == uid)) && validReceiptFile();
+      allow delete: if isTreasurer() || (isStaff() && request.auth.uid == uid);
     }
 
     // Receipts saved before 2026-07-10 have no uid folder
     // (liquidation-receipts/{requestId}/{fileName}). Read only, so the app
     // can still open and check them; nothing is ever written here again.
     match /liquidation-receipts/{requestId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if financeReader();
     }
 
     // Receipt Recovery (receipt-recovery.html) lists these folders to find
     // receipt files no longer linked to any request or expense. List only,
-    // Treasurer only - reads of individual files are covered above and
-    // nothing here adds any write or delete.
+    // Treasurer only.
     match /liquidation-receipts/{allPaths=**} {
       allow list: if isTreasurer();
     }
 
-    // Saved report-version snapshots (report-archive.html). Path segments
-    // are unguessable Firestore auto-IDs, matching the same read: signedIn()
-    // convention already used above for receipts/signatures - the real
-    // access gate is the reportArchive Firestore collection's role-gated
-    // rules, which control who can even discover a document's storage path.
+    // Saved report-version snapshots (report-archive.html). The real access
+    // gate is the role-gated reportArchive collection, which controls who
+    // can discover a document's storage path.
     match /report-archive/{docId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if financeReader();
       allow create, update: if isTreasurer()
         && request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('text/html');
@@ -81,15 +112,12 @@ service firebase.storage {
     }
 
     // Photographed paper count sheets (tithe-entry.html / income-log.html).
-    // Ownership is verified from the storage path's own uid segment, not a
-    // firestore.get() lookup - the same pattern as liquidation-receipts
-    // above, and for the same reason: a firestore.get() here previously
-    // broke non-Treasurer uploads elsewhere. Money Counter and Treasurer
-    // both count Sundays, so both may create/update under their own uid;
-    // only the Treasurer deletes (e.g. replacing a bad photo later).
+    // Money Counter and Treasurer count Sundays, so both may upload under
+    // their own uid (and read back the link right after uploading); only the
+    // Treasurer deletes (e.g. replacing a bad photo later).
     match /count-sheets/{sheetId}/{uid}/{fileName} {
-      allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid && validReceiptFile();
+      allow read: if financeReader() || roleIn(['Money Counter']);
+      allow create, update: if roleIn(['Treasurer', 'Money Counter']) && request.auth.uid == uid && validReceiptFile();
       allow delete: if isTreasurer();
     }
 
@@ -98,7 +126,7 @@ service firebase.storage {
     // (a vendor, a driver), so their signature is captured on the Treasurer's
     // device and owned by the voucher itself, not by a uid.
     match /voucher-signatures/{voucherId}/{fileName} {
-      allow read: if signedIn();
+      allow read: if financeReader();
       allow create, update: if isTreasurer() && validSignatureFile();
       allow delete: if isTreasurer();
     }

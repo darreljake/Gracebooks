@@ -3,6 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<script>
+  // Installed app (home-screen PWA or the Android app): no pinch / double-tap
+  // zoom, so it behaves like a native app. A normal browser tab keeps zoom for
+  // accessibility. print-report.html deliberately omits this - its statement
+  // is auto-shrunk to the phone's width and must stay zoomable to be read.
+  (function () {
+    try {
+      var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+      var installed = mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') ||
+        mq('(display-mode: minimal-ui)') || navigator.standalone === true || !!window.Capacitor;
+      if (!installed) return;
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+      document.documentElement.classList.add('installed-app');
+      // iOS ignores user-scalable=no; block its pinch gesture directly.
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+    } catch (e) {}
+  })();
+</script>
+<style>
+  /* Kills double-tap-to-zoom (and the 300ms tap delay) in the installed app. */
+  html.installed-app, html.installed-app body { touch-action: pan-x pan-y; }
+  /* Keep iOS from auto-zooming into a focused field (it does below 16px). */
+  @supports (-webkit-touch-callout: none) {
+    html.installed-app input:not([type=checkbox]):not([type=radio]), html.installed-app select, html.installed-app textarea { font-size: max(16px, 1em); }
+  }
+</style>
   <link rel="manifest" href="manifest.json"/>
   <meta name="theme-color" content="#8B0000"/>
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
@@ -517,6 +544,66 @@
   function isSpecialOfferingRecord(d) { return (d.type || '') === 'Special Offering' || recordText(d).includes('special offering'); }
 
   // ── AUDIT LOG ───────────────────────────────────────────────────────────
+  // ── Public verification copy ─────────────────────────────────────────────
+  // verify-certificate.html (public, no sign-in) reads ONLY
+  // certificateVerifications/{id}: the few fields it shows. The full
+  // certificate (section totals, signatures, issuer) stays role-gated in
+  // `certificates`. Keep this in step whenever a certificate is issued,
+  // regenerated, voided, signed or deleted. scripts/security-migration.js
+  // builds the same shape for older certificates - keep the two in step.
+  function verificationCopy(cert) {
+    const sig = cert.signatures || {};
+    return {
+      certNo: cert.certNo || '',
+      memberName: cert.memberName || '',
+      periodLabel: cert.periodLabel || '',
+      grandTotal: Number(cert.grandTotal || 0),
+      issuedAt: cert.issuedAt || '',
+      status: cert.status || 'issued',
+      fullySigned: !!(sig.treasurer && sig.pastor),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  async function syncVerification(certId, cert) {
+    try {
+      if (!cert) { await db.collection('certificateVerifications').doc(certId).delete(); return; }
+      if (profile.role === 'Pastor') {
+        await db.collection('certificateVerifications').doc(certId)
+          .update({ fullySigned: verificationCopy(cert).fullySigned, updatedAt: new Date().toISOString() });
+      } else {
+        await db.collection('certificateVerifications').doc(certId).set(verificationCopy(cert));
+      }
+    } catch (err) {
+      console.warn('Could not update the public verification copy', err);
+    }
+  }
+
+  // Treasurer only: create/refresh any missing or stale verification copies
+  // (e.g. certificates issued before this collection existed).
+  async function backfillVerifications() {
+    if (profile.role !== 'Treasurer') return;
+    try {
+      const [certSnap, verSnap] = await Promise.all([
+        db.collection('certificates').get(),
+        db.collection('certificateVerifications').get()
+      ]);
+      const have = new Map(verSnap.docs.map(d => [d.id, d.data()]));
+      const keys = ['certNo', 'memberName', 'periodLabel', 'grandTotal', 'issuedAt', 'status', 'fullySigned'];
+      let batch = db.batch(), n = 0;
+      for (const d of certSnap.docs) {
+        const want = verificationCopy(d.data());
+        const cur = have.get(d.id);
+        if (cur && keys.every(k => cur[k] === want[k])) continue;
+        batch.set(db.collection('certificateVerifications').doc(d.id), want);
+        if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+      }
+      if (n % 400) await batch.commit();
+    } catch (err) {
+      console.warn('Verification backfill skipped', err);
+    }
+  }
+
   async function writeAuditLog(action, docId, beforeData, afterData, summary) {
     const user = firebase.auth().currentUser;
     await db.collection('auditLogs').add({
@@ -583,6 +670,7 @@
 
     if (isTreasurer) {
       await loadTreasurerCertList();
+      backfillVerifications();
     } else if (isPastor) {
       await loadPastorCertList();
     }
@@ -1009,10 +1097,12 @@
       if (existing) {
         await db.collection('certificates').doc(existing.id).set(docData, { merge: true });
         docId = existing.id;
+        await syncVerification(docId, { ...existing, ...docData });
         await writeAuditLog('certificate_regenerated', docId, existing, docData, `Regenerated ${certNo} for ${selectedMember.name} (${period.periodLabel})`);
       } else {
         const ref = await db.collection('certificates').add(docData);
         docId = ref.id;
+        await syncVerification(docId, docData);
         await writeAuditLog('certificate_issued', docId, null, docData, `Issued ${certNo} for ${selectedMember.name} (${period.periodLabel})`);
       }
 
@@ -1084,6 +1174,7 @@
     try {
       const update = { status: 'void', voidedAt: new Date().toISOString(), voidedBy: profile.name, voidReason: reason || '' };
       await db.collection('certificates').doc(certId).update(update);
+      await syncVerification(certId, { ...before, ...update });
       await writeAuditLog('certificate_voided', certId, before, { ...before, ...update }, `Voided ${before.certNo} for ${before.memberName}${reason ? ' — ' + reason : ''}`);
       await loadTreasurerCertList();
       if (currentCertDoc && currentCertDoc.id === certId) await viewCertificate(certId);
@@ -1104,6 +1195,7 @@
     try {
       await writeAuditLog('certificate_deleted', certId, before, null, `Deleted ${before.certNo} for ${before.memberName}`);
       await db.collection('certificates').doc(certId).delete();
+      await syncVerification(certId, null);
       await loadTreasurerCertList();
       if (currentCertDoc && currentCertDoc.id === certId) {
         currentCertDoc = null;
@@ -1196,6 +1288,7 @@
       const signature = await makeMySignature(sigMode || 'electronic');
       const signatures = { ...(before.signatures || {}), pastor: signature };
       await db.collection('certificates').doc(certId).update({ signatures, updatedAt: new Date().toISOString() });
+      await syncVerification(certId, { ...before, signatures });
       await writeAuditLog('certificate_pastor_signed', certId, before, { ...before, signatures }, `Pastor signed ${before.certNo}`);
       await loadPastorCertList();
       await viewCertificate(certId);
