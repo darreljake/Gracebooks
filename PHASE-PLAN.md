@@ -926,3 +926,14 @@ Status: Done (code side); deploys with the push to main (hosting + storage rules
 - **Owner requests:** Money Counter "Add New Tither" dialog (and menu link); staff reimbursements unchanged and verified (any amount, `Submitted`); guests' 1st/2nd/3rd... visit number on Weekly Attendance with first-time columns and a Guest Follow-up list; full middle name on the membership roll. Checked in a Playwright harness with a stubbed Firebase.
 - **Still pending:** SRI integrity hashes for the CDN scripts and the SheetJS 0.18.5 -> 0.20.3 upgrade (Historical Data import) - the session could not download the CDN files to hash/test them.
 - **Open owner actions (not code):** the repository is public, so Actions logs (5 provisioning runs with passwords, 6 income-week runs with giver names) and `scripts/data/membership-roll-seed.json` are public - make the repo private, reset those accounts' passwords, delete those runs, and purge the seed file from history.
+
+## Itemized staff reimbursements (2026-11-25)
+
+Status: Done (code side); deploys with the push to main (hosting only - no rules change).
+
+- Owner request: a staff **Reimbursement** is now itemized like a liquidation. Choosing "Reimbursement" on New Request hides the single Amount/Receipt fields; "Next: Itemize Expenses & Receipts" opens the same Itemized Expenses modal (date, description, amount, suggested category per item; receipts linked per item, with highlights; file upload or camera). The request amount is the items' total (integer centavos).
+- Stored as `liquidationItems` (+ `liquidationTotal`, `itemized: true`) on the reimbursement, receipts in `supportingReceipts` (first one also as `receiptUrl` etc.), so Details, Match Receipts, Receipt Recovery and the reports' `resolveExpenseReceipts()` work unchanged (per-item receipts via `liquidationItemIndex`).
+- Staff can **Edit Items** while `Submitted` (an older one-amount reimbursement shows **Itemize**: opens as one item linked to all its receipts).
+- Treasurer **Release** of an itemized reimbursement: a category select per item (staff suggestion pre-selected), then ONE expense per item (`liqrim-<reqId>-<i>`, deterministic so a retry never duplicates; dated on the item's own date; first linked receipt + highlights copied, `receiptSharedFromLiquidation`). Request gets `Completed`, `linkedExpenseIds`, `classifiedExpenseIds`, items with the final `category`.
+- `cash-voucher.html?liquidationId=` prefills one particulars line per item for an itemized reimbursement.
+- Verified with a stubbed Firestore/Storage in Playwright: staff submit 2 items with a receipt each -> request ₱400.30 with per-item receipts; Treasurer approve -> release blocked until every item has a category -> 2 expenses with their own category, amount, item index and receipt.
