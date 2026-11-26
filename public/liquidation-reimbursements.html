@@ -259,7 +259,7 @@
           <label>Date</label>
           <input type="date" id="req-date" />
         </div>
-        <div>
+        <div id="req-amount-wrap">
           <label>Amount</label>
           <input type="number" id="req-amount" min="0" step="0.01" placeholder="0.00" />
         </div>
@@ -271,11 +271,12 @@
           <label>Notes</label>
           <textarea id="req-notes" placeholder="Purpose, event, reference number, or other details"></textarea>
         </div>
-        <div class="span-2">
+        <div class="span-2" id="req-receipt-wrap">
           <label>Receipt / Proof <span id="receipt-hint" class="muted" style="text-transform:none;"></span></label>
           <input type="file" id="req-receipt" accept="image/*,.pdf" multiple />
           <div class="muted" id="receipt-note">Cash advances need no receipt now — you will attach them during liquidation.</div>
         </div>
+        <div class="span-2 muted" id="req-itemize-note" style="display:none;">Next you will list each expense you paid (date, description, amount, suggested category) and attach the receipt(s) for each one, just like a liquidation. The amount to reimburse is the total of the items.</div>
         <button class="btn" id="submit-btn" onclick="submitRequest()">Submit Request</button>
       </div>
     </div>
@@ -406,7 +407,7 @@
 
   <div class="modal-overlay" id="liquidationModal">
     <div class="modal-box wide">
-      <h3>Submit Liquidation</h3>
+      <h3 id="liq-modal-title">Submit Liquidation</h3>
       <div class="muted" id="liq-context"></div>
       <div class="section-label">Itemized Expenses</div>
       <div class="table-wrap">
@@ -427,8 +428,10 @@
       </div>
       <div class="muted">Attach the official receipts covering the items above (images or PDF, max 5 MB each). Attach as many as you need, or take photos directly with your camera.</div>
       <div id="liq-receipts-preview" style="margin-top:8px;"></div>
-      <div class="section-label">Notes</div>
-      <textarea id="liq-notes" placeholder="Explain any unspent balance or overspending, lost receipts, etc."></textarea>
+      <div id="liq-notes-wrap">
+        <div class="section-label">Notes</div>
+        <textarea id="liq-notes" placeholder="Explain any unspent balance or overspending, lost receipts, etc."></textarea>
+      </div>
       <div class="modal-actions">
         <button class="btn btn-secondary" onclick="closeLiquidationModal()">Cancel</button>
         <button class="btn" id="liq-submit-btn" onclick="submitLiquidation()">Submit Liquidation</button>
@@ -736,6 +739,7 @@
     function canEditItemHighlights(row) {
       if (!row) return false;
       if (roleIs('Treasurer')) return true;
+      if (isItemizedReimbursement(row)) return canSelfManageLiquidation() && row.status === 'Submitted';
       return canSelfManageLiquidation() && row.status === 'Liquidation Submitted';
     }
 
@@ -826,7 +830,7 @@
        which owns them from then on (expenses.html). */
 
     function canEditReimbursementHighlights(row) {
-      if (!row || isCashAdvance(row) || isAutoReimbursement(row)) return false;
+      if (!row || isCashAdvance(row) || isAutoReimbursement(row) || isItemizedReimbursement(row)) return false;
       if (roleIs('Treasurer')) return ['Submitted', 'Approved'].includes(row.status);
       return canSelfManageLiquidation() && row.status === 'Submitted';
     }
@@ -1063,6 +1067,14 @@
         ? 'Attach the receipts for the expenses you paid out of pocket. After submitting, open the request\'s Details to highlight the key lines on each receipt.'
         : 'Cash advances need no receipt now — you will attach them during liquidation.';
       document.getElementById('receipt-hint').textContent = type === 'Reimbursement' ? '(recommended)' : '(optional)';
+      // A reimbursement is itemized like a liquidation: its amount is the
+      // total of the items and each item carries its own receipts, so the
+      // single Amount/Receipt fields only apply to a cash advance.
+      const itemized = type === 'Reimbursement';
+      document.getElementById('req-amount-wrap').style.display = itemized ? 'none' : '';
+      document.getElementById('req-receipt-wrap').style.display = itemized ? 'none' : '';
+      document.getElementById('req-itemize-note').style.display = itemized ? '' : 'none';
+      document.getElementById('submit-btn').textContent = itemized ? 'Next: Itemize Expenses & Receipts' : 'Submit Request';
     }
 
     async function initPage() {
@@ -1127,6 +1139,10 @@
       const type = document.getElementById('req-type').value;
       const notes = document.getElementById('req-notes').value.trim();
       const receiptFiles = Array.from(document.getElementById('req-receipt').files || []);
+      if (type === 'Reimbursement') {
+        if (!title || !date) return alert('Please complete date and particulars.');
+        return openReimbursementItemsModal(null);
+      }
       if (!title || !date || amount <= 0) return alert('Please complete date, particulars, and amount.');
       for (const file of receiptFiles) {
         if (!validateReceiptFile(file)) return;
@@ -1176,7 +1192,7 @@
         alert(error.message);
       }
       button.disabled = false;
-      button.textContent = 'Submit Request';
+      onRequestTypeChange();
     }
 
     async function assignAdvance() {
@@ -1426,7 +1442,8 @@
       // category and get classified per item when the requester liquidates.
       const autoSplit = isAutoReimbursement(row) && hasReimbursementItems(row);
       const autoLegacy = isLegacyAutoReimbursement(row);
-      const showCategory = row.type === 'Reimbursement' && !autoSplit && !autoLegacy;
+      const itemizedReimb = isItemizedReimbursement(row);
+      const showCategory = row.type === 'Reimbursement' && !autoSplit && !autoLegacy && !itemizedReimb;
       document.getElementById('release-category-wrap').style.display = showCategory ? '' : 'none';
       if (showCategory) {
         document.getElementById('release-category').innerHTML = categoryDropdownHTML(row.presetCategory || '');
@@ -1436,7 +1453,27 @@
       const itemsWrap = document.getElementById('release-items-wrap');
       const genericNote = document.getElementById('release-generic-note');
       genericNote.style.display = autoLegacy ? 'none' : '';
-      if (autoSplit) {
+      if (itemizedReimb) {
+        const pool = receiptPoolFromRow(row);
+        itemsWrap.style.display = '';
+        itemsWrap.innerHTML = `
+          <label>Itemized Expenses — classify each item</label>
+          <div class="table-wrap">
+          <table class="inner-table">
+            <thead><tr><th>Item</th><th>Receipts</th><th>Expense Category</th><th style="text-align:right;">Amount</th></tr></thead>
+            <tbody>${row.liquidationItems.map((it, index) => {
+              const linked = pool.filter(p => (it.receiptIds || []).includes(p.receiptId));
+              return `<tr>
+                <td>${escapeHtml(it.description || '')}${it.date ? `<div class="muted">${escapeHtml(it.date)}</div>` : ''}</td>
+                <td>${linked.length ? linked.map(p => `<div style="font-size:11px;"><a class="receipt-link" href="${escapeHtml(p.url || '#')}" target="_blank" rel="noopener">📎 ${escapeHtml(p.name)}</a></div>`).join('') : '<span class="muted">none</span>'}</td>
+                <td><select id="release-item-cat-${index}">${categoryDropdownHTML(it.category || it.suggestedCategory || '')}</select></td>
+                <td class="amount">₱${fmt(it.amount)}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>
+          </div>
+          <div class="muted">One linked expense is recorded per item, each under its own category and dated on the item's own date. The staff-suggested category is pre-selected; you have the final say.</div>`;
+      } else if (autoSplit) {
         itemsWrap.style.display = '';
         itemsWrap.innerHTML = `
           <label>Reimbursement Breakdown</label>
@@ -1570,11 +1607,99 @@
       button.textContent = 'Confirm Release';
     }
 
+    // Releases a staff reimbursement that was itemized at submission: one
+    // expense per item (its own category, dated on the item's own date, its
+    // first linked receipt + highlights copied over like a reconcile does),
+    // with deterministic ids so a retry never duplicates.
+    async function releaseItemizedReimbursement(row) {
+      if (row.status !== 'Approved') return alert('This reimbursement is no longer awaiting release.');
+      const items = row.liquidationItems.map((item, index) => ({
+        ...item,
+        category: (document.getElementById(`release-item-cat-${index}`) || {}).value || ''
+      }));
+      if (items.some(item => !item.category)) return alert('Please select an expense category for every item before releasing.');
+      const partsC = items.map(item => toCents(item.amount));
+      if (partsC.some(c => c <= 0) || partsC.reduce((a, b) => a + b, 0) !== toCents(row.amount)) {
+        return alert('The items do not add up to the reimbursement amount. Please review this request before releasing.');
+      }
+      const button = document.getElementById('release-confirm-btn');
+      button.disabled = true;
+      button.textContent = 'Releasing...';
+      try {
+        const fund = document.getElementById('release-fund').value;
+        const now = new Date().toISOString();
+        const payee = row.requesterName || row.requesterRole || '';
+        const receiptPool = (row.liquidationReceipts || []).concat(row.supportingReceipts || []);
+        const expenseIds = [];
+        for (const [index, item] of items.entries()) {
+          const itemDate = /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '').slice(0, 10)) ? String(item.date).slice(0, 10) : now.slice(0, 10);
+          const payload = {
+            date: itemDate,
+            category: item.category,
+            budgetCategory: item.category,
+            sub: item.description || '',
+            payee,
+            amount: partsC[index] / 100,
+            payment: fund,
+            targetAccId: fund,
+            status: 'Paid',
+            notes: `Reimbursement: ${row.title || ''}${row.notes ? ' - ' + row.notes : ''}`,
+            linkedLiquidationRequestId: row.id,
+            liquidationItemIndex: index,
+            budgetYear: itemDate.slice(0, 4),
+            expenseMonth: itemDate.slice(0, 7),
+            postedAt: now,
+            createdAt: now,
+            updatedAt: now
+          };
+          const firstReceiptId = (item.receiptIds || [])[0];
+          const firstReceipt = firstReceiptId ? receiptPool.find(r => (r.receiptId || r.receiptPath) === firstReceiptId) : null;
+          if (firstReceipt) {
+            payload.receiptName = firstReceipt.receiptName || '';
+            payload.receiptPath = firstReceipt.receiptPath || '';
+            payload.receiptUrl = firstReceipt.receiptUrl || '';
+            payload.receiptSharedFromLiquidation = true;
+            payload.receiptAnnotations = (item.annotations || [])
+              .filter(a => a.receiptId === firstReceiptId)
+              .map(({ receiptId, ...rest }) => rest);
+            payload.receiptAnnotationsLocked = !!item.annotationsLocked;
+          }
+          const expenseRef = db.collection('expenses').doc(`liqrim-${row.id}-${index}`);
+          await expenseRef.set(payload);
+          expenseIds.push(expenseRef.id);
+          await writeAuditLog('expense_created_from_liquidation_item', 'expenses', expenseRef.id, null, payload,
+            `Recorded reimbursement item "${item.description || ''}" (₱${fmt(payload.amount)}) under ${item.category}`);
+        }
+        const after = {
+          status: 'Completed',
+          liquidationItems: items,
+          linkedExpenseIds: expenseIds,
+          linkedExpenseId: expenseIds[0] || null,
+          classifiedExpenseIds: expenseIds,
+          releasedFund: fund,
+          releasedBy: activeProfile.name || 'Treasurer',
+          releasedAt: now,
+          updatedAt: now
+        };
+        await db.collection('liquidationRequests').doc(row.id).set(after, { merge: true });
+        await writeAuditLog('liquidation_request_released', 'liquidationRequests', row.id, row, { ...row, ...after },
+          `Released itemized reimbursement ₱${fmt(row.amount)} for ${row.title || row.id}: ${expenseIds.length} expense(s), one per item`);
+        await notifyRole(row.requesterRole, `Your reimbursement "${row.title || ''}" (₱${fmt(row.amount)}) was released and completed.`);
+        closeReleaseModal();
+        await loadRequests();
+      } catch (error) {
+        alert(error.message + '\n\nIf some expenses were already recorded, click Confirm Release again - they will not be duplicated.');
+      }
+      button.disabled = false;
+      button.textContent = 'Confirm Release';
+    }
+
     async function confirmRelease() {
       if (!releaseTargetId) return;
       const row = requestRows.find(item => item.id === releaseTargetId);
       if (!row) return closeReleaseModal();
       if (isAutoReimbursement(row)) return releaseAutoReimbursement(row);
+      if (isItemizedReimbursement(row)) return releaseItemizedReimbursement(row);
       const advance = isCashAdvance(row);
       let category = PLACEHOLDER_ADVANCE_CATEGORY;
       if (!advance) {
@@ -1655,12 +1780,219 @@
       button.textContent = 'Confirm Release';
     }
 
+    /* ---------- Itemized reimbursements ----------
+       A staff reimbursement is itemized exactly like a liquidation, in the
+       same modal (liqMode 'reimbursement'): each item has its own date,
+       description, amount, suggested category and linked receipts (with
+       highlights). Items are stored as liquidationItems on the reimbursement
+       request - the same shape a liquidation uses - so Details, Match
+       Receipts, Receipt Recovery and the reports' resolveExpenseReceipts()
+       (liquidationItemIndex -> item.receiptIds) all work unchanged. The
+       request amount is the items' total; receipts go to supportingReceipts.
+       On release the Treasurer classifies each item and one expense is
+       recorded per item (releaseItemizedReimbursement()). */
+
+    let liqMode = 'liquidation';
+    // { id: existing request id or null, title, date, notes } while the
+    // modal is itemizing a reimbursement.
+    let reimbDraft = null;
+
+    function isItemizedReimbursement(row) {
+      return !!row && row.type === 'Reimbursement' && !row.sourceLiquidationRequestId
+        && (row.liquidationItems || []).length > 0;
+    }
+
+    // Staff may (re)itemize their reimbursement while it awaits review
+    // (Submitted -> Submitted, as firestore.rules allows); the Treasurer may
+    // also itemize one already Approved but not yet released, so a request
+    // filed before itemizing existed can still be split per item.
+    function canItemizeReimbursement(row) {
+      if (!row || row.type !== 'Reimbursement' || isAutoReimbursement(row)) return false;
+      if (roleIs('Treasurer')) return ['Submitted', 'Approved'].includes(row.status);
+      return canSelfManageLiquidation() && row.status === 'Submitted';
+    }
+
+    function setLiqModalMode(mode) {
+      liqMode = mode;
+      const reimb = mode === 'reimbursement';
+      document.getElementById('liq-modal-title').textContent = reimb ? 'Reimbursement — Itemized Expenses' : 'Submit Liquidation';
+      document.getElementById('liq-notes-wrap').style.display = reimb ? 'none' : '';
+      document.getElementById('liq-submit-btn').textContent = reimb ? ((reimbDraft && reimbDraft.id) ? 'Save Items' : 'Submit Reimbursement') : 'Submit Liquidation';
+    }
+
+    // id = null: a new reimbursement from the New Request card (particulars,
+    // date and notes come from that card). id = an existing reimbursement
+    // still awaiting review: edit its items/receipts (an older one-amount
+    // reimbursement opens as a single item linked to all its receipts).
+    function openReimbursementItemsModal(id) {
+      let row = null;
+      if (id) {
+        row = requestRows.find(item => item.id === id);
+        if (!canItemizeReimbursement(row)) return;
+        reimbDraft = { id, title: row.title || '', date: row.date || '', notes: row.notes || '' };
+      } else {
+        reimbDraft = {
+          id: null,
+          title: document.getElementById('req-title').value.trim(),
+          date: document.getElementById('req-date').value,
+          notes: document.getElementById('req-notes').value.trim()
+        };
+      }
+      liquidationTargetId = id || null;
+      setLiqModalMode('reimbursement');
+      resetLiqStagingState();
+      document.getElementById('liq-context').innerHTML =
+        `Reimbursement <strong>"${escapeHtml(reimbDraft.title)}"</strong>${reimbDraft.date ? ` — ${escapeHtml(reimbDraft.date)}` : ''}. List each expense you paid and link the receipt(s) that cover it. The amount to reimburse is the total of the items.`;
+      document.getElementById('liq-items').innerHTML = '';
+      document.getElementById('liq-receipts').value = '';
+      document.getElementById('liq-notes').value = '';
+      if (row && (row.liquidationItems || []).length) {
+        row.liquidationItems.forEach(item => addLiqItem(item));
+      } else if (row) {
+        addLiqItem({
+          date: row.date,
+          description: row.title,
+          amount: row.amount,
+          suggestedCategory: row.presetCategory || '',
+          receiptIds: receiptPoolFromRow(row).map(p => p.receiptId)
+        });
+      } else {
+        addLiqItem({ date: reimbDraft.date });
+      }
+      renderLiqReceiptsPreview();
+      updateLiqBalance();
+      document.getElementById('liquidationModal').classList.add('open');
+    }
+
+    async function submitReimbursementItems() {
+      if (!reimbDraft) return;
+      const existing = reimbDraft.id ? requestRows.find(item => item.id === reimbDraft.id) : null;
+      if (reimbDraft.id ? !canItemizeReimbursement(existing) : !canSelfManageLiquidation()) {
+        return alert('This reimbursement can no longer be edited (it has already been released or is no longer awaiting review).');
+      }
+      const items = readLiqItems();
+      if (!items.length) return alert('Add at least one item.');
+      if (items.some(item => !item.description || item.amount <= 0)) {
+        return alert('Every item needs a description and an amount greater than zero.');
+      }
+      const staged = stagedReceipts.slice();
+      for (const stagedReceipt of staged) {
+        if (!validateReceiptFile(stagedReceipt.file)) return;
+      }
+      if (!getReceiptPoolEntries().length
+        && !confirm('No receipt attached. Reimbursements are normally supported by receipts of what you paid. Submit anyway?')) return;
+      const unlinked = items.filter(item => !item.receiptIds.length).length;
+      if (unlinked && getReceiptPoolEntries().length
+        && !confirm(`${unlinked} item(s) are not linked to a receipt. Submit anyway?`)) return;
+
+      const button = document.getElementById('liq-submit-btn');
+      button.disabled = true;
+      button.textContent = 'Submitting...';
+      const ref = existing
+        ? db.collection('liquidationRequests').doc(existing.id)
+        : db.collection('liquidationRequests').doc();
+      const uploads = [];
+      let saved = false;
+      try {
+        const tempIdToReceiptId = {};
+        for (const stagedReceipt of staged) {
+          const uploaded = await uploadReceiptForRequest(ref.id, stagedReceipt.file);
+          tempIdToReceiptId[stagedReceipt.tempId] = uploaded.receiptId;
+          uploads.push(uploaded);
+        }
+        const remappedItems = items.map(item => {
+          const receiptIds = item.receiptIds
+            .map(id => (id.indexOf('tmp-') === 0 ? tempIdToReceiptId[id] : id))
+            .filter(Boolean);
+          const annotations = item.annotations
+            .filter(a => a.receiptId.indexOf('tmp-') !== 0 || tempIdToReceiptId[a.receiptId])
+            .map(a => (a.receiptId.indexOf('tmp-') === 0 ? { ...a, receiptId: tempIdToReceiptId[a.receiptId] } : a));
+          return { ...item, receiptIds, annotations };
+        });
+        // Integer centavos, so the request amount equals the items exactly.
+        const totalC = remappedItems.reduce((sum, item) => sum + toCents(item.amount), 0);
+        const total = totalC / 100;
+        const now = new Date().toISOString();
+        const supportingReceipts = ((existing && existing.supportingReceipts) || []).concat(uploads);
+        const first = supportingReceipts[0] || null;
+        const firstFields = first && !(existing && existing.receiptUrl) ? {
+          receiptId: first.receiptId || '',
+          receiptName: first.receiptName || '',
+          receiptPath: first.receiptPath || '',
+          receiptUrl: first.receiptUrl || '',
+          receiptUploadedAt: first.receiptUploadedAt || now
+        } : {};
+
+        if (existing) {
+          const after = {
+            amount: total,
+            itemized: true,
+            liquidationItems: remappedItems,
+            liquidationTotal: total,
+            supportingReceipts,
+            ...firstFields,
+            updatedAt: now
+          };
+          await ref.set(after, { merge: true });
+          saved = true;
+          await writeAuditLog('reimbursement_items_updated', 'liquidationRequests', ref.id,
+            { amount: existing.amount, liquidationItems: existing.liquidationItems || null },
+            { amount: total, liquidationItems: remappedItems, addedReceipts: uploads.length },
+            `Updated ${remappedItems.length} item(s) on reimbursement "${existing.title || ref.id}": total ₱${fmt(total)}`);
+        } else {
+          const user = firebase.auth().currentUser;
+          const payload = {
+            type: 'Reimbursement',
+            title: reimbDraft.title,
+            date: reimbDraft.date,
+            amount: total,
+            notes: reimbDraft.notes,
+            status: 'Submitted',
+            itemized: true,
+            liquidationItems: remappedItems,
+            liquidationTotal: total,
+            supportingReceipts,
+            ...firstFields,
+            requesterUid: user.uid,
+            requesterEmail: user.email,
+            requesterName: activeProfile.name || activeProfile.role,
+            requesterRole: activeProfile.role,
+            createdAt: now,
+            updatedAt: now
+          };
+          await ref.set(payload);
+          saved = true;
+          await writeAuditLog('liquidation_request_created', 'liquidationRequests', ref.id, null, payload,
+            `Submitted Reimbursement: ${reimbDraft.title} (${remappedItems.length} item(s), ₱${fmt(total)})`);
+          await notifyRole('Treasurer', `${payload.requesterName} submitted a reimbursement request: ${reimbDraft.title} (₱${fmt(total)}, ${remappedItems.length} item(s))`);
+          document.getElementById('req-title').value = '';
+          document.getElementById('req-amount').value = '';
+          document.getElementById('req-notes').value = '';
+          document.getElementById('req-receipt').value = '';
+        }
+        closeLiquidationModal();
+        await loadRequests();
+      } catch (error) {
+        // A brand-new request that never got written leaves its just-uploaded
+        // files orphaned - remove them (best effort; only our own uploads).
+        if (!existing && !saved) {
+          for (const up of uploads) {
+            try { await storage.ref(up.receiptPath).delete(); } catch (e) { console.warn('Orphan receipt not removed', e); }
+          }
+        }
+        alert(error.message);
+      }
+      button.disabled = false;
+      if (reimbDraft) setLiqModalMode('reimbursement');
+    }
+
     /* ---------- Staff liquidation flow ---------- */
 
     function openLiquidationModal(id) {
       const row = requestRows.find(item => item.id === id);
       if (!row || !canSelfManageLiquidation() || row.status !== 'Released' || !isCashAdvance(row)) return;
       liquidationTargetId = id;
+      setLiqModalMode('liquidation');
       resetLiqStagingState();
       const returnNotice = row.liquidationReturnedNotes
         ? `<div class="liq-balance" style="border-left-color:#a93226; margin-top:10px;"><strong>Returned for correction${row.liquidationReturnedBy ? ' by ' + escapeHtml(row.liquidationReturnedBy) : ''}:</strong> ${escapeHtml(row.liquidationReturnedNotes)}</div>`
@@ -1685,6 +2017,7 @@
 
     function closeLiquidationModal() {
       liquidationTargetId = null;
+      reimbDraft = null;
       resetLiqStagingState();
       document.getElementById('liquidationModal').classList.remove('open');
     }
@@ -1941,7 +2274,7 @@
         title: entry.name,
         imageUrl: entry.url,
         fileName: entry.name,
-        subtitle: itemDesc || 'Liquidation item',
+        subtitle: itemDesc || (liqMode === 'reimbursement' ? 'Reimbursement item' : 'Liquidation item'),
         annotations: link.annotations.filter(a => a.receiptId === receiptId),
         editable: true,
         locked: !!link.annotationsLocked,
@@ -2022,6 +2355,13 @@
     }
 
     function updateLiqBalance() {
+      if (liqMode === 'reimbursement') {
+        const items = readLiqItems();
+        const totalC = items.reduce((sum, item) => sum + toCents(item.amount), 0);
+        document.getElementById('liq-balance').innerHTML =
+          `Total to reimburse: <strong>₱${fmt(totalC / 100)}</strong> · ${items.length} item(s)`;
+        return;
+      }
       const row = requestRows.find(item => item.id === liquidationTargetId);
       if (!row) return;
       const total = readLiqItems().reduce((sum, item) => sum + item.amount, 0);
@@ -2036,6 +2376,7 @@
     }
 
     async function submitLiquidation() {
+      if (liqMode === 'reimbursement') return submitReimbursementItems();
       const row = requestRows.find(item => item.id === liquidationTargetId);
       if (!row) return;
       const items = readLiqItems();
@@ -2658,7 +2999,8 @@
       // Reimbursement receipts can be highlighted from here (see
       // canEditReimbursementHighlights()); a cash advance's highlights live
       // on its liquidation items in the table below instead.
-      const reimbHighlights = !isCashAdvance(row) && !isAutoReimbursement(row);
+      const itemizedReimb = isItemizedReimbursement(row);
+      const reimbHighlights = !isCashAdvance(row) && !isAutoReimbursement(row) && !itemizedReimb;
       const canEditReimb = canEditReimbursementHighlights(row);
       const reimbAnnotations = row.supportingReceiptAnnotations || [];
       const receiptsHtml = receipts.length
@@ -2675,15 +3017,17 @@
           }).join('')
         : '<div class="muted">No receipts attached.</div>';
 
-      const isClassified = row.status === 'Reconciled' && (row.classifiedExpenseIds || []).length;
+      const isClassified = (row.status === 'Reconciled' || (itemizedReimb && row.status === 'Completed')) && (row.classifiedExpenseIds || []).length;
       const hasSuggestions = !isClassified && (row.liquidationItems || []).some(item => item.suggestedCategory);
       const categoryColLabel = isClassified ? 'Expense Category' : 'Staff-Suggested Category';
       const itemReceiptPool = receiptPoolFromRow(row);
       const hasReceiptLinks = (row.liquidationItems || []).some(item => (item.receiptIds || []).length);
       const extraCols = (isClassified || hasSuggestions ? 1 : 0) + (hasReceiptLinks ? 1 : 0);
-      const canEditItems = isCashAdvance(row) && canSelfManageLiquidation() && canEditItemHighlights(row);
+      const canEditItems = canEditItemHighlights(row) && (
+        (isCashAdvance(row) && canSelfManageLiquidation())
+        || (itemizedReimb && (canSelfManageLiquidation() || ['Submitted', 'Approved'].includes(row.status))));
       const itemsHtml = (row.liquidationItems || []).length ? `
-        <div class="section-label">Liquidation Items</div>
+        <div class="section-label">${itemizedReimb ? 'Reimbursement Items' : 'Liquidation Items'}</div>
         <div class="table-wrap">
           <table class="inner-table">
             <thead><tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th>${(isClassified || hasSuggestions) ? `<th>${categoryColLabel}</th>` : ''}${hasReceiptLinks ? '<th>Receipts</th>' : ''}</tr></thead>
@@ -2710,7 +3054,7 @@
                   ${receiptsCell}
                 </tr>`;
               }).join('')}
-              <tr><td colspan="${2 + extraCols}"><strong>Total Liquidated</strong></td><td class="amount">₱${fmt(row.liquidationTotal)}</td></tr>
+              <tr><td colspan="2"><strong>${itemizedReimb ? 'Total to Reimburse' : 'Total Liquidated'}</strong></td><td class="amount">₱${fmt(itemizedReimb ? row.amount : row.liquidationTotal)}</td>${extraCols ? `<td colspan="${extraCols}"></td>` : ''}</tr>
             </tbody>
           </table>
         </div>` : '';
@@ -2817,6 +3161,9 @@
           actions.push(`<button class="btn btn-secondary btn-small" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>`);
           actions.push(`<button class="btn btn-small" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`);
         }
+        if (canItemizeReimbursement(row)) {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : 'Itemize'}</button>`);
+        }
         if (row.status === 'Approved') {
           actions.push(`<button class="btn btn-small" onclick="openReleaseModal('${row.id}')">Release Payment</button>`);
         }
@@ -2835,6 +3182,9 @@
         }
         actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
       } else if (canSelfManageLiquidation()) {
+        if (canItemizeReimbursement(row)) {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : 'Itemize'}</button>`);
+        }
         if (row.status === 'Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="cancelRequest('${row.id}')">Cancel</button>`);
         }
@@ -2902,7 +3252,9 @@
                 : 'Balanced'}</div>`
           : isCashAdvance(row) && row.status === 'Released'
             ? '<span class="muted">For liquidation</span>'
-            : '<span class="muted">-</span>';
+            : isItemizedReimbursement(row)
+              ? `<span class="muted">${row.liquidationItems.length} item(s)</span>`
+              : '<span class="muted">-</span>';
         return `
           <tr>
             <td>${escapeHtml(row.date || '')}</td>

@@ -1491,7 +1491,13 @@
           document.getElementById('voucher-account').value = account;
           document.getElementById('voucher-date').value = (row.releasedAt || '').slice(0, 10) || todayStr();
           document.getElementById('voucher-fund').value = row.releasedFund || '';
-          setParticularsRows([{ description: row.title || '', amount: Number(row.amount || 0) }]);
+          // An itemized staff reimbursement lists each item as its own
+          // particulars line (they add up to the request amount).
+          const reimbItems = (row.type === 'Reimbursement' && !row.sourceLiquidationRequestId && Array.isArray(row.liquidationItems))
+            ? row.liquidationItems : [];
+          setParticularsRows(reimbItems.length
+            ? reimbItems.map(it => ({ description: it.description || '', amount: Number(it.amount || 0) }))
+            : [{ description: row.title || '', amount: Number(row.amount || 0) }]);
           document.getElementById('voucher-purpose').value = row.notes || '';
           const receiverName = row.requesterName || row.requesterRole || '';
           document.getElementById('received-by-name').value = receiverName;
