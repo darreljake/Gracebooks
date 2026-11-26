@@ -81,6 +81,9 @@
       width:200px; height:200px;
       background:rgba(255,255,255,0.04); border-radius:50%;
     }
+    /* Decorative circles only: never let them swallow taps. On phones the
+       hero row wraps and the ::after circle sits right over "Record Payment". */
+    .hero-card::before, .hero-card::after { pointer-events:none; }
     .hero-label { font-size:13px; opacity:0.85; margin-bottom:6px; }
     .hero-amount { font-size:36px; font-weight:700; letter-spacing:-1px; margin-bottom:16px; }
     .hero-row { display:flex; gap:20px; }
