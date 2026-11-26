@@ -1802,12 +1802,22 @@
         && (row.liquidationItems || []).length > 0;
     }
 
+    // Staff may (re)itemize their reimbursement while it awaits review
+    // (Submitted -> Submitted, as firestore.rules allows); the Treasurer may
+    // also itemize one already Approved but not yet released, so a request
+    // filed before itemizing existed can still be split per item.
+    function canItemizeReimbursement(row) {
+      if (!row || row.type !== 'Reimbursement' || isAutoReimbursement(row)) return false;
+      if (roleIs('Treasurer')) return ['Submitted', 'Approved'].includes(row.status);
+      return canSelfManageLiquidation() && row.status === 'Submitted';
+    }
+
     function setLiqModalMode(mode) {
       liqMode = mode;
       const reimb = mode === 'reimbursement';
       document.getElementById('liq-modal-title').textContent = reimb ? 'Reimbursement — Itemized Expenses' : 'Submit Liquidation';
       document.getElementById('liq-notes-wrap').style.display = reimb ? 'none' : '';
-      document.getElementById('liq-submit-btn').textContent = reimb ? 'Submit Reimbursement' : 'Submit Liquidation';
+      document.getElementById('liq-submit-btn').textContent = reimb ? ((reimbDraft && reimbDraft.id) ? 'Save Items' : 'Submit Reimbursement') : 'Submit Liquidation';
     }
 
     // id = null: a new reimbursement from the New Request card (particulars,
@@ -1818,8 +1828,7 @@
       let row = null;
       if (id) {
         row = requestRows.find(item => item.id === id);
-        if (!row || row.type !== 'Reimbursement' || isAutoReimbursement(row) || row.status !== 'Submitted') return;
-        if (!canSelfManageLiquidation()) return;
+        if (!canItemizeReimbursement(row)) return;
         reimbDraft = { id, title: row.title || '', date: row.date || '', notes: row.notes || '' };
       } else {
         reimbDraft = {
@@ -1856,10 +1865,10 @@
     }
 
     async function submitReimbursementItems() {
-      if (!reimbDraft || !canSelfManageLiquidation()) return;
+      if (!reimbDraft) return;
       const existing = reimbDraft.id ? requestRows.find(item => item.id === reimbDraft.id) : null;
-      if (reimbDraft.id && (!existing || existing.status !== 'Submitted')) {
-        return alert('This reimbursement can no longer be edited (it is no longer awaiting review).');
+      if (reimbDraft.id ? !canItemizeReimbursement(existing) : !canSelfManageLiquidation()) {
+        return alert('This reimbursement can no longer be edited (it has already been released or is no longer awaiting review).');
       }
       const items = readLiqItems();
       if (!items.length) return alert('Add at least one item.');
@@ -1974,7 +1983,7 @@
         alert(error.message);
       }
       button.disabled = false;
-      button.textContent = 'Submit Reimbursement';
+      if (reimbDraft) setLiqModalMode('reimbursement');
     }
 
     /* ---------- Staff liquidation flow ---------- */
@@ -3152,6 +3161,9 @@
           actions.push(`<button class="btn btn-secondary btn-small" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>`);
           actions.push(`<button class="btn btn-small" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`);
         }
+        if (canItemizeReimbursement(row)) {
+          actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : 'Itemize'}</button>`);
+        }
         if (row.status === 'Approved') {
           actions.push(`<button class="btn btn-small" onclick="openReleaseModal('${row.id}')">Release Payment</button>`);
         }
@@ -3170,7 +3182,7 @@
         }
         actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
       } else if (canSelfManageLiquidation()) {
-        if (row.status === 'Submitted' && row.type === 'Reimbursement' && !isAutoReimbursement(row)) {
+        if (canItemizeReimbursement(row)) {
           actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : 'Itemize'}</button>`);
         }
         if (row.status === 'Submitted') {
