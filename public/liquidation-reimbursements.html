@@ -139,23 +139,7 @@
       color: #8B0000; margin: 14px 0 4px; border-bottom: 1px solid #edf2f5; padding-bottom: 4px;
     }
     @media (max-width: 700px) { .span-2 { grid-column: span 1; } .detail-grid { grid-template-columns: 1fr; } }
-    /* Long notes (a whole shopping list) are clamped in the requests table;
-       the full text is in Details and in the itemize modal. */
-    #requests-table .req-notes { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 380px; }
-    /* Phones: each request is a card instead of an 8-column table that
-       scrolls sideways. */
     @media screen and (max-width: 700px) {
-      #requests-table { min-width: 0; }
-      #requests-table thead { display: none; }
-      #requests-table, #requests-table tbody, #requests-table tr, #requests-table td { display: block; width: 100%; }
-      #requests-table tr { border: 1px solid #e3e9ee; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fff; }
-      #requests-table td { border: none; padding: 4px 0; text-align: left; white-space: normal !important; }
-      #requests-table td[data-label]:not([data-label=""])::before { content: attr(data-label); display: block; font-size: 11px; font-weight: bold; color: #7d8b94; text-transform: uppercase; letter-spacing: .03em; }
-      #requests-table td.amount { text-align: left; }
-      #requests-table .req-notes { max-width: none; }
-      #requests-table .actions-cell { flex-direction: row; flex-wrap: wrap; }
-      #requests-table td.req-actions { padding-top: 8px; border-top: 1px solid #edf2f5; margin-top: 4px; }
-      #requests-table td.empty { text-align: center; }
       /* Itemized Expenses editor (liquidation + reimbursement): one card per item. */
       #liq-items-table { min-width: 0; }
       #liq-items-table thead { display: none; }
@@ -1849,6 +1833,60 @@
       return canSelfManageLiquidation() && row.status === 'Submitted';
     }
 
+    /* ---------- Convert to Reimbursement & return to staff (Treasurer) ----------
+       A cash advance still awaiting review that really covers purchases
+       already paid: the Treasurer changes it to a Reimbursement and sends it
+       back so the staff member itemizes it and attaches receipts per item
+       themselves. Status stays 'Submitted' (the only state staff may edit,
+       per firestore.rules); returnedForItemizing flags it until the staff
+       member saves items, which clears it. */
+
+    function canReturnForItemizing(row) {
+      return roleIs('Treasurer') && !!row && row.status === 'Submitted' && !row.releasedAt
+        && (isCashAdvance(row) || (row.type === 'Reimbursement' && !isAutoReimbursement(row) && !isItemizedReimbursement(row)))
+        && !row.returnedForItemizing;
+    }
+
+    function returnedForItemizingHtml(row) {
+      if (!row.returnedForItemizing) return '';
+      return `<div style="margin-top:6px; padding:6px 8px; border-left:4px solid #b9770e; background:#fef5e7; color:#7e5109; font-size:12px; border-radius:4px;">
+        <strong>Ibinalik para i-itemize${row.returnedForItemizingBy ? ' ni ' + escapeHtml(row.returnedForItemizingBy) : ''}:</strong> ${escapeHtml(row.returnedForItemizingNotes || 'Pakilista ang bawat item at i-link ang resibo nito.')}
+      </div>`;
+    }
+
+    async function returnForItemizing(id) {
+      const row = requestRows.find(item => item.id === id);
+      if (!canReturnForItemizing(row)) return;
+      const defaultNote = 'Pakilista ang bawat item (petsa, description, halaga) at i-link ang resibo ng bawat isa.';
+      const note = prompt(
+        `${isCashAdvance(row) ? `Gagawing Reimbursement ang "${row.title || ''}" (dating Cash Advance, ₱${fmt(row.amount)}) at ibabalik` : `Ibabalik ang "${row.title || ''}"`} kay ${row.requesterName || row.requesterRole || 'staff'} para siya ang mag-itemize.\n\nMensahe sa staff:`,
+        defaultNote);
+      if (note === null) return;
+      const now = new Date().toISOString();
+      const after = {
+        type: 'Reimbursement',
+        returnedForItemizing: true,
+        returnedForItemizingNotes: note.trim() || defaultNote,
+        returnedForItemizingBy: activeProfile.name || 'Treasurer',
+        returnedForItemizingAt: now,
+        updatedAt: now
+      };
+      if (isCashAdvance(row)) {
+        after.convertedFromCashAdvance = true;
+        after.originalRequestedAmount = Number(row.amount || 0);
+      }
+      try {
+        await db.collection('liquidationRequests').doc(id).set(after, { merge: true });
+        await writeAuditLog('reimbursement_returned_for_itemizing', 'liquidationRequests', id,
+          { type: row.type, status: row.status }, { ...after },
+          `${isCashAdvance(row) ? 'Converted cash advance to reimbursement and returned' : 'Returned reimbursement'} "${row.title || id}" to ${row.requesterName || row.requesterRole || 'staff'} for itemizing`);
+        await notifyRole(row.requesterRole, `Ibinalik sa iyo ang "${row.title || ''}" para i-itemize bilang Reimbursement: ${after.returnedForItemizingNotes}`);
+        await loadRequests();
+      } catch (error) {
+        alert(error.message);
+      }
+    }
+
     function setLiqModalMode(mode) {
       liqMode = mode;
       const reimb = mode === 'reimbursement';
@@ -1868,7 +1906,8 @@
         if (!canItemizeReimbursement(row)) return;
         if (isCashAdvance(row) && !confirm(`"${row.title || ''}" was filed as a Cash Advance (₱${fmt(row.amount)}).\n\nItemizing changes it to a Reimbursement: list each expense already paid with its receipt. The amount becomes the total of the items.\n\nContinue?`)) return;
         reimbDraft = { id, title: row.title || '', date: row.date || '', notes: row.notes || '',
-          convertFromAdvance: isCashAdvance(row), requestedAmount: Number(row.amount || 0) };
+          convertFromAdvance: isCashAdvance(row),
+          requestedAmount: Number((row.convertedFromCashAdvance && row.originalRequestedAmount) || row.amount || 0) };
       } else {
         reimbDraft = {
           id: null,
@@ -1891,13 +1930,14 @@
       document.getElementById('liq-context').innerHTML =
         `Reimbursement <strong>"${escapeHtml(reimbDraft.title)}"</strong>${reimbDraft.date ? ` — ${escapeHtml(reimbDraft.date)}` : ''}. List each expense you paid and link the receipt(s) that cover it. The amount to reimburse is the total of the items.`
         + (reimbDraft.convertFromAdvance ? '<div style="margin-top:6px; color:#7e5109;"><strong>Filed as a Cash Advance</strong> — saving changes it to a Reimbursement.</div>' : '')
+        + (row ? returnedForItemizingHtml(row) : '')
         + referenceNotes;
       document.getElementById('liq-items').innerHTML = '';
       document.getElementById('liq-receipts').value = '';
       document.getElementById('liq-notes').value = '';
       if (row && (row.liquidationItems || []).length) {
         row.liquidationItems.forEach(item => addLiqItem(item));
-      } else if (row && isCashAdvance(row)) {
+      } else if (row && (isCashAdvance(row) || row.convertedFromCashAdvance)) {
         // Its single amount was a request, not one purchase - start blank.
         addLiqItem({ date: row.date });
       } else if (row) {
@@ -1990,14 +2030,22 @@
             ...firstFields,
             updatedAt: now
           };
+          if (existing.returnedForItemizing) {
+            const del = firebase.firestore.FieldValue.delete();
+            Object.assign(after, { returnedForItemizing: del, returnedForItemizingNotes: del,
+              returnedForItemizingBy: del, returnedForItemizingAt: del, itemizedAfterReturnAt: now });
+          }
           await ref.set(after, { merge: true });
           saved = true;
           await writeAuditLog('reimbursement_items_updated', 'liquidationRequests', ref.id,
             { amount: existing.amount, liquidationItems: existing.liquidationItems || null },
-            { amount: total, liquidationItems: remappedItems, addedReceipts: uploads.length },
+            { amount: total, liquidationItems: remappedItems, addedReceipts: uploads.length, clearedReturnForItemizing: !!existing.returnedForItemizing },
             isCashAdvance(existing)
               ? `Changed cash advance "${existing.title || ref.id}" (requested ₱${fmt(existing.amount)}) to an itemized reimbursement: ${remappedItems.length} item(s), total ₱${fmt(total)}`
               : `Updated ${remappedItems.length} item(s) on reimbursement "${existing.title || ref.id}": total ₱${fmt(total)}`);
+          if (existing.returnedForItemizing && !roleIs('Treasurer')) {
+            await notifyRole('Treasurer', `${activeProfile.name || activeProfile.role} itemized "${existing.title || ''}": ${remappedItems.length} item(s), ₱${fmt(total)}.`);
+          }
           if (isCashAdvance(existing) && roleIs('Treasurer')) {
             await notifyRole(existing.requesterRole, `Your request "${existing.title || ''}" was itemized as a reimbursement: ${remappedItems.length} item(s), ₱${fmt(total)}.`);
           }
@@ -3170,6 +3218,7 @@
         <div class="section-label">Particulars</div>
         <div><strong>${escapeHtml(row.title || '')}</strong></div>
         ${row.notes ? `<div class="muted">${escapeHtml(row.notes)}</div>` : ''}
+        ${returnedForItemizingHtml(row)}
         ${duplicateWarningHtml(row)}
         ${reimbursementItemsHtml}
         ${itemsHtml}
@@ -3234,6 +3283,9 @@
           actions.push(`<button class="btn btn-secondary btn-small" onclick="updateRequestStatus('${row.id}', 'Approved')">Approve</button>`);
           actions.push(`<button class="btn btn-small" onclick="updateRequestStatus('${row.id}', 'Rejected')">Reject</button>`);
         }
+        if (canReturnForItemizing(row)) {
+          actions.push(`<button class="btn btn-ghost btn-small" onclick="returnForItemizing('${row.id}')">${isCashAdvance(row) ? 'Convert & Return to Staff' : 'Return to Staff to Itemize'}</button>`);
+        }
         if (canItemizeReimbursement(row)) {
           actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : isCashAdvance(row) ? 'Itemize as Reimbursement' : 'Itemize'}</button>`);
         }
@@ -3256,7 +3308,7 @@
         actions.push(`<button class="btn btn-danger btn-small" onclick="deleteRequest('${row.id}')">Delete</button>`);
       } else if (canSelfManageLiquidation()) {
         if (canItemizeReimbursement(row)) {
-          actions.push(`<button class="btn btn-secondary btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : isCashAdvance(row) ? 'Itemize as Reimbursement' : 'Itemize'}</button>`);
+          actions.push(`<button class="btn ${row.returnedForItemizing ? '' : 'btn-secondary '}btn-small" onclick="openReimbursementItemsModal('${row.id}')">${isItemizedReimbursement(row) ? 'Edit Items' : isCashAdvance(row) ? 'Itemize as Reimbursement' : 'Itemize'}</button>`);
         }
         if (row.status === 'Submitted') {
           actions.push(`<button class="btn btn-ghost btn-small" onclick="cancelRequest('${row.id}')">Cancel</button>`);
@@ -3333,7 +3385,7 @@
             <td data-label="Date">${escapeHtml(row.date || '')}</td>
             <td data-label="Requester">${escapeHtml(row.requesterName || row.requesterRole || '-')}<div class="muted">${escapeHtml(row.requesterRole || '')}</div></td>
             <td data-label="Type">${escapeHtml(typeLabel(row))}${row.assignedBy ? '<div class="muted">Assigned</div>' : ''}${row.sourceLiquidationRequestId ? '<div class="muted">Auto (overspend)</div>' : ''}${row.convertedFromCashAdvance ? '<div class="muted">From cash advance</div>' : ''}</td>
-            <td data-label="Particulars" class="req-particulars"><strong>${escapeHtml(row.title || '')}</strong>${row.notes ? `<div class="muted req-notes" title="${escapeHtml(row.notes)}">${escapeHtml(row.notes)}</div>` : ''}${duplicateWarningHtml(row)}</td>
+            <td data-label="Particulars"><strong>${escapeHtml(row.title || '')}</strong><div class="muted">${escapeHtml(row.notes || '')}</div>${returnedForItemizingHtml(row)}${duplicateWarningHtml(row)}</td>
             <td data-label="Status"><span class="badge ${badgeClass}">${escapeHtml(row.status || 'Submitted')}</span></td>
             <td data-label="Amount" class="amount">₱${fmt(row.amount)}</td>
             <td data-label="Liquidated" class="amount">${liquidatedCell}</td>
